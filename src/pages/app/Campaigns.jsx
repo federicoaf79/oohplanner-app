@@ -21,12 +21,16 @@ export default function Campaigns() {
       .select('*')
       .eq('org_id', profile.org_id)
       .order('created_at', { ascending: false })
-      .then(({ data }) => { setCampaigns(data ?? []); setLoading(false) })
+      .then(({ data, error }) => {
+        if (error) console.error('campaigns fetch error:', error.message)
+        setCampaigns(data ?? [])
+        setLoading(false)
+      })
   }, [profile?.org_id])
 
   const filtered = campaigns.filter(c =>
-    c.name.toLowerCase().includes(search.toLowerCase()) ||
-    c.client_name.toLowerCase().includes(search.toLowerCase())
+    (c.name ?? '').toLowerCase().includes(search.toLowerCase()) ||
+    (c.client_name ?? '').toLowerCase().includes(search.toLowerCase())
   )
 
   return (
