@@ -90,12 +90,19 @@ export const FORMAT_MAP = {
 }
 
 export const CAMPAIGN_OBJECTIVES = [
-  { value: 'awareness',   label: 'Reconocimiento de marca', icon: '📣',
-    desc: 'Aumentar visibilidad y recordación de marca' },
-  { value: 'traffic',     label: 'Generación de tráfico',   icon: '🚦',
-    desc: 'Dirigir público a un punto de venta o sitio web' },
-  { value: 'conversion',  label: 'Conversión / Ventas',     icon: '🎯',
-    desc: 'Impulsar compras directas o leads calificados' },
+  {
+    value: 'awareness',
+    label: 'Reconocimiento de marca',
+    icon: '📣',
+    desc: 'Aumentar visibilidad y recordación de marca en el target',
+  },
+  {
+    value: 'traffic',
+    label: 'Activación',
+    icon: '🚦',
+    desc: 'Activar al público con QR, promociones o llamadas a la acción directa',
+    badge: 'En desarrollo',
+  },
 ]
 
 export const AUDIENCE_INTERESTS = [

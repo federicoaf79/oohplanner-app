@@ -25,12 +25,18 @@ function SectionHeader({ number, title, subtitle }) {
 
 function Toggle({ label, checked, onChange }) {
   return (
-    <button type="button" onClick={() => onChange(!checked)}
-      className={`rounded-lg border px-3.5 py-2 text-sm font-medium transition-all ${
+    <button
+      type="button"
+      // preventDefault en mousedown evita que el browser haga scrollIntoView
+      // al enfocar el botón, sin interferir con el click event.
+      onMouseDown={e => e.preventDefault()}
+      onClick={() => onChange(!checked)}
+      className={`rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors ${
         checked
           ? 'border-brand bg-brand/10 text-brand'
           : 'border-surface-700 bg-surface-800 text-slate-400 hover:border-slate-500 hover:text-slate-200'
-      }`}>
+      }`}
+    >
       {label}
     </button>
   )
@@ -118,24 +124,45 @@ export default function WizardStep1Form({ formData, setFormData, onSubmit }) {
         <SectionHeader number="2" title="Objetivo de campaña *"
           subtitle="¿Qué querés lograr con esta pauta?" />
         {errors.objective && <p className="mb-3 text-xs text-red-400">{errors.objective}</p>}
-        <div className="grid gap-3 sm:grid-cols-3">
-          {CAMPAIGN_OBJECTIVES.map(obj => (
-            <button key={obj.value} type="button"
-              onClick={() => update('objective', obj.value)}
-              className={`relative rounded-xl border-2 p-4 text-left transition-all ${
-                formData.objective === obj.value
-                  ? 'border-brand bg-brand/10'
-                  : 'border-surface-700 bg-surface-800 hover:border-slate-500'
-              }`}>
-              {formData.objective === obj.value && (
-                <CheckCircle className="absolute top-3 right-3 h-4 w-4 text-brand" />
-              )}
-              <div className="text-2xl mb-2">{obj.icon}</div>
-              <p className="text-sm font-semibold text-white">{obj.label}</p>
-              <p className="mt-1 text-xs text-slate-500">{obj.desc}</p>
-            </button>
-          ))}
+        <div className="grid gap-3 sm:grid-cols-2">
+          {CAMPAIGN_OBJECTIVES.map(obj => {
+            const selected = formData.objective === obj.value
+            return (
+              <button key={obj.value} type="button"
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => update('objective', obj.value)}
+                className={`relative rounded-xl border-2 p-4 text-left transition-colors ${
+                  selected
+                    ? 'border-brand bg-brand/10'
+                    : 'border-surface-700 bg-surface-800 hover:border-slate-500'
+                }`}>
+                {selected && (
+                  <CheckCircle className="absolute top-3 right-3 h-4 w-4 text-brand" />
+                )}
+                {obj.badge && (
+                  <span className="absolute top-3 left-3 rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-semibold text-amber-400 ring-1 ring-amber-500/30">
+                    {obj.badge}
+                  </span>
+                )}
+                <div className={`text-2xl mb-2 ${obj.badge ? 'mt-5' : ''}`}>{obj.icon}</div>
+                <p className="text-sm font-semibold text-white">{obj.label}</p>
+                <p className="mt-1 text-xs text-slate-500">{obj.desc}</p>
+              </button>
+            )
+          })}
         </div>
+
+        {/* Disclaimer Activación */}
+        {formData.objective === 'traffic' && (
+          <div className="mt-3 flex gap-2.5 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3.5">
+            <span className="text-lg shrink-0">📱</span>
+            <p className="text-xs text-amber-300/80 leading-relaxed">
+              <strong className="text-amber-300">Activación con QR</strong> — Este objetivo incluirá
+              códigos QR en los carteles para redirigir al público a una URL, landing page o promoción.
+              La integración de tracking de escaneos estará disponible próximamente.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* ── 3. Formatos ────────────────────────────────────── */}
@@ -291,28 +318,36 @@ export default function WizardStep1Form({ formData, setFormData, onSubmit }) {
           </div>
         </div>
 
-        {/* Interests */}
+        {/* Interests — usa button para evitar el scrollIntoView del input sr-only */}
         <div className="mb-5">
           <p className="mb-2 text-sm font-medium text-slate-300">Intereses</p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {AUDIENCE_INTERESTS.map(i => {
               const checked = (formData.audience?.interests ?? []).includes(i.value)
               return (
-                <label key={i.value}
-                  className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-all ${
-                    checked ? 'border-brand bg-brand/10 text-brand' : 'border-surface-700 text-slate-400 hover:border-slate-500'
-                  }`}>
-                  <input type="checkbox" className="sr-only" checked={checked}
-                    onChange={() => toggleAudienceItem('interests', i.value)} />
-                  <div className={`h-3.5 w-3.5 rounded border flex items-center justify-center ${
+                <button
+                  key={i.value}
+                  type="button"
+                  onMouseDown={e => e.preventDefault()}
+                  onClick={() => toggleAudienceItem('interests', i.value)}
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors text-left ${
+                    checked
+                      ? 'border-brand bg-brand/10 text-brand'
+                      : 'border-surface-700 text-slate-400 hover:border-slate-500 hover:text-slate-200'
+                  }`}
+                >
+                  {/* Visual checkbox — fixed 14×14, no layout shift */}
+                  <div className={`h-3.5 w-3.5 shrink-0 rounded border transition-colors ${
                     checked ? 'border-brand bg-brand' : 'border-slate-600'
-                  }`}>
-                    {checked && <svg className="h-2.5 w-2.5 text-white" fill="none" viewBox="0 0 12 12">
-                      <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    </svg>}
+                  }`} style={{ minWidth: '14px' }}>
+                    {checked && (
+                      <svg className="h-full w-full text-white" fill="none" viewBox="0 0 12 12">
+                        <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                    )}
                   </div>
                   {i.label}
-                </label>
+                </button>
               )
             })}
           </div>
@@ -326,8 +361,9 @@ export default function WizardStep1Form({ formData, setFormData, onSubmit }) {
               const checked = (formData.audience?.nse ?? []).includes(n.value)
               return (
                 <button key={n.value} type="button"
+                  onMouseDown={e => e.preventDefault()}
                   onClick={() => toggleAudienceItem('nse', n.value)}
-                  className={`rounded-lg border px-4 py-2 text-sm transition-all ${
+                  className={`rounded-lg border px-4 py-2 text-sm transition-colors ${
                     checked ? 'border-brand bg-brand/10 text-brand' : 'border-surface-700 text-slate-400 hover:border-slate-500'
                   }`}>
                   <span className="font-bold">{n.label}</span>
