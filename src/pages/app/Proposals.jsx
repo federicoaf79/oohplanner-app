@@ -18,7 +18,7 @@ export default function Proposals() {
     if (!profile?.org_id) return
     supabase
       .from('proposals')
-      .select('*')
+      .select('*, creator:profiles!created_by(full_name)')
       .eq('org_id', profile.org_id)
       .order('created_at', { ascending: false })
       .then(({ data }) => { setProposals(data ?? []); setLoading(false) })
@@ -67,6 +67,9 @@ export default function Proposals() {
                     <StatusBadge status={p.status} type="proposal" />
                   </div>
                   <p className="mt-1 text-sm text-slate-500">{p.client_name}</p>
+                  {p.creator?.full_name && (
+                    <p className="text-xs text-slate-600">Creado por: {p.creator.full_name}</p>
+                  )}
                   <div className="mt-2 flex items-center gap-4 text-xs text-slate-600">
                     <span>{formatDate(p.created_at)}</span>
                     {p.total_value && (
