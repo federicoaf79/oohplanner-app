@@ -14,13 +14,14 @@ import Register      from './pages/auth/Register'
 import NotFound      from './pages/NotFound'
 
 // Pages — protected
-import Dashboard  from './pages/app/Dashboard'
-import Campaigns  from './pages/app/Campaigns'
-import Inventory  from './pages/app/Inventory'
-import Proposals  from './pages/app/Proposals'
-import Reports    from './pages/app/Reports'
-import Team       from './pages/app/Team'
-import Settings   from './pages/app/Settings'
+import Dashboard    from './pages/app/Dashboard'
+import Campaigns    from './pages/app/Campaigns'
+import Inventory    from './pages/app/Inventory'
+import Proposals    from './pages/app/Proposals'
+import ProposalNew  from './pages/app/ProposalNew'
+import Reports      from './pages/app/Reports'
+import Team         from './pages/app/Team'
+import Settings     from './pages/app/Settings'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,10 +41,11 @@ const router = createBrowserRouter([
       {
         element: <AppShell />,
         children: [
-          { path: '/app',              element: <Dashboard /> },
-          { path: '/app/campaigns',    element: <Campaigns /> },
-          { path: '/app/proposals',    element: <Proposals /> },
-          { path: '/app/settings',     element: <Settings /> },
+          { path: '/app',                  element: <Dashboard /> },
+          { path: '/app/campaigns',        element: <Campaigns /> },
+          { path: '/app/proposals',        element: <Proposals /> },
+          { path: '/app/proposals/new',    element: <ProposalNew /> },
+          { path: '/app/settings',         element: <Settings /> },
 
           // manager + owner only
           {

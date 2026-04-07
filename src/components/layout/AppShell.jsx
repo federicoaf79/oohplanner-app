@@ -5,13 +5,14 @@ import Topbar from './Topbar'
 import MobileNav from './MobileNav'
 
 const PAGE_TITLES = {
-  '/app':              'Dashboard',
-  '/app/campaigns':    'Campañas',
-  '/app/inventory':    'Inventario',
-  '/app/proposals':    'Propuestas',
-  '/app/reports':      'Reportes',
-  '/app/team':         'Equipo',
-  '/app/settings':     'Ajustes',
+  '/app':                  'Dashboard',
+  '/app/campaigns':        'Campañas',
+  '/app/inventory':        'Inventario',
+  '/app/proposals':        'Propuestas',
+  '/app/proposals/new':    'Planificador IA',
+  '/app/reports':          'Reportes',
+  '/app/team':             'Equipo',
+  '/app/settings':         'Ajustes',
 }
 
 export default function AppShell() {

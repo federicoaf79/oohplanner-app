@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Plus, Search, FileText } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import Button from '../../components/ui/Button'
@@ -9,6 +10,7 @@ import Spinner from '../../components/ui/Spinner'
 
 export default function Proposals() {
   const { profile } = useAuth()
+  const navigate = useNavigate()
   const [proposals, setProposals] = useState([])
   const [loading, setLoading]     = useState(true)
   const [search, setSearch]       = useState('')
@@ -35,7 +37,7 @@ export default function Proposals() {
           <h2 className="text-lg font-bold text-white">Propuestas</h2>
           <p className="text-sm text-slate-500">{proposals.length} propuestas</p>
         </div>
-        <Button size="sm">
+        <Button size="sm" onClick={() => navigate('/app/proposals/new')}>
           <Plus className="h-4 w-4" />
           Nueva propuesta
         </Button>
