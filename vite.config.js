@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
+  base: '/',
   optimizeDeps: {
     include: ['leaflet'],
   },
@@ -11,6 +12,15 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico'],
+      // skipWaiting + clientsClaim: el SW nuevo se activa de inmediato
+      // en lugar de esperar a que el usuario cierre todas las pestañas.
+      // Esto evita que el SW viejo siga sirviendo un index.html cacheado
+      // que referencia assets hasheados que ya no existen en el deploy nuevo.
+      workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
+      },
       manifest: {
         name: 'OOH Planner',
         short_name: 'OOHPlanner',
