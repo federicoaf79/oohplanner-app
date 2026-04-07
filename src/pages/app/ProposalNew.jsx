@@ -8,7 +8,10 @@ import WizardStep2Loading from '../../features/proposals/WizardStep2Loading'
 import WizardStep3Results from '../../features/proposals/WizardStep3Results'
 import { MOCK_RESPONSE, mockDelay } from '../../lib/mockPlanData'
 
-const USE_MOCK = import.meta.env.VITE_USE_MOCK_AI === 'true'
+// Default to mock=true so deploys without the env var don't hang waiting
+// for an Edge Function that may not be deployed yet.
+// Set VITE_USE_MOCK_AI=false in Vercel env vars to enable the real AI.
+const USE_MOCK = import.meta.env.VITE_USE_MOCK_AI !== 'false'
 
 const EMPTY_FORM = {
   clientName: '',
