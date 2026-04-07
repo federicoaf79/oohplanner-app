@@ -19,12 +19,14 @@ export default function Button({
   size = 'md',
   loading = false,
   disabled,
+  type = 'button',
   children,
   className,
   ...props
 }) {
   return (
     <button
+      type={type}
       disabled={disabled || loading}
       className={cn(variants[variant], sizes[size], className)}
       {...props}
