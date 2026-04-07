@@ -7,6 +7,40 @@ import {
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
 
+// ── Presupuesto con formato ARS ──────────────────────────────
+// Muestra: $20.000.000   Almacena: "20000000" (solo dígitos)
+
+const arsFormatter = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 })
+
+function formatARS(raw) {
+  if (!raw) return ''
+  const n = parseInt(raw, 10)
+  return isNaN(n) ? '' : arsFormatter.format(n)
+}
+
+function BudgetInput({ value, onChange, error }) {
+  function handleChange(e) {
+    // Quita todo lo que no sea dígito (puntos, comas, espacios, etc.)
+    const digits = e.target.value.replace(/[^\d]/g, '')
+    onChange(digits)
+  }
+
+  return (
+    <div className="relative">
+      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-slate-500">$</span>
+      <input
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        className={`input-field pl-7 ${error ? 'border-red-500' : ''}`}
+        placeholder="500.000"
+        value={formatARS(value)}
+        onChange={handleChange}
+      />
+    </div>
+  )
+}
+
 // ── Helpers ──────────────────────────────────────────────────
 
 function SectionHeader({ number, title, subtitle }) {
@@ -222,14 +256,7 @@ export default function WizardStep1Form({ formData, setFormData, onSubmit }) {
             <label className="mb-1.5 block text-sm font-medium text-slate-300">
               Presupuesto mensual (ARS) *
             </label>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-slate-500">$</span>
-              <input type="number" min="0" step="1000"
-                className={`input-field pl-7 ${errors.budget ? 'border-red-500' : ''}`}
-                placeholder="500.000"
-                value={formData.budget}
-                onChange={e => update('budget', e.target.value)} />
-            </div>
+            <BudgetInput value={formData.budget} onChange={v => update('budget', v)} error={errors.budget} />
             {errors.budget && <p className="mt-1 text-xs text-red-400">{errors.budget}</p>}
           </div>
 
