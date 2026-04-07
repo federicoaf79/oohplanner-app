@@ -1,12 +1,16 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
-  const [session, setSession]   = useState(undefined) // undefined = loading
-  const [profile, setProfile]   = useState(null)
-  const [loading, setLoading]   = useState(true)
+  const [session, setSession]     = useState(undefined) // undefined = loading
+  const [profile, setProfile]     = useState(null)
+  const [loading, setLoading]     = useState(true)
+  const [sessionExpired, setSessionExpired] = useState(false)
+  // Tracks whether the current sign-out was user-initiated, so we can
+  // distinguish it from an automatic sign-out caused by token expiry.
+  const intentionalSignOut = useRef(false)
 
   async function fetchProfile(userId) {
     const { data, error } = await supabase
@@ -23,27 +27,41 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      setSession(session)
-      if (session?.user) {
-        const p = await fetchProfile(session.user.id)
-        setProfile(p)
-      }
-      setLoading(false)
-    })
+    // onAuthStateChange fires INITIAL_SESSION synchronously on mount in
+    // Supabase JS v2, so we don't need a separate getSession() call.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        setSession(session)
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      setSession(session)
-      if (session?.user) {
-        const p = await fetchProfile(session.user.id)
-        setProfile(p)
-      } else {
-        setProfile(null)
+        if (event === 'TOKEN_REFRESHED') {
+          // Token silently refreshed — session already updated, no need to
+          // re-fetch the profile.
+          setLoading(false)
+          return
+        }
+
+        if (event === 'SIGNED_OUT') {
+          setProfile(null)
+          // If the sign-out wasn't user-initiated (e.g. refresh token expired),
+          // flag the session as expired so the login page can show a message.
+          if (!intentionalSignOut.current) {
+            setSessionExpired(true)
+          }
+          intentionalSignOut.current = false
+          setLoading(false)
+          return
+        }
+
+        // INITIAL_SESSION, SIGNED_IN, USER_UPDATED — fetch/refresh profile
+        if (session?.user) {
+          const p = await fetchProfile(session.user.id)
+          setProfile(p)
+        } else {
+          setProfile(null)
+        }
+        setLoading(false)
       }
-      setLoading(false)
-    })
+    )
 
     return () => subscription.unsubscribe()
   }, [])
@@ -72,6 +90,7 @@ export function AuthProvider({ children }) {
   }
 
   async function signOut() {
+    intentionalSignOut.current = true
     await supabase.auth.signOut()
   }
 
@@ -87,6 +106,7 @@ export function AuthProvider({ children }) {
     user: session?.user ?? null,
     profile,
     loading,
+    sessionExpired,
     role: profile?.role ?? null,
     org: profile?.organisations ?? null,
     isOwner:       profile?.role === 'owner',

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
-import { Zap, Eye, EyeOff } from 'lucide-react'
+import { Zap, Eye, EyeOff, AlertCircle } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
@@ -9,7 +9,8 @@ export default function Login() {
   const { signIn, session } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
-  const from = location.state?.from?.pathname ?? '/app'
+  const from    = location.state?.from?.pathname ?? '/app'
+  const expired = location.state?.expired ?? false
 
   const [form, setForm]     = useState({ email: '', password: '' })
   const [error, setError]   = useState('')
@@ -41,6 +42,14 @@ export default function Login() {
             <p className="mt-1 text-sm text-slate-500">Ingresa a tu cuenta de OOH Planner</p>
           </div>
         </div>
+
+        {/* Expired session banner */}
+        {expired && (
+          <div className="mb-4 flex items-center gap-2.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+            <AlertCircle className="h-4 w-4 shrink-0 text-amber-400" />
+            <p className="text-sm text-amber-300">Tu sesión expiró. Ingresá de nuevo.</p>
+          </div>
+        )}
 
         {/* Card */}
         <div className="card p-6">
