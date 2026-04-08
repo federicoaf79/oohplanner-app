@@ -135,39 +135,45 @@ export default function Campaigns() {
   useEffect(() => {
     if (!profile?.org_id) return
     setLoading(true)
-    supabase
-      .from('proposals')
-      .select('*, creator:profiles!created_by(full_name)')
-      .eq('org_id', profile.org_id)
-      .neq('workflow_status', 'pending')
-      .not('workflow_status', 'is', null)
-      .order('created_at', { ascending: false })
-      .then(({ data, error }) => {
+
+    async function load() {
+      try {
+        const { data, error } = await supabase
+          .from('proposals')
+          .select('*, creator:profiles!created_by(full_name)')
+          .eq('org_id', profile.org_id)
+          .neq('workflow_status', 'pending')
+          .not('workflow_status', 'is', null)
+          .order('created_at', { ascending: false })
+
         if (error) console.error('campaigns fetch error:', error.message)
         const rows = data ?? []
 
         // Auto-withdraw: proposals past valid_until still in installation/active
-        const today    = new Date()
+        const today      = new Date()
         const expiredIds = rows
           .filter(p => ['installation', 'active'].includes(p.workflow_status)
             && p.valid_until && new Date(p.valid_until) < today)
           .map(p => p.id)
 
         if (expiredIds.length) {
-          supabase.from('proposals')
+          await supabase.from('proposals')
             .update({ workflow_status: 'withdraw' })
             .in('id', expiredIds)
-            .then(() => {
-              setProposals(rows.map(p =>
-                expiredIds.includes(p.id) ? { ...p, workflow_status: 'withdraw' } : p
-              ))
-            })
+          setProposals(rows.map(p =>
+            expiredIds.includes(p.id) ? { ...p, workflow_status: 'withdraw' } : p
+          ))
         } else {
           setProposals(rows)
         }
-
+      } catch (err) {
+        console.error('campaigns load error:', err.message)
+      } finally {
         setLoading(false)
-      })
+      }
+    }
+
+    load()
   }, [profile?.org_id])
 
   async function handleStatusChange(proposalId, newStatus) {
