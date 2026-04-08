@@ -27,10 +27,11 @@ export const CAMPAIGN_STATUS_LABELS = {
 }
 
 export const PROPOSAL_STATUS_LABELS = {
-  draft:    'Borrador',
-  sent:     'Enviada',
-  accepted: 'Aceptada',
-  rejected: 'Rechazada',
+  draft:            'Borrador',
+  sent:             'Enviada',
+  accepted:         'Aceptada',
+  rejected:         'Rechazada',
+  pending_approval: 'Esperando aprobación',
 }
 
 export const ROUTES = {
@@ -81,12 +82,56 @@ export const OOH_FORMATS = [
     bgClass:    'bg-green-500/10',
     borderClass: 'border-green-500/50',
   },
+  {
+    id: 'poster',
+    label: 'Afiche papel',
+    desc: 'Afiches de papel en soportes fijos, alta densidad urbana',
+    icon: '📋',
+    color: '#eab308',
+    colorClass: 'text-yellow-400',
+    bgClass:    'bg-yellow-500/10',
+    borderClass: 'border-yellow-500/50',
+  },
+  {
+    id: 'urban_furniture',
+    label: 'Mob. urbano',
+    desc: 'Soportes en mobiliario urbano (refugios, columnas, kioscos)',
+    icon: '🪧',
+    color: '#8b5cf6',
+    colorClass: 'text-violet-400',
+    bgClass:    'bg-violet-500/10',
+    borderClass: 'border-violet-500/50',
+  },
+  {
+    id: 'urban_furniture_digital',
+    label: 'Mob. digital',
+    desc: 'Pantallas digitales en mobiliario urbano con alta frecuencia',
+    icon: '🖥️',
+    color: '#06b6d4',
+    colorClass: 'text-cyan-400',
+    bgClass:    'bg-cyan-500/10',
+    borderClass: 'border-cyan-500/50',
+  },
+  {
+    id: 'mobile_screen',
+    label: 'Pantalla móvil',
+    desc: 'Pantalla LED sobre vehículo, recorrido programado por zonas',
+    icon: '🚌',
+    color: '#ec4899',
+    colorClass: 'text-pink-400',
+    bgClass:    'bg-pink-500/10',
+    borderClass: 'border-pink-500/50',
+  },
 ]
 
 export const FORMAT_MAP = {
-  billboard: { label: 'Espectacular', color: '#f97316' },
-  digital:   { label: 'Digital LED',  color: '#3b82f6' },
-  ambient:   { label: 'Medianera',    color: '#22c55e' },
+  billboard:               { label: 'Espectacular',        color: '#f97316' },
+  digital:                 { label: 'Digital LED',         color: '#3b82f6' },
+  ambient:                 { label: 'Medianera',           color: '#22c55e' },
+  poster:                  { label: 'Afiche papel',        color: '#eab308' },
+  urban_furniture:         { label: 'Mob. urbano',         color: '#8b5cf6' },
+  urban_furniture_digital: { label: 'Mob. digital',        color: '#06b6d4' },
+  mobile_screen:           { label: 'Pantalla móvil',      color: '#ec4899' },
 }
 
 export const CAMPAIGN_OBJECTIVES = [

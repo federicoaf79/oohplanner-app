@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
-import { Search, MapPin, List, LayoutGrid, ChevronDown, ChevronUp, Save } from 'lucide-react'
+import { Search, MapPin, List, LayoutGrid, ChevronDown, ChevronUp, Save, Pencil } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { formatCurrency, formatDate } from '../../lib/utils'
 import Spinner from '../../components/ui/Spinner'
 import { FORMAT_MAP } from '../../lib/constants'
+import EditInventoryModal from '../../features/inventory/EditInventoryModal'
 
 const FORMAT_ICON = {
   billboard:        '🏙️',
@@ -55,13 +56,13 @@ function FormatBadges({ item }) {
 
 // ── Vista lista ───────────────────────────────────────────────
 
-function InventoryRow({ item }) {
+function InventoryRow({ item, onEdit, canEdit }) {
   const fmt  = FORMAT_MAP[item.format] ?? { label: item.format, color: '#64748b' }
   const icon = FORMAT_ICON[item.format] ?? '📍'
   const impactsPerMonth = item.daily_traffic ? item.daily_traffic * 3 : null
 
   return (
-    <div className="card px-4 py-3 hover:border-brand/30 transition-colors cursor-pointer">
+    <div className="card px-4 py-3 hover:border-brand/30 transition-colors">
       <div className="flex items-center gap-4">
 
         {/* Ícono del formato */}
@@ -110,6 +111,17 @@ function InventoryRow({ item }) {
         {/* Disponibilidad */}
         <AvailabilityBadge item={item} />
 
+        {/* Editar */}
+        {canEdit && (
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); onEdit(item) }}
+            className="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg border border-surface-700 text-slate-500 hover:border-brand/50 hover:text-brand transition-colors"
+            title="Editar cartel"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
 
       {/* Libre desde — solo si está ocupado y tiene fecha */}
@@ -220,7 +232,7 @@ function BandaNegativaSection({ item }) {
   )
 }
 
-function InventoryCard({ item, isOwner, isManager }) {
+function InventoryCard({ item, isOwner, isManager, onEdit, canEdit }) {
   const fmt  = FORMAT_MAP[item.format] ?? { label: item.format, color: '#64748b' }
   const icon = FORMAT_ICON[item.format] ?? '📍'
   const impactsPerMonth = item.daily_traffic ? item.daily_traffic * 3 : null
@@ -245,7 +257,19 @@ function InventoryCard({ item, isOwner, isManager }) {
             <p className="font-semibold text-white truncate">{item.name}</p>
             <p className="text-xs text-slate-500">{item.code}</p>
           </div>
-          <AvailabilityBadge item={item} />
+          <div className="flex items-center gap-1.5 shrink-0">
+            <AvailabilityBadge item={item} />
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => onEdit(item)}
+                className="flex h-7 w-7 items-center justify-center rounded-lg border border-surface-700 text-slate-500 hover:border-brand/50 hover:text-brand transition-colors"
+                title="Editar"
+              >
+                <Pencil className="h-3 w-3" />
+              </button>
+            )}
+          </div>
         </div>
 
         {!item.is_available && item.available_until && (
@@ -350,10 +374,25 @@ export default function Inventory() {
   const [viewMode, setViewMode]   = useState(
     () => localStorage.getItem('inventory_view') ?? 'list'
   )
+  const [editingItem, setEditingItem] = useState(null)
+
+  const canEdit = isOwner || isManager
 
   function toggleView(mode) {
     setViewMode(mode)
     localStorage.setItem('inventory_view', mode)
+  }
+
+  function handleSaved() {
+    setEditingItem(null)
+    // Reload inventory
+    if (!profile?.org_id) return
+    supabase
+      .from('inventory')
+      .select('*')
+      .eq('org_id', profile.org_id)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => setItems(data ?? []))
   }
 
   useEffect(() => {
@@ -439,15 +478,24 @@ export default function Inventory() {
       ) : viewMode === 'list' ? (
         <div className="space-y-2">
           {filtered.map(item => (
-            <InventoryRow key={item.id} item={item} />
+            <InventoryRow key={item.id} item={item} canEdit={canEdit} onEdit={setEditingItem} />
           ))}
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map(item => (
-            <InventoryCard key={item.id} item={item} isOwner={isOwner} isManager={isManager} />
+            <InventoryCard key={item.id} item={item} isOwner={isOwner} isManager={isManager} canEdit={canEdit} onEdit={setEditingItem} />
           ))}
         </div>
+      )}
+
+      {/* Edit modal */}
+      {editingItem && (
+        <EditInventoryModal
+          item={editingItem}
+          onClose={() => setEditingItem(null)}
+          onSaved={handleSaved}
+        />
       )}
     </div>
   )

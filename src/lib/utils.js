@@ -5,14 +5,20 @@ export function cn(...inputs) {
   return twMerge(clsx(inputs))
 }
 
-export function formatCurrency(amount, currency = 'USD') {
+// ARS: $1.000.000 (punto miles, sin centavos)
+export function formatCurrency(amount, currency = 'ARS') {
   if (amount == null) return '—'
-  return new Intl.NumberFormat('es-MX', { style: 'currency', currency }).format(amount)
+  return new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount)
 }
 
 export function formatDate(dateStr) {
   if (!dateStr) return '—'
-  return new Intl.DateTimeFormat('es-MX', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(dateStr))
+  return new Intl.DateTimeFormat('es-AR', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date(dateStr))
 }
 
 export function getInitials(name) {

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import {
   MapPin, TrendingUp, DollarSign, Target, Users,
-  Save, Printer, MessageCircle, ChevronRight, Star
+  Save, Printer, MessageCircle, ChevronRight, Star,
+  Clock, CheckCircle, Tag
 } from 'lucide-react'
 import ProposalMap from './ProposalMap'
 import { FORMAT_MAP } from '../../lib/constants'
@@ -155,6 +156,66 @@ function OptionPanel({ option, formData }) {
   )
 }
 
+function PriceBreakdown({ formData, totalListRate }) {
+  const discount = formData.discountPct ?? 0
+  if (!totalListRate) return null
+  const discountAmt  = Math.round(totalListRate * discount / 100)
+  const clientTotal  = totalListRate - discountAmt
+
+  // Cuánto falta para agregar 1 cartel más
+  const avgRate      = totalListRate / Math.max(1, formData._sitesCount ?? 1)
+  const effAvgRate   = Math.round(avgRate * (1 - discount / 100))
+  const usedBudget   = clientTotal
+  const budgetRaw    = Number(formData.budget ?? 0)
+  const remaining    = budgetRaw - usedBudget
+  const nextCost     = effAvgRate
+  const diffForNext  = nextCost > 0 ? nextCost - remaining : null
+
+  return (
+    <div className="card p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <Tag className="h-4 w-4 text-brand" />
+        <h3 className="text-sm font-semibold text-white">Desglose de precio</h3>
+      </div>
+      <div className="space-y-2 text-sm">
+        <div className="flex justify-between items-center">
+          <span className="text-slate-500">Precio de lista</span>
+          <span className="text-slate-400 line-through">{formatCurrency(totalListRate)}</span>
+        </div>
+        {discount > 0 && (
+          <div className="flex justify-between items-center text-emerald-400">
+            <span>Descuento {discount}%</span>
+            <span>-{formatCurrency(discountAmt)}</span>
+          </div>
+        )}
+        <div className="flex justify-between items-center font-bold text-white border-t border-surface-700 pt-2">
+          <span>Total cliente</span>
+          <span className="text-lg">{formatCurrency(clientTotal)}</span>
+        </div>
+      </div>
+      {remaining >= 0 && remaining < nextCost && diffForNext > 0 && (
+        <p className="mt-3 text-xs text-blue-400 bg-blue-500/10 rounded-lg px-3 py-2">
+          Diferencia: {formatCurrency(remaining)} disponible — con {formatCurrency(diffForNext)} más podés agregar 1 cartel
+        </p>
+      )}
+      {formData._pendingApproval && (
+        <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+          <Clock className="h-3.5 w-3.5 text-amber-400 shrink-0 mt-0.5" />
+          <p className="text-xs text-amber-300">
+            Descuento {discount}% supera tu límite. La propuesta requiere aprobación de gerente/dueño.
+          </p>
+        </div>
+      )}
+      {formData._approvedBy && (
+        <div className="mt-3 flex items-center gap-2 text-xs text-emerald-400">
+          <CheckCircle className="h-3.5 w-3.5 shrink-0" />
+          Aprobado por <strong>{formData._approvedBy}</strong> · {formData._approvedAt}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function WizardStep3Results({ results, formData, onSave, saving }) {
   const [activeTab, setActiveTab] = useState('A')
   const [saved, setSaved] = useState(false)
@@ -239,6 +300,12 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
           </button>
         ))}
       </div>
+
+      {/* Price breakdown */}
+      <PriceBreakdown
+        formData={{ ...formData, _sitesCount: activeOption?.sites?.length ?? 0 }}
+        totalListRate={activeOption?.metrics?.totalRate}
+      />
 
       {/* Active option content */}
       <OptionPanel option={activeOption} formData={formData} />

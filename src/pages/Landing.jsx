@@ -343,6 +343,38 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* Security & trust */}
+      <section className="border-t border-surface-700 bg-surface-800/30 px-4 py-16 lg:px-8">
+        <div className="mx-auto max-w-5xl">
+          <div className="mb-10 text-center">
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-1.5 text-sm text-emerald-400">
+              <Shield className="h-3.5 w-3.5" />
+              Seguridad y privacidad
+            </div>
+            <h2 className="text-2xl font-bold text-white lg:text-3xl">
+              Tus datos son solo tuyos
+            </h2>
+            <p className="mt-3 text-slate-400 max-w-2xl mx-auto">
+              Construida con Row Level Security desde el día uno. Cada empresa opera en un espacio completamente aislado.
+            </p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              { icon: '🔒', title: 'Aislamiento total', desc: 'Cada organización tiene sus propios datos. RLS aplicado a nivel de base de datos.' },
+              { icon: '🔐', title: 'Encriptación AES-256', desc: 'Datos en reposo encriptados. Comunicación siempre por HTTPS/TLS.' },
+              { icon: '👁️', title: 'Sin acceso de terceros', desc: 'OOH Planner no accede a tus datos operativos. Tus carteles y contratos son privados.' },
+              { icon: '🛡️', title: 'Auth segura', desc: 'Tokens JWT con refresh automático. Sesiones expiradas notificadas al usuario.' },
+            ].map(({ icon, title, desc }) => (
+              <div key={title} className="card p-5">
+                <div className="mb-3 text-2xl">{icon}</div>
+                <p className="text-sm font-semibold text-white mb-1">{title}</p>
+                <p className="text-xs text-slate-500 leading-relaxed">{desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Footer */}
       <footer className="border-t border-surface-700 px-4 py-8 lg:px-8">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 sm:flex-row">

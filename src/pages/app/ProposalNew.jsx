@@ -23,6 +23,7 @@ const EMPTY_FORM = {
   city: 'Buenos Aires (CABA)',
   radiusKm: 10,
   budget: '',
+  discountPct: 0,
   startDate: '',
   endDate: '',
   audience: { ageMin: 18, ageMax: 55, gender: 'all', interests: [], nse: [] },
@@ -30,7 +31,7 @@ const EMPTY_FORM = {
 }
 
 export default function ProposalNew() {
-  const { profile } = useAuth()
+  const { profile, role, org } = useAuth()
   const navigate = useNavigate()
   const { id: editId } = useParams()
   const isEditing = !!editId
@@ -68,6 +69,7 @@ export default function ProposalNew() {
           city:             b.city ?? 'Buenos Aires (CABA)',
           radiusKm:         b.radiusKm ?? 10,
           budget:           b.budget ?? '',
+          discountPct:      data.discount_pct ?? 0,
           startDate:        b.startDate ?? '',
           endDate:          b.endDate ?? (data.valid_until ?? ''),
           audience:         b.audience ?? { ageMin: 18, ageMax: 55, gender: 'all', interests: [], nse: [] },
@@ -131,7 +133,14 @@ export default function ProposalNew() {
     if (!option || !profile?.org_id) return
     setSaving(true)
 
-    const totalValue = option.metrics?.totalRate ?? 0
+    const discountPct  = formData.discountPct ?? 0
+    const maxDiscount  = role === 'owner' ? 100
+      : role === 'manager' ? (org?.max_discount_manager ?? 30)
+      : (org?.max_discount_salesperson ?? 20)
+    const needsApproval = discountPct > maxDiscount
+
+    const listTotal  = option.metrics?.totalRate ?? 0
+    const totalValue = Math.round(listTotal * (1 - discountPct / 100))
     const title      = `Pauta ${formData.clientName} — ${formData.city} (${optionLabel})`
     const briefData  = {
       objective:        formData.objective,
@@ -140,6 +149,7 @@ export default function ProposalNew() {
       city:             formData.city,
       radiusKm:         formData.radiusKm,
       budget:           formData.budget,
+      discountPct,
       startDate:        formData.startDate,
       endDate:          formData.endDate,
       audience:         formData.audience,
@@ -154,6 +164,8 @@ export default function ProposalNew() {
           client_name:  formData.clientName,
           client_email: formData.clientEmail || null,
           total_value:  totalValue,
+          discount_pct: discountPct,
+          status:       needsApproval ? 'pending_approval' : (existingProposal.status === 'pending_approval' ? 'draft' : existingProposal.status),
           valid_until:  formData.endDate || null,
           brief_data:   briefData,
         }
@@ -195,8 +207,9 @@ export default function ProposalNew() {
             title,
             client_name:  formData.clientName,
             client_email: formData.clientEmail || null,
-            status:       'draft',
+            status:       needsApproval ? 'pending_approval' : 'draft',
             total_value:  totalValue,
+            discount_pct: discountPct,
             valid_until:  formData.endDate || null,
             created_by:   profile.id,
             brief_data:   briefData,

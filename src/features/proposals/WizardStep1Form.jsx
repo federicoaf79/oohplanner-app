@@ -1,9 +1,10 @@
 import { useState, useRef } from 'react'
-import { CheckCircle, Upload, X, ChevronDown } from 'lucide-react'
+import { CheckCircle, Upload, X, ChevronDown, AlertTriangle, Info } from 'lucide-react'
 import {
   OOH_FORMATS, CAMPAIGN_OBJECTIVES, AUDIENCE_INTERESTS,
   NSE_OPTIONS, DIGITAL_FREQUENCIES, CABA_CITIES,
 } from '../../lib/constants'
+import { useAuth } from '../../context/AuthContext'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
 
@@ -79,9 +80,17 @@ function Toggle({ label, checked, onChange }) {
 // ── Main form ────────────────────────────────────────────────
 
 export default function WizardStep1Form({ formData, setFormData, onSubmit }) {
+  const { role, org } = useAuth()
   const [errors, setErrors] = useState({})
   const [imagePreview, setImagePreview] = useState(null)
   const fileRef = useRef(null)
+
+  // Descuento máximo según rol (configurable por owner en Ajustes)
+  const maxDiscount = role === 'owner' ? 100
+    : role === 'manager' ? (org?.max_discount_manager ?? 30)
+    : (org?.max_discount_salesperson ?? 20)
+  const discountVal = formData.discountPct ?? 0
+  const needsApproval = discountVal > maxDiscount
 
   function update(field, value) {
     setFormData(prev => ({ ...prev, [field]: value }))
@@ -248,13 +257,13 @@ export default function WizardStep1Form({ formData, setFormData, onSubmit }) {
         )}
       </div>
 
-      {/* ── 4. Presupuesto y período ────────────────────────── */}
+      {/* ── 4. Presupuesto, descuento y período ─────────────── */}
       <div className="card p-5">
         <SectionHeader number="4" title="Presupuesto y período *" />
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="sm:col-span-1">
             <label className="mb-1.5 block text-sm font-medium text-slate-300">
-              Presupuesto mensual (ARS) *
+              Presupuesto del cliente (ARS) *
             </label>
             <BudgetInput value={formData.budget} onChange={v => update('budget', v)} error={errors.budget} />
             {errors.budget && <p className="mt-1 text-xs text-red-400">{errors.budget}</p>}
@@ -277,6 +286,52 @@ export default function WizardStep1Form({ formData, setFormData, onSubmit }) {
               value={formData.endDate} onChange={e => update('endDate', e.target.value)} />
             {errors.endDate && <p className="mt-1 text-xs text-red-400">{errors.endDate}</p>}
           </div>
+        </div>
+
+        {/* Descuento */}
+        <div className="mt-4 border-t border-surface-700 pt-4">
+          <div className="flex items-center gap-2 mb-3">
+            <p className="text-sm font-medium text-slate-300">Descuento al precio de lista</p>
+            <div className="group relative">
+              <Info className="h-3.5 w-3.5 text-slate-600 cursor-help" />
+              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 hidden group-hover:block w-56 rounded-lg border border-surface-700 bg-surface-800 p-2.5 text-xs text-slate-400 shadow-lg z-10">
+                El presupuesto del cliente es fijo. La IA selecciona más carteles porque cada uno cuesta menos con el descuento aplicado.
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="relative w-28">
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                className={`input-field pr-8 text-center ${needsApproval ? 'border-amber-500/70' : ''}`}
+                value={discountVal}
+                onChange={e => update('discountPct', Math.min(100, Math.max(0, Number(e.target.value))))}
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">%</span>
+            </div>
+            <div className="flex-1 text-xs text-slate-500">
+              {discountVal > 0 && formData.budget ? (
+                <span className="text-slate-400">
+                  Precio efectivo por cartel × {(1 - discountVal / 100).toFixed(2)}
+                  {' · '}máx. permitido sin aprobación: <strong className="text-slate-300">{maxDiscount}%</strong>
+                </span>
+              ) : (
+                <span>0% = sin descuento · máx. sin aprobación: <strong className="text-slate-300">{maxDiscount}%</strong></span>
+              )}
+            </div>
+          </div>
+          {needsApproval && (
+            <div className="mt-2.5 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+              <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-300">
+                Descuento supera tu límite de {maxDiscount}%. La propuesta quedará en estado
+                <strong className="text-amber-200"> "Esperando aprobación"</strong> hasta que un gerente o dueño la apruebe.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
