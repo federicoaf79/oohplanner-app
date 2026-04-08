@@ -27,8 +27,15 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
-    // onAuthStateChange fires INITIAL_SESSION synchronously on mount in
-    // Supabase JS v2, so we don't need a separate getSession() call.
+    ;(async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        setSession(session)
+        await fetchProfile(session.user.id)
+      }
+      setLoading(false)
+    })()
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         setSession(session)
