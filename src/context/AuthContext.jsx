@@ -13,17 +13,26 @@ export function AuthProvider({ children }) {
   const intentionalSignOut = useRef(false)
 
   async function fetchProfile(userId) {
+    // Intento 1: perfil + join a organisations
     const { data, error } = await supabase
       .from('profiles')
       .select('*, organisations(id, name, slug, logo_url, plan, max_discount_salesperson, max_discount_manager)')
       .eq('id', userId)
       .single()
 
-    if (error) {
-      console.error('Error fetching profile:', error.message)
-      return null
-    }
-    return data
+    if (!error) return data
+
+    // Intento 2: si el join falla (RLS o columna faltante), traer solo el perfil
+    // para que al menos tengamos full_name, org_id y role.
+    console.warn('fetchProfile join failed, retrying without join:', error.message)
+    const { data: fallback, error: err2 } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single()
+
+    if (err2) console.error('fetchProfile fallback also failed:', err2.message)
+    return fallback ?? null
   }
 
   useEffect(() => {

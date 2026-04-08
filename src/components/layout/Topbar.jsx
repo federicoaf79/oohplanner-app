@@ -22,7 +22,9 @@ export default function Topbar({ onMenuClick, title }) {
 
   async function handleSignOut() {
     await signOut()
-    navigate('/login')
+    // No llamar navigate('/login') aquí: Login.jsx redirige a /app si session
+    // todavía está seteada (stale state) creando un loop. AuthGuard redirige
+    // automáticamente en cuanto session se limpia por el evento SIGNED_OUT.
   }
 
   return (
