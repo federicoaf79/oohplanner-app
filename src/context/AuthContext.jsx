@@ -30,11 +30,19 @@ export function AuthProvider({ children }) {
     // Cargar sesión activa inmediatamente sin esperar el evento INITIAL_SESSION,
     // que en algunos navegadores/entornos no dispara o llega tarde.
     ;(async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) {
-        setSession(session)
-        await fetchProfile(session.user.id)
+      const { data: { session }, error } = await supabase.auth.getSession()
+      if (error || !session) {
+        // Limpiar localStorage corrupto de Supabase
+        Object.keys(localStorage).forEach(key => {
+          if (key.startsWith('sb-')) localStorage.removeItem(key)
+        })
+        setSession(null)
+        setProfile(null)
+        setLoading(false)
+        return
       }
+      setSession(session)
+      await fetchProfile(session.user.id)
       setLoading(false)
     })()
 
