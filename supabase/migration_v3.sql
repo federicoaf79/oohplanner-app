@@ -5,10 +5,24 @@
 
 -- ── FEATURE 1: Descuentos en propuestas ──────────────────────
 
+-- brief_data y workflow_status (también en migration_proposals_v2, idempotente)
 ALTER TABLE proposals
-ADD COLUMN IF NOT EXISTS discount_pct         numeric DEFAULT 0,
-ADD COLUMN IF NOT EXISTS discount_approved_by uuid REFERENCES profiles(id),
-ADD COLUMN IF NOT EXISTS discount_approved_at timestamptz,
+ADD COLUMN IF NOT EXISTS brief_data      jsonb,
+ADD COLUMN IF NOT EXISTS workflow_status text DEFAULT 'pending'
+  CHECK (workflow_status IN (
+    'pending','approved','printing','installation','active','withdraw','renew'
+  ));
+
+-- Agregar pending_approval al enum proposal_status
+DO $$ BEGIN
+  ALTER TYPE proposal_status ADD VALUE IF NOT EXISTS 'pending_approval';
+EXCEPTION WHEN others THEN NULL; END $$;
+
+-- Columnas de descuento
+ALTER TABLE proposals
+ADD COLUMN IF NOT EXISTS discount_pct           numeric DEFAULT 0,
+ADD COLUMN IF NOT EXISTS discount_approved_by   uuid REFERENCES profiles(id),
+ADD COLUMN IF NOT EXISTS discount_approved_at   timestamptz,
 ADD COLUMN IF NOT EXISTS discount_approver_role text;
 
 ALTER TABLE organisations

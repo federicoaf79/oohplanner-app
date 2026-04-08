@@ -156,6 +156,15 @@ export default function ProposalNew() {
       selectedOption:   optionLabel,
     }
 
+    // Detecta si un error de Supabase es por columnas de migration_v3
+    // que aún no fueron ejecutadas en el SQL Editor.
+    function isMissingColumnError(err) {
+      const msg = err?.message ?? ''
+      return msg.includes('discount_pct') ||
+             msg.includes('pending_approval') ||
+             msg.includes('schema cache')
+    }
+
     try {
       if (isEditing && existingProposal) {
         // ── Update existing proposal ──
@@ -170,19 +179,29 @@ export default function ProposalNew() {
           brief_data:   briefData,
         }
 
-        const { error: upErr } = await supabase
+        let { error: upErr } = await supabase
           .from('proposals')
           .update(updates)
           .eq('id', existingProposal.id)
+
+        // Fallback: si migration_v3 no fue ejecutada, reintentar sin columnas nuevas
+        if (upErr && isMissingColumnError(upErr)) {
+          const { title: t, client_name, client_email, total_value, valid_until, brief_data } = updates
+          const { error: upErr2 } = await supabase
+            .from('proposals')
+            .update({ title: t, client_name, client_email, total_value, valid_until, brief_data, status: 'draft' })
+            .eq('id', existingProposal.id)
+          upErr = upErr2
+        }
 
         if (upErr) throw upErr
 
         // Write history for changed fields
         const trackFields = {
-          client_name:  [existingProposal.client_name,          formData.clientName],
-          client_email: [existingProposal.client_email ?? '',   formData.clientEmail],
+          client_name:  [existingProposal.client_name,               formData.clientName],
+          client_email: [existingProposal.client_email ?? '',        formData.clientEmail],
           total_value:  [String(existingProposal.total_value ?? ''), String(totalValue)],
-          valid_until:  [existingProposal.valid_until ?? '',    formData.endDate],
+          valid_until:  [existingProposal.valid_until ?? '',         formData.endDate],
         }
         const historyRows = Object.entries(trackFields)
           .filter(([, [oldVal, newVal]]) => String(oldVal) !== String(newVal))
@@ -200,22 +219,36 @@ export default function ProposalNew() {
 
       } else {
         // ── Insert new proposal ──
-        const { data: proposal, error: propErr } = await supabase
+        const fullInsert = {
+          org_id:       profile.org_id,
+          title,
+          client_name:  formData.clientName,
+          client_email: formData.clientEmail || null,
+          status:       needsApproval ? 'pending_approval' : 'draft',
+          total_value:  totalValue,
+          discount_pct: discountPct,
+          valid_until:  formData.endDate || null,
+          created_by:   profile.id,
+          brief_data:   briefData,
+        }
+
+        let { data: proposal, error: propErr } = await supabase
           .from('proposals')
-          .insert({
-            org_id:       profile.org_id,
-            title,
-            client_name:  formData.clientName,
-            client_email: formData.clientEmail || null,
-            status:       needsApproval ? 'pending_approval' : 'draft',
-            total_value:  totalValue,
-            discount_pct: discountPct,
-            valid_until:  formData.endDate || null,
-            created_by:   profile.id,
-            brief_data:   briefData,
-          })
+          .insert(fullInsert)
           .select()
           .single()
+
+        // Fallback: si migration_v3 no fue ejecutada, reintentar sin columnas nuevas
+        if (propErr && isMissingColumnError(propErr)) {
+          const { org_id, title: t, client_name, client_email, total_value, valid_until, created_by, brief_data } = fullInsert
+          const res2 = await supabase
+            .from('proposals')
+            .insert({ org_id, title: t, client_name, client_email, status: 'draft', total_value, valid_until, created_by, brief_data })
+            .select()
+            .single()
+          proposal = res2.data
+          propErr  = res2.error
+        }
 
         if (propErr) throw propErr
 
