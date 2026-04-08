@@ -10,7 +10,8 @@ export function AuthProvider({ children }) {
   const [sessionExpired, setSessionExpired] = useState(false)
   // Tracks whether the current sign-out was user-initiated, so we can
   // distinguish it from an automatic sign-out caused by token expiry.
-  const intentionalSignOut = useRef(false)
+  const intentionalSignOut  = useRef(false)
+  const profileLoadedRef    = useRef(false)
 
   async function fetchProfile(userId) {
     console.log('fetchProfile llamado para:', userId)
@@ -34,7 +35,9 @@ export function AuthProvider({ children }) {
       if (session) {
         console.log('getSession: sesión encontrada', session.user.id)
         setSession(session)
-        await fetchProfile(session.user.id)
+        const p = await fetchProfile(session.user.id)
+        setProfile(p)
+        profileLoadedRef.current = true
       }
       setLoading(false)
     })()
@@ -52,6 +55,7 @@ export function AuthProvider({ children }) {
         }
 
         if (event === 'SIGNED_OUT') {
+          profileLoadedRef.current = false
           setProfile(null)
           // If the sign-out wasn't user-initiated (e.g. refresh token expired),
           // flag the session as expired so the login page can show a message.
@@ -63,7 +67,18 @@ export function AuthProvider({ children }) {
           return
         }
 
-        // INITIAL_SESSION, SIGNED_IN, USER_UPDATED — fetch/refresh profile
+        // SIGNED_IN: solo cargar perfil si getSession() no lo cargó ya
+        if (event === 'SIGNED_IN' && !profileLoadedRef.current) {
+          if (session?.user) {
+            const p = await fetchProfile(session.user.id)
+            setProfile(p)
+            profileLoadedRef.current = true
+          }
+          setLoading(false)
+          return
+        }
+
+        // INITIAL_SESSION, USER_UPDATED — fetch/refresh profile
         if (session?.user) {
           const p = await fetchProfile(session.user.id)
           setProfile(p)
