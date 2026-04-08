@@ -13,11 +13,12 @@ export default function Proposals() {
   const navigate = useNavigate()
 
   const [proposals, setProposals] = useState([])
-  const [loading, setLoading]     = useState(true)
+  const [loading, setLoading]     = useState(false)
   const [search, setSearch]       = useState('')
 
   useEffect(() => {
-    if (!profile?.org_id) return
+    if (!profile?.org_id) return   // esperar que el perfil cargue
+    setLoading(true)
     supabase
       .from('proposals')
       .select('*, creator:profiles!created_by(full_name)')
