@@ -27,23 +27,54 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
-    // onAuthStateChange fires INITIAL_SESSION synchronously on mount in
-    // Supabase JS v2, so we don't need a separate getSession() call.
+    let cancelled = false
+
+    // ── 1. getSession() como fuente primaria del estado inicial ──
+    // onAuthStateChange no siempre dispara INITIAL_SESSION en todos los
+    // navegadores/entornos, dejando loading=true indefinidamente.
+    // getSession() siempre resuelve y es la forma confiable de arrancar.
+    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
+      if (cancelled) return
+
+      if (error || !session) {
+        // Sin sesión o expirada → limpiar estado y resolver loading
+        setSession(null)
+        setProfile(null)
+        setLoading(false)
+        return
+      }
+
+      setSession(session)
+      const p = await fetchProfile(session.user.id)
+      if (!cancelled) {
+        setProfile(p)
+        setLoading(false)
+      }
+    })
+
+    // ── 2. Timeout de 5s como último recurso ──────────────────
+    // Si getSession() nunca resuelve (red offline, error inesperado),
+    // forzamos loading=false para no dejar la app bloqueada.
+    const timeout = setTimeout(() => {
+      setLoading(false)
+    }, 5000)
+
+    // ── 3. onAuthStateChange solo para eventos posteriores ────
+    // Ignoramos INITIAL_SESSION porque ya lo manejamos con getSession().
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        // Ya resuelto por getSession() — evitar doble fetch de perfil
+        if (event === 'INITIAL_SESSION') return
+
         setSession(session)
 
         if (event === 'TOKEN_REFRESHED') {
-          // Token silently refreshed — session already updated, no need to
-          // re-fetch the profile.
           setLoading(false)
           return
         }
 
         if (event === 'SIGNED_OUT') {
           setProfile(null)
-          // If the sign-out wasn't user-initiated (e.g. refresh token expired),
-          // flag the session as expired so the login page can show a message.
           if (!intentionalSignOut.current) {
             setSessionExpired(true)
           }
@@ -52,10 +83,10 @@ export function AuthProvider({ children }) {
           return
         }
 
-        // INITIAL_SESSION, SIGNED_IN, USER_UPDATED — fetch/refresh profile
+        // SIGNED_IN, USER_UPDATED — refetch perfil
         if (session?.user) {
           const p = await fetchProfile(session.user.id)
-          setProfile(p)
+          if (!cancelled) setProfile(p)
         } else {
           setProfile(null)
         }
@@ -63,7 +94,11 @@ export function AuthProvider({ children }) {
       }
     )
 
-    return () => subscription.unsubscribe()
+    return () => {
+      cancelled = true
+      clearTimeout(timeout)
+      subscription.unsubscribe()
+    }
   }, [])
 
   async function signIn({ email, password }) {
