@@ -44,7 +44,8 @@ const router = createBrowserRouter([
           { path: '/app',                  element: <Dashboard /> },
           { path: '/app/campaigns',        element: <Campaigns /> },
           { path: '/app/proposals',        element: <Proposals /> },
-          { path: '/app/proposals/new',    element: <ProposalNew /> },
+          { path: '/app/proposals/new',        element: <ProposalNew /> },
+          { path: '/app/proposals/:id/edit',  element: <ProposalNew /> },
           { path: '/app/settings',         element: <Settings /> },
 
           // manager + owner only

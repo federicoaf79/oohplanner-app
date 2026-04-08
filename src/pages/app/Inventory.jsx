@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, MapPin, List, LayoutGrid } from 'lucide-react'
+import { Search, MapPin, List, LayoutGrid, ChevronDown, ChevronUp, Save } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { formatCurrency, formatDate } from '../../lib/utils'
@@ -124,7 +124,103 @@ function InventoryRow({ item }) {
 
 // ── Vista tablero ─────────────────────────────────────────────
 
-function InventoryCard({ item, isOwner }) {
+// ── Banda Negativa inline editor ──────────────────────────────
+
+function BandaNegativaSection({ item }) {
+  const [open,       setOpen]       = useState(false)
+  const [enabled,    setEnabled]    = useState(item.banda_negativa_enabled ?? false)
+  const [rate,       setRate]       = useState(item.banda_negativa_rate ?? 0)
+  const [minMonths,  setMinMonths]  = useState(item.banda_negativa_min_months ?? 6)
+  const [saving,     setSaving]     = useState(false)
+  const [saved,      setSaved]      = useState(false)
+
+  async function handleSave() {
+    setSaving(true)
+    await supabase.from('inventory')
+      .update({ banda_negativa_enabled: enabled, banda_negativa_rate: rate, banda_negativa_min_months: minMonths })
+      .eq('id', item.id)
+    setSaving(false)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
+  }
+
+  // Exposure estimate: if base_rate > 0, use banda_rate/base_rate as proxy
+  const exposurePct = item.base_rate && rate > 0
+    ? Math.round((rate / item.base_rate) * 100)
+    : 60
+
+  return (
+    <div className="border-t border-surface-700">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="flex w-full items-center justify-between px-0 py-2 text-xs font-medium text-slate-400 hover:text-slate-200 transition-colors"
+      >
+        <span className="flex items-center gap-1.5">
+          <span className={`h-1.5 w-1.5 rounded-full ${enabled ? 'bg-amber-400' : 'bg-slate-600'}`} />
+          Banda negativa {enabled ? '· Activa' : '· Inactiva'}
+        </span>
+        {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+      </button>
+
+      {open && (
+        <div className="pb-3 space-y-3">
+          {/* Toggle */}
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-slate-400">Activar banda negativa</span>
+            <button
+              type="button"
+              onClick={() => setEnabled(v => !v)}
+              className={`relative h-5 w-9 rounded-full transition-colors ${enabled ? 'bg-brand' : 'bg-surface-700'}`}
+            >
+              <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all ${enabled ? 'left-[18px]' : 'left-0.5'}`} />
+            </button>
+          </div>
+
+          {enabled && (
+            <>
+              <div>
+                <label className="mb-1 block text-xs text-slate-500">Precio banda negativa (ARS)</label>
+                <input
+                  type="number"
+                  className="input-field text-xs py-1.5"
+                  value={rate}
+                  min={0}
+                  onChange={e => setRate(Number(e.target.value))}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-slate-500">Período mínimo (meses)</label>
+                <input
+                  type="number"
+                  className="input-field text-xs py-1.5"
+                  value={minMonths}
+                  min={1}
+                  onChange={e => setMinMonths(Number(e.target.value))}
+                />
+              </div>
+              <div className="rounded-lg bg-amber-500/5 border border-amber-500/20 px-2.5 py-2 text-xs text-amber-300/80">
+                Exposición estimada: <strong className="text-amber-300">~{exposurePct}% del tiempo contratado</strong>
+              </div>
+            </>
+          )}
+
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand/10 border border-brand/20 py-1.5 text-xs font-medium text-brand hover:bg-brand/20 transition-colors disabled:opacity-50"
+          >
+            <Save className="h-3 w-3" />
+            {saved ? 'Guardado ✓' : saving ? 'Guardando…' : 'Guardar'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function InventoryCard({ item, isOwner, isManager }) {
   const fmt  = FORMAT_MAP[item.format] ?? { label: item.format, color: '#64748b' }
   const icon = FORMAT_ICON[item.format] ?? '📍'
   const impactsPerMonth = item.daily_traffic ? item.daily_traffic * 3 : null
@@ -233,6 +329,11 @@ function InventoryCard({ item, isOwner }) {
           </p>
         )}
 
+        {/* Banda negativa — owner o manager */}
+        {(isOwner || isManager) && (
+          <BandaNegativaSection item={item} />
+        )}
+
       </div>
     </div>
   )
@@ -241,7 +342,7 @@ function InventoryCard({ item, isOwner }) {
 // ── Main page ─────────────────────────────────────────────────
 
 export default function Inventory() {
-  const { profile, isOwner } = useAuth()
+  const { profile, isOwner, isManager } = useAuth()
   const [items, setItems]         = useState([])
   const [loading, setLoading]     = useState(true)
   const [fetchError, setFetchError] = useState('')
@@ -344,7 +445,7 @@ export default function Inventory() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map(item => (
-            <InventoryCard key={item.id} item={item} isOwner={isOwner} />
+            <InventoryCard key={item.id} item={item} isOwner={isOwner} isManager={isManager} />
           ))}
         </div>
       )}

@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, AlertTriangle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -7,6 +7,7 @@ import WizardStep1Form    from '../../features/proposals/WizardStep1Form'
 import WizardStep2Loading from '../../features/proposals/WizardStep2Loading'
 import WizardStep3Results from '../../features/proposals/WizardStep3Results'
 import { MOCK_RESPONSE, mockDelay } from '../../lib/mockPlanData'
+import Spinner from '../../components/ui/Spinner'
 
 // Default to mock=true so deploys without the env var don't hang waiting
 // for an Edge Function that may not be deployed yet.
@@ -31,12 +32,50 @@ const EMPTY_FORM = {
 export default function ProposalNew() {
   const { profile } = useAuth()
   const navigate = useNavigate()
+  const { id: editId } = useParams()
+  const isEditing = !!editId
 
-  const [step, setStep]         = useState(1)
-  const [formData, setFormData] = useState(EMPTY_FORM)
-  const [results, setResults]   = useState(null)
-  const [error, setError]       = useState('')
-  const [saving, setSaving]     = useState(false)
+  const [step, setStep]                 = useState(1)
+  const [formData, setFormData]         = useState(EMPTY_FORM)
+  const [results, setResults]           = useState(null)
+  const [error, setError]               = useState('')
+  const [saving, setSaving]             = useState(false)
+  const [loadingEdit, setLoadingEdit]   = useState(isEditing)
+  const [existingProposal, setExistingProposal] = useState(null)
+
+  // ── Load existing proposal for editing ─────────────────────
+  useEffect(() => {
+    if (!isEditing) return
+    supabase
+      .from('proposals')
+      .select('*')
+      .eq('id', editId)
+      .single()
+      .then(({ data, error }) => {
+        if (error || !data) {
+          setError('No se encontró la propuesta')
+          setLoadingEdit(false)
+          return
+        }
+        setExistingProposal(data)
+        const b = data.brief_data ?? {}
+        setFormData({
+          clientName:       data.client_name ?? '',
+          clientEmail:      data.client_email ?? '',
+          objective:        b.objective ?? '',
+          formats:          b.formats ?? [],
+          digitalFrequency: b.digitalFrequency ?? 'indistinto',
+          city:             b.city ?? 'Buenos Aires (CABA)',
+          radiusKm:         b.radiusKm ?? 10,
+          budget:           b.budget ?? '',
+          startDate:        b.startDate ?? '',
+          endDate:          b.endDate ?? (data.valid_until ?? ''),
+          audience:         b.audience ?? { ageMin: 18, ageMax: 55, gender: 'all', interests: [], nse: [] },
+          adImageFile:      null,
+        })
+        setLoadingEdit(false)
+      })
+  }, [editId, isEditing])
 
   // ── Step 1 → 2 → 3 ─────────────────────────────────────────
   async function handleFormSubmit() {
@@ -87,46 +126,101 @@ export default function ProposalNew() {
     }
   }
 
-  // ── Save proposal to DB ─────────────────────────────────────
+  // ── Save (create or update) ─────────────────────────────────
   async function handleSave(option, optionLabel) {
     if (!option || !profile?.org_id) return
     setSaving(true)
 
+    const totalValue = option.metrics?.totalRate ?? 0
+    const title      = `Pauta ${formData.clientName} — ${formData.city} (${optionLabel})`
+    const briefData  = {
+      objective:        formData.objective,
+      formats:          formData.formats,
+      digitalFrequency: formData.digitalFrequency,
+      city:             formData.city,
+      radiusKm:         formData.radiusKm,
+      budget:           formData.budget,
+      startDate:        formData.startDate,
+      endDate:          formData.endDate,
+      audience:         formData.audience,
+      selectedOption:   optionLabel,
+    }
+
     try {
-      const totalValue = option.metrics?.totalRate ?? 0
+      if (isEditing && existingProposal) {
+        // ── Update existing proposal ──
+        const updates = {
+          title,
+          client_name:  formData.clientName,
+          client_email: formData.clientEmail || null,
+          total_value:  totalValue,
+          valid_until:  formData.endDate || null,
+          brief_data:   briefData,
+        }
 
-      // Insert proposal
-      const { data: proposal, error: propErr } = await supabase
-        .from('proposals')
-        .insert({
-          org_id:      profile.org_id,
-          title:       `Pauta ${formData.clientName} — ${formData.city} (${optionLabel})`,
-          client_name: formData.clientName,
-          client_email:formData.clientEmail || null,
-          status:      'draft',
-          total_value: totalValue,
-          valid_until: formData.endDate || null,
-          created_by:  profile.id,
-        })
-        .select()
-        .single()
+        const { error: upErr } = await supabase
+          .from('proposals')
+          .update(updates)
+          .eq('id', existingProposal.id)
 
-      if (propErr) throw propErr
+        if (upErr) throw upErr
 
-      // Insert proposal_items
-      const items = (option.sites ?? [])
-        .filter(s => s.site_id && !s.site_id.startsWith('mock-'))
-        .map(s => ({
-          proposal_id: proposal.id,
-          site_id:     s.site_id,
-          org_id:      profile.org_id,
-          rate:        s.rate ?? null,
-          notes:       s.justification ?? null,
-        }))
+        // Write history for changed fields
+        const trackFields = {
+          client_name:  [existingProposal.client_name,          formData.clientName],
+          client_email: [existingProposal.client_email ?? '',   formData.clientEmail],
+          total_value:  [String(existingProposal.total_value ?? ''), String(totalValue)],
+          valid_until:  [existingProposal.valid_until ?? '',    formData.endDate],
+        }
+        const historyRows = Object.entries(trackFields)
+          .filter(([, [oldVal, newVal]]) => String(oldVal) !== String(newVal))
+          .map(([field, [oldVal, newVal]]) => ({
+            proposal_id:   existingProposal.id,
+            edited_by:     profile.id,
+            field_changed: field,
+            old_value:     String(oldVal ?? ''),
+            new_value:     String(newVal ?? ''),
+          }))
 
-      if (items.length > 0) {
-        const { error: itemErr } = await supabase.from('proposal_items').insert(items)
-        if (itemErr) console.warn('proposal_items insert error:', itemErr.message)
+        if (historyRows.length > 0) {
+          await supabase.from('proposal_history').insert(historyRows)
+        }
+
+      } else {
+        // ── Insert new proposal ──
+        const { data: proposal, error: propErr } = await supabase
+          .from('proposals')
+          .insert({
+            org_id:       profile.org_id,
+            title,
+            client_name:  formData.clientName,
+            client_email: formData.clientEmail || null,
+            status:       'draft',
+            total_value:  totalValue,
+            valid_until:  formData.endDate || null,
+            created_by:   profile.id,
+            brief_data:   briefData,
+          })
+          .select()
+          .single()
+
+        if (propErr) throw propErr
+
+        // Insert proposal_items
+        const items = (option.sites ?? [])
+          .filter(s => s.site_id && !s.site_id.startsWith('mock-'))
+          .map(s => ({
+            proposal_id: proposal.id,
+            site_id:     s.site_id,
+            org_id:      profile.org_id,
+            rate:        s.rate ?? null,
+            notes:       s.justification ?? null,
+          }))
+
+        if (items.length > 0) {
+          const { error: itemErr } = await supabase.from('proposal_items').insert(items)
+          if (itemErr) console.warn('proposal_items insert error:', itemErr.message)
+        }
       }
 
       navigate('/app/proposals')
@@ -145,6 +239,14 @@ export default function ProposalNew() {
     { n: 3, label: 'Resultado' },
   ]
 
+  if (loadingEdit) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <Spinner size="lg" />
+      </div>
+    )
+  }
+
   return (
     <div className="mx-auto max-w-4xl animate-fade-in">
       {/* Header */}
@@ -155,7 +257,6 @@ export default function ProposalNew() {
           {step === 3 ? 'Editar brief' : 'Propuestas'}
         </button>
 
-        {/* Step dots */}
         <div className="flex items-center gap-2 ml-auto">
           {steps.map((s, i) => (
             <div key={s.n} className="flex items-center gap-2">
@@ -177,6 +278,12 @@ export default function ProposalNew() {
             </div>
           ))}
         </div>
+
+        {isEditing && (
+          <span className="ml-2 rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400">
+            Editando
+          </span>
+        )}
       </div>
 
       {/* Error banner */}
@@ -186,12 +293,6 @@ export default function ProposalNew() {
           <div>
             <p className="text-sm font-medium text-red-300">Error al planificar</p>
             <p className="text-xs text-red-400 mt-0.5">{error}</p>
-            {!USE_MOCK && error.includes('function') && (
-              <p className="text-xs text-red-500/70 mt-1">
-                La Edge Function no está desplegada. Activá el modo mock con{' '}
-                <code className="font-mono">VITE_USE_MOCK_AI=true</code> en .env.local
-              </p>
-            )}
           </div>
         </div>
       )}

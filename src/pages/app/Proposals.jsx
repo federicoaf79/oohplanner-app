@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Plus, Search, FileText } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Plus, Search, FileText, Pencil } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import Button from '../../components/ui/Button'
@@ -9,7 +9,9 @@ import { formatDate, formatCurrency } from '../../lib/utils'
 import Spinner from '../../components/ui/Spinner'
 
 export default function Proposals() {
-  const { profile } = useAuth()
+  const { profile, isOwner, isManager, isSalesperson } = useAuth()
+  const navigate = useNavigate()
+
   const [proposals, setProposals] = useState([])
   const [loading, setLoading]     = useState(true)
   const [search, setSearch]       = useState('')
@@ -21,13 +23,25 @@ export default function Proposals() {
       .select('*, creator:profiles!created_by(full_name)')
       .eq('org_id', profile.org_id)
       .order('created_at', { ascending: false })
-      .then(({ data }) => { setProposals(data ?? []); setLoading(false) })
+      .then(({ data, error }) => {
+        if (error) console.error('proposals fetch error:', error.message)
+        setProposals(data ?? [])
+        setLoading(false)
+      })
   }, [profile?.org_id])
 
   const filtered = proposals.filter(p =>
-    p.title?.toLowerCase().includes(search.toLowerCase()) ||
-    p.client_name?.toLowerCase().includes(search.toLowerCase())
+    (p.title ?? '').toLowerCase().includes(search.toLowerCase()) ||
+    (p.client_name ?? '').toLowerCase().includes(search.toLowerCase())
   )
+
+  function canEdit(p) {
+    const ws = p.workflow_status ?? 'pending'
+    if (isOwner) return true
+    if (isManager) return ['pending', 'approved'].includes(ws)
+    if (isSalesperson) return p.created_by === profile?.id && ws === 'pending'
+    return false
+  }
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -59,9 +73,9 @@ export default function Proposals() {
       ) : (
         <div className="space-y-3">
           {filtered.map(p => (
-            <div key={p.id} className="card p-4 hover:border-brand/30 transition-colors cursor-pointer">
+            <div key={p.id} className="card p-4 hover:border-brand/30 transition-colors">
               <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-semibold text-white truncate">{p.title}</p>
                     <StatusBadge status={p.status} type="proposal" />
@@ -77,6 +91,19 @@ export default function Proposals() {
                     )}
                   </div>
                 </div>
+
+                {/* Edit button */}
+                {canEdit(p) && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/app/proposals/${p.id}/edit`)}
+                    className="shrink-0 flex items-center gap-1 rounded-lg border border-surface-600 bg-surface-800 px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:border-brand/40 hover:text-brand transition-colors"
+                    title="Editar propuesta"
+                  >
+                    <Pencil className="h-3 w-3" />
+                    Editar
+                  </button>
+                )}
               </div>
             </div>
           ))}
