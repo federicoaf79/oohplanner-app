@@ -10,7 +10,7 @@ import Spinner from '../../components/ui/Spinner'
 export default function Team() {
   const { profile } = useAuth()
   const [members, setMembers] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     if (!profile?.org_id) return
