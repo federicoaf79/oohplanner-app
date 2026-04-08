@@ -375,7 +375,7 @@ function InventoryCard({ item, onEdit }) {
 export default function Inventory() {
   const { profile } = useAuth()
   const [items, setItems]         = useState([])
-  const [loading, setLoading]     = useState(false)
+  const [loading, setLoading]     = useState(true)
   const [fetchError, setFetchError] = useState('')
   const [search, setSearch]       = useState('')
   const [viewMode, setViewMode]   = useState(

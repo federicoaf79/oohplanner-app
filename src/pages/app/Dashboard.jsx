@@ -161,7 +161,7 @@ function ChartTooltip({ active, payload, label }) {
 
 function OwnerDashboard() {
   const { profile } = useAuth()
-  const [loading, setLoading]     = useState(false)
+  const [loading, setLoading]     = useState(true)
   const [kpis, setKpis]           = useState({})
   const [monthly, setMonthly]     = useState([])
   const [formatMix, setFormatMix] = useState([])

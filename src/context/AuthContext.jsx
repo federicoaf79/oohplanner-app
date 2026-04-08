@@ -13,77 +13,37 @@ export function AuthProvider({ children }) {
   const intentionalSignOut = useRef(false)
 
   async function fetchProfile(userId) {
-    // Intento 1: perfil + join a organisations
     const { data, error } = await supabase
       .from('profiles')
       .select('*, organisations(id, name, slug, logo_url, plan, max_discount_salesperson, max_discount_manager)')
       .eq('id', userId)
       .single()
 
-    if (!error) return data
-
-    // Intento 2: si el join falla (RLS o columna faltante), traer solo el perfil
-    // para que al menos tengamos full_name, org_id y role.
-    console.warn('fetchProfile join failed, retrying without join:', error.message)
-    const { data: fallback, error: err2 } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single()
-
-    if (err2) console.error('fetchProfile fallback also failed:', err2.message)
-    return fallback ?? null
+    if (error) {
+      console.error('Error fetching profile:', error.message)
+      return null
+    }
+    return data
   }
 
   useEffect(() => {
-    let cancelled = false
-
-    // ── 1. getSession() como fuente primaria del estado inicial ──
-    // onAuthStateChange no siempre dispara INITIAL_SESSION en todos los
-    // navegadores/entornos, dejando loading=true indefinidamente.
-    // getSession() siempre resuelve y es la forma confiable de arrancar.
-    supabase.auth.getSession().then(async ({ data: { session }, error }) => {
-      if (cancelled) return
-
-      if (error || !session) {
-        // Sin sesión o expirada → limpiar estado y resolver loading
-        setSession(null)
-        setProfile(null)
-        setLoading(false)
-        return
-      }
-
-      setSession(session)
-      const p = await fetchProfile(session.user.id)
-      if (!cancelled) {
-        setProfile(p)
-        setLoading(false)
-      }
-    })
-
-    // ── 2. Timeout de 5s como último recurso ──────────────────
-    // Si getSession() nunca resuelve (red offline, error inesperado),
-    // forzamos loading=false para no dejar la app bloqueada.
-    const timeout = setTimeout(() => {
-      setLoading(false)
-    }, 5000)
-
-    // ── 3. onAuthStateChange solo para eventos posteriores ────
-    // Ignoramos INITIAL_SESSION porque ya lo manejamos con getSession().
+    // onAuthStateChange fires INITIAL_SESSION synchronously on mount in
+    // Supabase JS v2, so we don't need a separate getSession() call.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        // Ya resuelto por getSession() — evitar doble fetch de perfil
-        if (event === 'INITIAL_SESSION') return
-
         setSession(session)
 
         if (event === 'TOKEN_REFRESHED') {
+          // Token silently refreshed — session already updated, no need to
+          // re-fetch the profile.
           setLoading(false)
           return
         }
 
         if (event === 'SIGNED_OUT') {
           setProfile(null)
+          // If the sign-out wasn't user-initiated (e.g. refresh token expired),
+          // flag the session as expired so the login page can show a message.
           if (!intentionalSignOut.current) {
             setSessionExpired(true)
           }
@@ -92,10 +52,10 @@ export function AuthProvider({ children }) {
           return
         }
 
-        // SIGNED_IN, USER_UPDATED — refetch perfil
+        // INITIAL_SESSION, SIGNED_IN, USER_UPDATED — fetch/refresh profile
         if (session?.user) {
           const p = await fetchProfile(session.user.id)
-          if (!cancelled) setProfile(p)
+          setProfile(p)
         } else {
           setProfile(null)
         }
@@ -103,11 +63,7 @@ export function AuthProvider({ children }) {
       }
     )
 
-    return () => {
-      cancelled = true
-      clearTimeout(timeout)
-      subscription.unsubscribe()
-    }
+    return () => subscription.unsubscribe()
   }, [])
 
   async function signIn({ email, password }) {
