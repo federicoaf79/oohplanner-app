@@ -2,13 +2,15 @@ import { useState } from 'react'
 import {
   MapPin, TrendingUp, DollarSign, Target, Users,
   Save, Printer, MessageCircle, ChevronRight, Star,
-  Clock, CheckCircle, Tag
+  Clock, CheckCircle, Tag, Loader2
 } from 'lucide-react'
 import ProposalMap from './ProposalMap'
 import { FORMAT_MAP } from '../../lib/constants'
 import { formatCurrency } from '../../lib/utils'
 import Button from '../../components/ui/Button'
 import Card from '../../components/ui/Card'
+import { useAuth } from '../../context/AuthContext'
+import { generateProposalPDF } from './generateProposalPDF'
 
 function MetricCard({ icon: Icon, label, value, sub, color = 'text-brand' }) {
   return (
@@ -217,8 +219,10 @@ function PriceBreakdown({ formData, totalListRate }) {
 }
 
 export default function WizardStep3Results({ results, formData, onSave, saving }) {
+  const { profile, org } = useAuth()
   const [activeTab, setActiveTab] = useState('A')
   const [saved, setSaved] = useState(false)
+  const [generatingPDF, setGeneratingPDF] = useState(false)
 
   const activeOption = activeTab === 'A' ? results?.optionA : results?.optionB
 
@@ -246,6 +250,17 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
     setSaved(true)
   }
 
+  async function handlePDF() {
+    setGeneratingPDF(true)
+    try {
+      await generateProposalPDF({ results, formData, profile, org })
+    } catch (err) {
+      console.error('PDF generation error:', err)
+    } finally {
+      setGeneratingPDF(false)
+    }
+  }
+
   return (
     <div className="space-y-5 animate-fade-in">
       {/* Header */}
@@ -266,10 +281,12 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
             <MessageCircle className="h-4 w-4" />
             <span className="hidden sm:inline">WhatsApp</span>
           </button>
-          <button onClick={() => window.print()}
-            className="flex items-center gap-1.5 rounded-lg border border-surface-700 bg-surface-800 px-3 py-2 text-sm font-medium text-slate-400 hover:bg-surface-700 transition-colors">
-            <Printer className="h-4 w-4" />
-            <span className="hidden sm:inline">PDF</span>
+          <button onClick={handlePDF} disabled={generatingPDF}
+            className="flex items-center gap-1.5 rounded-lg border border-surface-700 bg-surface-800 px-3 py-2 text-sm font-medium text-slate-400 hover:bg-surface-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+            {generatingPDF
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <Printer className="h-4 w-4" />}
+            <span className="hidden sm:inline">{generatingPDF ? 'Generando…' : 'PDF'}</span>
           </button>
           <Button size="sm" loading={saving} onClick={handleSave}>
             <Save className="h-4 w-4" />
