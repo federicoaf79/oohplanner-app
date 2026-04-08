@@ -129,7 +129,7 @@ function CampaignCard({ proposal, onStatusChange }) {
 export default function Campaigns() {
   const { profile } = useAuth()
   const [proposals, setProposals] = useState([])
-  const [loading, setLoading]     = useState(true)
+  const [loading, setLoading]     = useState(false)
   const [search, setSearch]       = useState('')
 
   useEffect(() => {

@@ -13,7 +13,7 @@ export default function Proposals() {
   const navigate = useNavigate()
 
   const [proposals, setProposals] = useState([])
-  const [loading, setLoading]     = useState(true)
+  const [loading, setLoading]     = useState(false)
   const [search, setSearch]       = useState('')
 
   useEffect(() => {
