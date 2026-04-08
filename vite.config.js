@@ -16,6 +16,9 @@ export default defineConfig({
       // en lugar de esperar a que el usuario cierre todas las pestañas.
       // Esto evita que el SW viejo siga sirviendo un index.html cacheado
       // que referencia assets hasheados que ya no existen en el deploy nuevo.
+      devOptions: {
+        enabled: false,
+      },
       workbox: {
         skipWaiting: true,
         clientsClaim: true,
