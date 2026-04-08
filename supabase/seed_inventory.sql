@@ -8,8 +8,18 @@ DO $$
 DECLARE
   v_org_id UUID;
 BEGIN
-  -- Toma la primera org disponible (ajustá si tenés varias)
-  SELECT id INTO v_org_id FROM organisations LIMIT 1;
+  -- Toma la org que tiene al menos un usuario con rol 'owner'
+  -- (la creada al registrarse, no orgs de test vacías)
+  SELECT o.id INTO v_org_id
+  FROM organisations o
+  JOIN profiles p ON p.org_id = o.id AND p.role = 'owner'
+  ORDER BY o.created_at DESC
+  LIMIT 1;
+
+  -- Fallback: si no hay owner registrado, toma cualquier org
+  IF v_org_id IS NULL THEN
+    SELECT id INTO v_org_id FROM organisations ORDER BY created_at DESC LIMIT 1;
+  END IF;
 
   IF v_org_id IS NULL THEN
     RAISE EXCEPTION 'No hay organizaciones en la DB. Registrate primero.';
@@ -19,6 +29,7 @@ BEGIN
   INSERT INTO inventory (org_id, name, code, format, address, city, latitude, longitude,
     width_ft, height_ft, illuminated, daily_traffic, base_rate, is_available)
   VALUES
+  -- ON CONFLICT: si el código ya existe para esta org, no hace nada (idempotente)
     (v_org_id, 'Digital 9 de Julio & Corrientes', 'DIG-001', 'digital',
      'Av. 9 de Julio 1800', 'Buenos Aires (CABA)', -34.6037, -58.3816,
      16, 9, true, 95000, 120000, true),
@@ -79,7 +90,8 @@ BEGIN
 
     (v_org_id, 'Medianera Alberdi & Av. Rivadavia', 'MED-005', 'ambient',
      'Av. Rivadavia 5200', 'Buenos Aires (CABA)', -34.6240, -58.4550,
-     20, 13, false, 29000, 20000, true);
+     20, 13, false, 29000, 20000, true)
+  ON CONFLICT (org_id, code) DO NOTHING;
 
-  RAISE NOTICE '✓ 15 carteles insertados para org_id: %', v_org_id;
+  RAISE NOTICE '✓ Seed completado para org_id: %', v_org_id;
 END $$;
