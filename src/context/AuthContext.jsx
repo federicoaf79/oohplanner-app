@@ -67,14 +67,12 @@ export function AuthProvider({ children }) {
           return
         }
 
-        // SIGNED_IN: solo cargar perfil si getSession() no lo cargó ya
-        if (event === 'SIGNED_IN' && !profileLoadedRef.current) {
-          if (session?.user) {
-            const p = await fetchProfile(session.user.id)
-            setProfile(p)
-            profileLoadedRef.current = true
-          }
-          setLoading(false)
+        if (event === 'SIGNED_IN') {
+          setProfile(currentProfile => {
+            if (currentProfile?.id === session.user.id) return currentProfile
+            fetchProfile(session.user.id)
+            return currentProfile
+          })
           return
         }
 
