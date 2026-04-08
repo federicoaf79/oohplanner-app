@@ -27,25 +27,8 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
-    // Cargar sesión activa inmediatamente sin esperar el evento INITIAL_SESSION,
-    // que en algunos navegadores/entornos no dispara o llega tarde.
-    ;(async () => {
-      const { data: { session }, error } = await supabase.auth.getSession()
-      if (error || !session) {
-        // Limpiar localStorage corrupto de Supabase
-        Object.keys(localStorage).forEach(key => {
-          if (key.startsWith('sb-')) localStorage.removeItem(key)
-        })
-        setSession(null)
-        setProfile(null)
-        setLoading(false)
-        return
-      }
-      setSession(session)
-      await fetchProfile(session.user.id)
-      setLoading(false)
-    })()
-
+    // onAuthStateChange fires INITIAL_SESSION synchronously on mount in
+    // Supabase JS v2, so we don't need a separate getSession() call.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         setSession(session)
