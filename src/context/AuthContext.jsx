@@ -70,7 +70,8 @@ export function AuthProvider({ children }) {
         if (event === 'SIGNED_IN') {
           setProfile(currentProfile => {
             if (currentProfile?.id === session.user.id) return currentProfile
-            fetchProfile(session.user.id)
+            // Usuario nuevo — cargar perfil y actualizar estado
+            fetchProfile(session.user.id).then(p => { if (p) setProfile(p) })
             return currentProfile
           })
           return
