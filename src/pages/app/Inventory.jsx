@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { Search, MapPin, List, LayoutGrid, ChevronDown, ChevronUp, Save, Pencil } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Search, MapPin, List, LayoutGrid, ChevronDown, ChevronUp, Save, Pencil, RefreshCw } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { formatCurrency, formatDate } from '../../lib/utils'
@@ -7,18 +7,24 @@ import Spinner from '../../components/ui/Spinner'
 import { FORMAT_MAP } from '../../lib/constants'
 import EditInventoryModal from '../../features/inventory/EditInventoryModal'
 
+const FETCH_TIMEOUT_MS = 10_000
+
 const FORMAT_ICON = {
-  billboard:        '🏙️',
-  digital:          '📺',
-  ambient:          '🏢',
-  transit:          '🚌',
-  street_furniture: '🪧',
+  billboard:               '🏙️',
+  digital:                 '📺',
+  ambient:                 '🏢',
+  poster:                  '📋',
+  urban_furniture:         '🪧',
+  urban_furniture_digital: '🖥️',
+  mobile_screen:           '🚌',
 }
 
 const OWNER_TYPE_LABEL = {
   owned:  'Propio',
   rented: 'Alquilado',
 }
+
+// ── Helpers ───────────────────────────────────────────────────
 
 function AvailabilityBadge({ item }) {
   return (
@@ -56,7 +62,9 @@ function FormatBadges({ item }) {
 
 // ── Vista lista ───────────────────────────────────────────────
 
-function InventoryRow({ item, onEdit, canEdit }) {
+function InventoryRow({ item, onEdit }) {
+  const { isOwner, isManager } = useAuth()
+  const canEdit = isOwner || isManager
   const fmt  = FORMAT_MAP[item.format] ?? { label: item.format, color: '#64748b' }
   const icon = FORMAT_ICON[item.format] ?? '📍'
   const impactsPerMonth = item.daily_traffic ? item.daily_traffic * 3 : null
@@ -124,7 +132,7 @@ function InventoryRow({ item, onEdit, canEdit }) {
         )}
       </div>
 
-      {/* Libre desde — solo si está ocupado y tiene fecha */}
+      {/* Libre desde */}
       {!item.is_available && item.available_until && (
         <p className="mt-1.5 pl-14 text-xs text-amber-400">
           Libre desde: {formatDate(item.available_until)}
@@ -134,17 +142,15 @@ function InventoryRow({ item, onEdit, canEdit }) {
   )
 }
 
-// ── Vista tablero ─────────────────────────────────────────────
-
 // ── Banda Negativa inline editor ──────────────────────────────
 
 function BandaNegativaSection({ item }) {
-  const [open,       setOpen]       = useState(false)
-  const [enabled,    setEnabled]    = useState(item.banda_negativa_enabled ?? false)
-  const [rate,       setRate]       = useState(item.banda_negativa_rate ?? 0)
-  const [minMonths,  setMinMonths]  = useState(item.banda_negativa_min_months ?? 6)
-  const [saving,     setSaving]     = useState(false)
-  const [saved,      setSaved]      = useState(false)
+  const [open,      setOpen]      = useState(false)
+  const [enabled,   setEnabled]   = useState(item.banda_negativa_enabled ?? false)
+  const [rate,      setRate]      = useState(item.banda_negativa_rate ?? 0)
+  const [minMonths, setMinMonths] = useState(item.banda_negativa_min_months ?? 6)
+  const [saving,    setSaving]    = useState(false)
+  const [saved,     setSaved]     = useState(false)
 
   async function handleSave() {
     setSaving(true)
@@ -156,7 +162,6 @@ function BandaNegativaSection({ item }) {
     setTimeout(() => setSaved(false), 2000)
   }
 
-  // Exposure estimate: if base_rate > 0, use banda_rate/base_rate as proxy
   const exposurePct = item.base_rate && rate > 0
     ? Math.round((rate / item.base_rate) * 100)
     : 60
@@ -177,7 +182,6 @@ function BandaNegativaSection({ item }) {
 
       {open && (
         <div className="pb-3 space-y-3">
-          {/* Toggle */}
           <div className="flex items-center justify-between">
             <span className="text-xs text-slate-400">Activar banda negativa</span>
             <button
@@ -193,23 +197,13 @@ function BandaNegativaSection({ item }) {
             <>
               <div>
                 <label className="mb-1 block text-xs text-slate-500">Precio banda negativa (ARS)</label>
-                <input
-                  type="number"
-                  className="input-field text-xs py-1.5"
-                  value={rate}
-                  min={0}
-                  onChange={e => setRate(Number(e.target.value))}
-                />
+                <input type="number" className="input-field text-xs py-1.5"
+                  value={rate} min={0} onChange={e => setRate(Number(e.target.value))} />
               </div>
               <div>
                 <label className="mb-1 block text-xs text-slate-500">Período mínimo (meses)</label>
-                <input
-                  type="number"
-                  className="input-field text-xs py-1.5"
-                  value={minMonths}
-                  min={1}
-                  onChange={e => setMinMonths(Number(e.target.value))}
-                />
+                <input type="number" className="input-field text-xs py-1.5"
+                  value={minMonths} min={1} onChange={e => setMinMonths(Number(e.target.value))} />
               </div>
               <div className="rounded-lg bg-amber-500/5 border border-amber-500/20 px-2.5 py-2 text-xs text-amber-300/80">
                 Exposición estimada: <strong className="text-amber-300">~{exposurePct}% del tiempo contratado</strong>
@@ -217,12 +211,8 @@ function BandaNegativaSection({ item }) {
             </>
           )}
 
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand/10 border border-brand/20 py-1.5 text-xs font-medium text-brand hover:bg-brand/20 transition-colors disabled:opacity-50"
-          >
+          <button type="button" onClick={handleSave} disabled={saving}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-brand/10 border border-brand/20 py-1.5 text-xs font-medium text-brand hover:bg-brand/20 transition-colors disabled:opacity-50">
             <Save className="h-3 w-3" />
             {saved ? 'Guardado ✓' : saving ? 'Guardando…' : 'Guardar'}
           </button>
@@ -232,23 +222,39 @@ function BandaNegativaSection({ item }) {
   )
 }
 
-function InventoryCard({ item, isOwner, isManager, onEdit, canEdit }) {
+// ── Vista grilla ──────────────────────────────────────────────
+
+function InventoryCard({ item, onEdit }) {
+  // Leer el rol directamente desde el contexto para evitar
+  // desincronización con el prop drilling
+  const { isOwner, isManager } = useAuth()
+  const canEdit = isOwner || isManager
+
   const fmt  = FORMAT_MAP[item.format] ?? { label: item.format, color: '#64748b' }
   const icon = FORMAT_ICON[item.format] ?? '📍'
   const impactsPerMonth = item.daily_traffic ? item.daily_traffic * 3 : null
 
-  const totalCosts = (item.monthly_rent ?? 0)
-    + (item.monthly_electricity ?? 0)
-    + (item.monthly_taxes ?? 0)
+  // Costos fijos (columnas migration_v3)
+  const totalCosts = (item.cost_rent ?? 0)
+    + (item.cost_electricity ?? 0)
+    + (item.cost_taxes ?? 0)
+    + (item.cost_maintenance ?? 0)
+    + (item.cost_imponderables ?? 0)
   const hasCosts = totalCosts > 0
 
   return (
-    <div className="card overflow-hidden hover:border-brand/30 transition-colors cursor-pointer">
+    <div className="card overflow-hidden hover:border-brand/30 transition-colors">
 
-      <div className="flex h-28 items-center justify-center text-5xl"
-        style={{ background: `${fmt.color}18` }}>
-        {icon}
-      </div>
+      {/* Foto o placeholder */}
+      {item.photo_url ? (
+        <img src={item.photo_url} alt={item.name}
+          className="h-28 w-full object-cover" />
+      ) : (
+        <div className="flex h-28 items-center justify-center text-5xl"
+          style={{ background: `${fmt.color}18` }}>
+          {icon}
+        </div>
+      )}
 
       <div className="p-4 space-y-3">
 
@@ -264,7 +270,7 @@ function InventoryCard({ item, isOwner, isManager, onEdit, canEdit }) {
                 type="button"
                 onClick={() => onEdit(item)}
                 className="flex h-7 w-7 items-center justify-center rounded-lg border border-surface-700 text-slate-500 hover:border-brand/50 hover:text-brand transition-colors"
-                title="Editar"
+                title="Editar cartel"
               >
                 <Pencil className="h-3 w-3" />
               </button>
@@ -315,25 +321,26 @@ function InventoryCard({ item, isOwner, isManager, onEdit, canEdit }) {
           </div>
         ) : null}
 
+        {/* Costos fijos (solo owner) */}
         {isOwner && hasCosts && (
           <div className="rounded-lg border border-brand/20 bg-brand/5 p-2.5 space-y-1">
-            <p className="text-xs font-semibold text-brand mb-1.5">Costos</p>
-            {item.monthly_rent > 0 && (
+            <p className="text-xs font-semibold text-brand mb-1.5">Costos mensuales</p>
+            {item.cost_rent > 0 && (
               <div className="flex justify-between text-xs">
                 <span className="text-slate-500">Alquiler</span>
-                <span className="text-slate-300">{formatCurrency(item.monthly_rent)}</span>
+                <span className="text-slate-300">{formatCurrency(item.cost_rent)}</span>
               </div>
             )}
-            {item.monthly_electricity > 0 && (
+            {item.cost_electricity > 0 && (
               <div className="flex justify-between text-xs">
                 <span className="text-slate-500">Luz</span>
-                <span className="text-slate-300">{formatCurrency(item.monthly_electricity)}</span>
+                <span className="text-slate-300">{formatCurrency(item.cost_electricity)}</span>
               </div>
             )}
-            {item.monthly_taxes > 0 && (
+            {item.cost_taxes > 0 && (
               <div className="flex justify-between text-xs">
                 <span className="text-slate-500">Impuestos</span>
-                <span className="text-slate-300">{formatCurrency(item.monthly_taxes)}</span>
+                <span className="text-slate-300">{formatCurrency(item.cost_taxes)}</span>
               </div>
             )}
             {item.base_rate && (
@@ -366,7 +373,7 @@ function InventoryCard({ item, isOwner, isManager, onEdit, canEdit }) {
 // ── Main page ─────────────────────────────────────────────────
 
 export default function Inventory() {
-  const { profile, isOwner, isManager } = useAuth()
+  const { profile } = useAuth()
   const [items, setItems]         = useState([])
   const [loading, setLoading]     = useState(true)
   const [fetchError, setFetchError] = useState('')
@@ -376,39 +383,48 @@ export default function Inventory() {
   )
   const [editingItem, setEditingItem] = useState(null)
 
-  const canEdit = isOwner || isManager
-
   function toggleView(mode) {
     setViewMode(mode)
     localStorage.setItem('inventory_view', mode)
   }
 
-  function handleSaved() {
-    setEditingItem(null)
-    // Reload inventory
-    if (!profile?.org_id) return
-    supabase
-      .from('inventory')
-      .select('*')
-      .eq('org_id', profile.org_id)
-      .order('created_at', { ascending: false })
-      .then(({ data }) => setItems(data ?? []))
-  }
-
-  useEffect(() => {
+  const loadItems = useCallback(async () => {
     if (!profile?.org_id) return
     setLoading(true)
-    supabase
-      .from('inventory')
-      .select('*')
-      .eq('org_id', profile.org_id)
-      .order('created_at', { ascending: false })
-      .then(({ data, error }) => {
-        if (error) setFetchError(error.message)
-        setItems(data ?? [])
-        setLoading(false)
-      })
+    setFetchError('')
+
+    // AbortController para timeout de 10 segundos
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
+
+    try {
+      const { data, error } = await supabase
+        .from('inventory')
+        .select('*')
+        .eq('org_id', profile.org_id)
+        .order('created_at', { ascending: false })
+        .abortSignal(controller.signal)
+
+      clearTimeout(timer)
+
+      if (error) throw error
+      setItems(data ?? [])
+    } catch (err) {
+      const msg = err?.name === 'AbortError' || err?.message?.includes('abort')
+        ? 'La consulta tardó demasiado. Verificá tu conexión e intentá de nuevo.'
+        : (err?.message ?? 'Error al cargar el inventario')
+      setFetchError(msg)
+    } finally {
+      setLoading(false)
+    }
   }, [profile?.org_id])
+
+  useEffect(() => { loadItems() }, [loadItems])
+
+  function handleSaved() {
+    setEditingItem(null)
+    loadItems()
+  }
 
   const filtered = items.filter(i =>
     (i.name ?? '').toLowerCase().includes(search.toLowerCase()) ||
@@ -428,28 +444,16 @@ export default function Inventory() {
 
         {/* Toggle lista / grilla */}
         <div className="flex items-center rounded-lg border border-surface-700 bg-surface-800 p-0.5">
-          <button
-            type="button"
-            onClick={() => toggleView('list')}
+          <button type="button" onClick={() => toggleView('list')}
             className={`flex items-center justify-center rounded-md p-1.5 transition-colors ${
-              viewMode === 'list'
-                ? 'bg-brand text-white'
-                : 'text-slate-500 hover:text-slate-200'
-            }`}
-            title="Vista lista"
-          >
+              viewMode === 'list' ? 'bg-brand text-white' : 'text-slate-500 hover:text-slate-200'
+            }`} title="Vista lista">
             <List className="h-4 w-4" />
           </button>
-          <button
-            type="button"
-            onClick={() => toggleView('grid')}
+          <button type="button" onClick={() => toggleView('grid')}
             className={`flex items-center justify-center rounded-md p-1.5 transition-colors ${
-              viewMode === 'grid'
-                ? 'bg-brand text-white'
-                : 'text-slate-500 hover:text-slate-200'
-            }`}
-            title="Vista tablero"
-          >
+              viewMode === 'grid' ? 'bg-brand text-white' : 'text-slate-500 hover:text-slate-200'
+            }`} title="Vista tablero">
             <LayoutGrid className="h-4 w-4" />
           </button>
         </div>
@@ -466,7 +470,17 @@ export default function Inventory() {
       {loading ? (
         <div className="flex justify-center py-16"><Spinner size="lg" /></div>
       ) : fetchError ? (
-        <p className="text-center text-sm text-red-400 py-8">{fetchError}</p>
+        <div className="flex flex-col items-center justify-center rounded-xl border border-red-500/20 bg-red-500/5 py-16 text-center px-6">
+          <p className="text-sm font-medium text-red-400">{fetchError}</p>
+          <button
+            type="button"
+            onClick={loadItems}
+            className="mt-4 flex items-center gap-2 rounded-lg border border-surface-700 bg-surface-800 px-4 py-2 text-sm font-medium text-slate-300 hover:border-brand/50 hover:text-white transition-colors"
+          >
+            <RefreshCw className="h-4 w-4" />
+            Reintentar
+          </button>
+        </div>
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-surface-700 py-16 text-center">
           <MapPin className="mb-3 h-10 w-10 text-slate-600" />
@@ -478,13 +492,13 @@ export default function Inventory() {
       ) : viewMode === 'list' ? (
         <div className="space-y-2">
           {filtered.map(item => (
-            <InventoryRow key={item.id} item={item} canEdit={canEdit} onEdit={setEditingItem} />
+            <InventoryRow key={item.id} item={item} onEdit={setEditingItem} />
           ))}
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map(item => (
-            <InventoryCard key={item.id} item={item} isOwner={isOwner} isManager={isManager} canEdit={canEdit} onEdit={setEditingItem} />
+            <InventoryCard key={item.id} item={item} onEdit={setEditingItem} />
           ))}
         </div>
       )}

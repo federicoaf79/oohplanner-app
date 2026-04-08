@@ -5,15 +5,18 @@ export function cn(...inputs) {
   return twMerge(clsx(inputs))
 }
 
-// ARS: $1.000.000 (punto miles, sin centavos)
-export function formatCurrency(amount, currency = 'ARS') {
+// ARS: $ 1.000.000 — prefijar $ manualmente evita que Intl produzca
+// "US$ 120.000" o "ARS 120.000" en browsers con datos de locale incompletos.
+const _arsFmt = new Intl.NumberFormat('es-AR', {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+})
+
+export function formatCurrency(amount) {
   if (amount == null) return '—'
-  return new Intl.NumberFormat('es-AR', {
-    style: 'currency',
-    currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(amount)
+  const n = Number(amount)
+  if (isNaN(n)) return '—'
+  return `$ ${_arsFmt.format(Math.round(n))}`
 }
 
 export function formatDate(dateStr) {
