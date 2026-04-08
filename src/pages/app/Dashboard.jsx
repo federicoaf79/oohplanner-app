@@ -453,7 +453,9 @@ function SalespersonDashboard() {
   return (
     <div className="space-y-6 animate-fade-in">
       <div>
-        <h2 className="text-xl font-bold text-white">Hola, {profile?.full_name?.split(' ')[0]} 👋</h2>
+        <h2 className="text-xl font-bold text-white">
+          Hola{profile?.full_name ? `, ${profile.full_name.trim().split(/\s+/)[0]}` : ''} 👋
+        </h2>
         <p className="mt-1 text-sm text-slate-500">Tu actividad de este mes</p>
       </div>
 

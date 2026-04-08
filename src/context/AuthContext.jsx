@@ -14,7 +14,6 @@ export function AuthProvider({ children }) {
   const profileLoadedRef    = useRef(false)
 
   async function fetchProfile(userId) {
-    console.log('fetchProfile llamado para:', userId)
     const { data, error } = await supabase
       .from('profiles')
       .select('*, organisations(id, name, slug, logo_url, plan, max_discount_salesperson, max_discount_manager)')
@@ -30,10 +29,8 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     ;(async () => {
-      console.log('getSession inicio')
       const { data: { session } } = await supabase.auth.getSession()
       if (session) {
-        console.log('getSession: sesión encontrada', session.user.id)
         setSession(session)
         const p = await fetchProfile(session.user.id)
         setProfile(p)
@@ -44,7 +41,6 @@ export function AuthProvider({ children }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('authEvent:', event, session?.user?.id)
         setSession(session)
 
         if (event === 'TOKEN_REFRESHED') {
