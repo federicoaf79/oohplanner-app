@@ -6,7 +6,7 @@ import { formatCurrency, formatDate } from '../../lib/utils'
 import Spinner from '../../components/ui/Spinner'
 import { FORMAT_MAP } from '../../lib/constants'
 import EditInventoryModal from '../../features/inventory/EditInventoryModal'
-import InventoryImportExport from '../../features/inventory/InventoryImportExport'
+import InventoryImportExport, { RollbackBanner } from '../../features/inventory/InventoryImportExport'
 import InventoryPhotosUpload from '../../features/inventory/InventoryPhotosUpload'
 
 const FETCH_TIMEOUT_MS = 10_000
@@ -480,6 +480,11 @@ export default function Inventory() {
         </div>
       </div>
 
+      {/* Rollback banner */}
+      {profile?.org_id && (
+        <RollbackBanner orgId={profile.org_id} onRollbackDone={loadItems} />
+      )}
+
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
@@ -539,7 +544,7 @@ export default function Inventory() {
           items={items}
           orgName={profile?.organisations?.name}
           orgId={profile?.org_id}
-          onImported={() => { loadItems(); setShowImportExport(false) }}
+          onImported={() => loadItems()}
           onClose={() => setShowImportExport(false)}
         />
       )}

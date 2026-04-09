@@ -1,75 +1,107 @@
-import { useState, useRef } from 'react'
-import { X, Download, Upload, CheckCircle, AlertTriangle, FileText } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { X, Download, CheckCircle, AlertTriangle, FileText, RotateCcw } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import Button from '../../components/ui/Button'
 import Spinner from '../../components/ui/Spinner'
 
-// ── Columnas del CSV ──────────────────────────────────────────
+const ROLLBACK_TTL_MS = 120 * 60 * 1000 // 2 horas
 
-const CSV_COLS = [
-  'code', 'name', 'address', 'city', 'format', 'width_m', 'height_m',
-  'owner_type', 'is_illuminated', 'lat', 'lon',
-  'base_rate', 'biweekly_rate',
-  'banda_negativa_enabled', 'banda_negativa_rate', 'banda_negativa_min_months',
-  'cost_rent', 'cost_electricity', 'cost_taxes',
-  'cost_maintenance', 'cost_imponderables',
-  'cost_owner_commission', 'cost_print_per_m2',
-  'cost_installation', 'cost_design',
-  'cost_seller_commission_pct', 'cost_agency_commission_pct',
-  'cost_owner_commission_pct',
+// ── Formatos para el selector de exportación ──────────────────
+
+const FORMAT_OPTIONS = [
+  { id: 'billboard',               label: 'Espectaculares',            fileLabel: 'Espectaculares' },
+  { id: 'digital',                 label: 'Digitales LED',             fileLabel: 'Digitales_LED' },
+  { id: 'ambient',                 label: 'Medianeras',                fileLabel: 'Medianeras' },
+  { id: 'poster',                  label: 'Afiches',                   fileLabel: 'Afiches' },
+  { id: 'urban_furniture',         label: 'Mobiliario Urbano',         fileLabel: 'Mobiliario_Urbano' },
+  { id: 'urban_furniture_digital', label: 'Mobiliario Urbano Digital', fileLabel: 'Mobiliario_Urbano_Digital' },
+  { id: 'mobile_screen',           label: 'Pantallas Móviles',         fileLabel: 'Pantallas_Moviles' },
 ]
 
-const REQUIRED_COLS = ['code', 'name']
+// ── Columnas del CSV en español ───────────────────────────────
 
-// Mapeo CSV → columna DB
-function rowToPayload(row, orgId) {
-  const parseBool = (v) => {
-    const s = String(v ?? '').toLowerCase().trim()
-    return s === 'true' || s === '1' || s === 'si' || s === 'sí' || s === 'yes'
-  }
-  const parseNum = (v, fallback = null) => {
-    const n = Number(v)
-    return v !== '' && v != null && !isNaN(n) ? n : fallback
-  }
-  return {
-    org_id:                    orgId,
-    code:                      String(row.code ?? '').trim(),
-    name:                      String(row.name ?? '').trim(),
-    address:                   String(row.address ?? '').trim() || null,
-    city:                      String(row.city ?? '').trim() || null,
-    format:                    String(row.format ?? '').trim() || null,
-    width_ft:                  parseNum(row.width_m),
-    height_ft:                 parseNum(row.height_m),
-    owner_type:                ['owned', 'rented'].includes(row.owner_type) ? row.owner_type : 'owned',
-    illuminated:               parseBool(row.is_illuminated),
-    latitude:                  parseNum(row.lat),
-    longitude:                 parseNum(row.lon),
-    base_rate:                 parseNum(row.base_rate),
-    biweekly_rate:             parseNum(row.biweekly_rate),
-    banda_negativa_enabled:    parseBool(row.banda_negativa_enabled),
-    banda_negativa_rate:       parseNum(row.banda_negativa_rate, 0),
-    banda_negativa_min_months: parseNum(row.banda_negativa_min_months, 6),
-    cost_rent:                 parseNum(row.cost_rent, 0),
-    cost_electricity:          parseNum(row.cost_electricity, 0),
-    cost_taxes:                parseNum(row.cost_taxes, 0),
-    cost_maintenance:          parseNum(row.cost_maintenance, 0),
-    cost_imponderables:        parseNum(row.cost_imponderables, 0),
-    cost_owner_commission:     parseNum(row.cost_owner_commission, 0),
-    cost_print_per_m2:         parseNum(row.cost_print_per_m2, 0),
-    cost_installation:         parseNum(row.cost_installation, 0),
-    cost_design:               parseNum(row.cost_design, 0),
-    cost_seller_commission_pct: parseNum(row.cost_seller_commission_pct, 5),
-    cost_agency_commission_pct: parseNum(row.cost_agency_commission_pct, 0),
-    cost_owner_commission_pct:  parseNum(row.cost_owner_commission_pct, 0),
-  }
+const CSV_COLS_ES = [
+  'codigo', 'nombre', 'direccion', 'ciudad', 'formato',
+  'ancho_m', 'alto_m', 'tipo_propiedad', 'iluminado',
+  'latitud', 'longitud', 'precio_mensual', 'precio_quincenal',
+  'banda_negativa', 'precio_banda_negativa', 'meses_minimos_banda',
+  'costo_alquiler', 'costo_luz', 'costo_impuestos',
+  'costo_mantenimiento', 'costo_imponderables',
+  'costo_dueno_cartel', 'costo_impresion_m2',
+  'costo_instalacion', 'costo_diseno',
+  'comision_vendedor_pct', 'comision_agencia_pct', 'comision_dueno_pct',
+]
+
+// Mapeo columnas en español → claves internas en inglés
+const ES_TO_EN = {
+  codigo:                 'code',
+  nombre:                 'name',
+  direccion:              'address',
+  ciudad:                 'city',
+  formato:                'format',
+  ancho_m:                'width_m',
+  alto_m:                 'height_m',
+  tipo_propiedad:         'owner_type',
+  iluminado:              'is_illuminated',
+  latitud:                'lat',
+  longitud:               'lon',
+  precio_mensual:         'base_rate',
+  precio_quincenal:       'biweekly_rate',
+  banda_negativa:         'banda_negativa_enabled',
+  precio_banda_negativa:  'banda_negativa_rate',
+  meses_minimos_banda:    'banda_negativa_min_months',
+  costo_alquiler:         'cost_rent',
+  costo_luz:              'cost_electricity',
+  costo_impuestos:        'cost_taxes',
+  costo_mantenimiento:    'cost_maintenance',
+  costo_imponderables:    'cost_imponderables',
+  costo_dueno_cartel:     'cost_owner_commission',
+  costo_impresion_m2:     'cost_print_per_m2',
+  costo_instalacion:      'cost_installation',
+  costo_diseno:           'cost_design',
+  comision_vendedor_pct:  'cost_seller_commission_pct',
+  comision_agencia_pct:   'cost_agency_commission_pct',
+  comision_dueno_pct:     'cost_owner_commission_pct',
+}
+
+// ── Rollback helpers ──────────────────────────────────────────
+
+function bkKey(orgId) { return `inventory_backup_${orgId}` }
+
+function loadBackup(orgId) {
+  try {
+    const raw = localStorage.getItem(bkKey(orgId))
+    if (!raw) return null
+    const b = JSON.parse(raw)
+    if (Date.now() - b.timestamp > ROLLBACK_TTL_MS) {
+      localStorage.removeItem(bkKey(orgId))
+      return null
+    }
+    return b
+  } catch { return null }
+}
+
+function minutesLeft(timestamp) {
+  return Math.max(0, Math.floor((timestamp + ROLLBACK_TTL_MS - Date.now()) / 60000))
+}
+
+// ── Export helpers ────────────────────────────────────────────
+
+function buildFilename(exportAll, selectedFormats) {
+  const date = new Date().toISOString().slice(0, 10)
+  if (exportAll || selectedFormats.size === 0) return `inventario_completo_${date}.csv`
+  const label = FORMAT_OPTIONS
+    .filter(f => selectedFormats.has(f.id))
+    .map(f => f.fileLabel)
+    .join('_')
+  return `inventario_${label}_${date}.csv`
 }
 
 function escapeCSV(v) {
   const s = String(v ?? '')
-  if (s.includes(',') || s.includes('"') || s.includes('\n')) {
-    return `"${s.replace(/"/g, '""')}"`
-  }
-  return s
+  return (s.includes(',') || s.includes('"') || s.includes('\n'))
+    ? `"${s.replace(/"/g, '""')}"`
+    : s
 }
 
 function buildCSV(items) {
@@ -103,33 +135,205 @@ function buildCSV(items) {
     item.cost_agency_commission_pct ?? '',
     item.cost_owner_commission_pct ?? '',
   ]
-  const header = CSV_COLS.join(',')
+  const header = CSV_COLS_ES.join(',')
   const rows   = items.map(item => toRow(item).map(escapeCSV).join(','))
   return '\uFEFF' + [header, ...rows].join('\n') // BOM for Excel
+}
+
+// ── Import helpers ────────────────────────────────────────────
+
+// Traduce claves en español → inglés interno. Si ya vienen en inglés, las pasa tal cual.
+function normalizeRow(row) {
+  const keys = Object.keys(row)
+  const isSpanish = keys.some(k => k in ES_TO_EN)
+  if (!isSpanish) return row
+  const out = {}
+  for (const [k, v] of Object.entries(row)) {
+    out[ES_TO_EN[k] ?? k] = v
+  }
+  return out
+}
+
+function rowToPayload(row, orgId) {
+  const parseBool = (v) => {
+    const s = String(v ?? '').toLowerCase().trim()
+    return s === 'true' || s === '1' || s === 'si' || s === 'sí' || s === 'yes'
+  }
+  const parseNum = (v, fallback = null) => {
+    const n = Number(v)
+    return v !== '' && v != null && !isNaN(n) ? n : fallback
+  }
+  return {
+    org_id:                     orgId,
+    code:                       String(row.code ?? '').trim(),
+    name:                       String(row.name ?? '').trim(),
+    address:                    String(row.address ?? '').trim() || null,
+    city:                       String(row.city ?? '').trim() || null,
+    format:                     String(row.format ?? '').trim() || null,
+    width_ft:                   parseNum(row.width_m),
+    height_ft:                  parseNum(row.height_m),
+    owner_type:                 ['owned', 'rented'].includes(row.owner_type) ? row.owner_type : 'owned',
+    illuminated:                parseBool(row.is_illuminated),
+    latitude:                   parseNum(row.lat),
+    longitude:                  parseNum(row.lon),
+    base_rate:                  parseNum(row.base_rate),
+    biweekly_rate:              parseNum(row.biweekly_rate),
+    banda_negativa_enabled:     parseBool(row.banda_negativa_enabled),
+    banda_negativa_rate:        parseNum(row.banda_negativa_rate, 0),
+    banda_negativa_min_months:  parseNum(row.banda_negativa_min_months, 6),
+    cost_rent:                  parseNum(row.cost_rent, 0),
+    cost_electricity:           parseNum(row.cost_electricity, 0),
+    cost_taxes:                 parseNum(row.cost_taxes, 0),
+    cost_maintenance:           parseNum(row.cost_maintenance, 0),
+    cost_imponderables:         parseNum(row.cost_imponderables, 0),
+    cost_owner_commission:      parseNum(row.cost_owner_commission, 0),
+    cost_print_per_m2:          parseNum(row.cost_print_per_m2, 0),
+    cost_installation:          parseNum(row.cost_installation, 0),
+    cost_design:                parseNum(row.cost_design, 0),
+    cost_seller_commission_pct: parseNum(row.cost_seller_commission_pct, 5),
+    cost_agency_commission_pct: parseNum(row.cost_agency_commission_pct, 0),
+    cost_owner_commission_pct:  parseNum(row.cost_owner_commission_pct, 0),
+  }
+}
+
+// ── RollbackBanner (exportado para usar en Inventory.jsx) ─────
+
+export function RollbackBanner({ orgId, onRollbackDone }) {
+  const [backup, setBackup]   = useState(() => loadBackup(orgId))
+  const [mins, setMins]       = useState(() => { const b = loadBackup(orgId); return b ? minutesLeft(b.timestamp) : 0 })
+  const [rolling, setRolling] = useState(false)
+  const [error, setError]     = useState('')
+
+  // Refrescar cuando cambia orgId (ej: después de import)
+  useEffect(() => {
+    const b = loadBackup(orgId)
+    setBackup(b)
+    setMins(b ? minutesLeft(b.timestamp) : 0)
+    setError('')
+  }, [orgId])
+
+  // Contador regresivo
+  useEffect(() => {
+    if (!backup) return
+    const id = setInterval(() => {
+      const m = minutesLeft(backup.timestamp)
+      setMins(m)
+      if (m <= 0) { localStorage.removeItem(bkKey(orgId)); setBackup(null) }
+    }, 30_000)
+    return () => clearInterval(id)
+  }, [backup, orgId])
+
+  if (!backup || mins <= 0) return null
+
+  async function handleRollback() {
+    setRolling(true)
+    setError('')
+    try {
+      for (const item of (backup.updatedItems ?? [])) {
+        const { error: e } = await supabase.from('inventory').update(item).eq('id', item.id)
+        if (e) throw e
+      }
+      if (backup.insertedIds?.length) {
+        const { error: e } = await supabase.from('inventory').delete().in('id', backup.insertedIds)
+        if (e) throw e
+      }
+      localStorage.removeItem(bkKey(orgId))
+      setBackup(null)
+      onRollbackDone?.()
+    } catch (err) {
+      setError(`Error al revertir: ${err.message}`)
+    } finally {
+      setRolling(false)
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <RotateCcw className="h-4 w-4 text-amber-400 shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-amber-300">Importación completada</p>
+            <p className="text-xs text-amber-400/70">
+              Tenés {mins} {mins === 1 ? 'minuto' : 'minutos'} para revertir los cambios si encontrás algún error.
+            </p>
+          </div>
+        </div>
+        <button type="button" onClick={handleRollback} disabled={rolling}
+          className="shrink-0 flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-300 hover:bg-amber-500/20 transition-colors disabled:opacity-50">
+          {rolling
+            ? <Spinner size="sm" className="border-amber-400/30 border-t-amber-400" />
+            : <RotateCcw className="h-3 w-3" />
+          }
+          Revertir importación
+        </button>
+      </div>
+      {error && <p className="text-xs text-red-400">{error}</p>}
+    </div>
+  )
 }
 
 // ── Main component ────────────────────────────────────────────
 
 export default function InventoryImportExport({ items, orgName, orgId, onImported, onClose }) {
-  const [tab, setTab]             = useState('export')
-  const [importing, setImporting] = useState(false)
-  const [result, setResult]       = useState(null)  // { updated, inserted, errors[] }
+  const [tab, setTab]                               = useState('export')
+  const [importing, setImporting]                   = useState(false)
+  const [result, setResult]                         = useState(null)
+  const [showCategorySelector, setShowCategorySelector] = useState(false)
+  const [exportAll, setExportAll]                   = useState(true)
+  const [selectedFormats, setSelectedFormats]       = useState(new Set())
+  const [backup, setBackup]                         = useState(() => loadBackup(orgId))
+  const [mins, setMins]                             = useState(() => { const b = loadBackup(orgId); return b ? minutesLeft(b.timestamp) : 0 })
+  const [rolling, setRolling]                       = useState(false)
+  const [rollbackError, setRollbackError]           = useState('')
   const fileRef = useRef(null)
 
+  // Contador regresivo del rollback
+  useEffect(() => {
+    if (!backup) return
+    const id = setInterval(() => {
+      const m = minutesLeft(backup.timestamp)
+      setMins(m)
+      if (m <= 0) { localStorage.removeItem(bkKey(orgId)); setBackup(null) }
+    }, 30_000)
+    return () => clearInterval(id)
+  }, [backup, orgId])
+
+  function refreshBackup() {
+    const b = loadBackup(orgId)
+    setBackup(b)
+    setMins(b ? minutesLeft(b.timestamp) : 0)
+  }
+
   // ── Export ──────────────────────────────────────────────────
+
+  function toggleFormat(id) {
+    if (exportAll) {
+      setExportAll(false)
+      setSelectedFormats(new Set([id]))
+    } else {
+      const next = new Set(selectedFormats)
+      next.has(id) ? next.delete(id) : next.add(id)
+      setSelectedFormats(next)
+    }
+  }
+
   function handleExport() {
-    const csv      = buildCSV(items)
-    const date     = new Date().toISOString().slice(0, 10)
-    const safeName = (orgName ?? 'org').replace(/[^a-z0-9áéíóúñü]/gi, '_')
-    const filename = `inventario_${safeName}_${date}.csv`
+    const toExport = exportAll || selectedFormats.size === 0
+      ? items
+      : items.filter(i => selectedFormats.has(i.format))
+    const csv      = buildCSV(toExport)
+    const filename = buildFilename(exportAll, selectedFormats, orgName)
     const blob     = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url      = URL.createObjectURL(blob)
     const a        = document.createElement('a')
     a.href = url; a.download = filename; a.click()
     URL.revokeObjectURL(url)
+    setShowCategorySelector(false)
   }
 
   // ── Import ──────────────────────────────────────────────────
+
   async function handleFileChange(e) {
     const file = e.target.files?.[0]
     if (!file) return
@@ -137,16 +341,15 @@ export default function InventoryImportExport({ items, orgName, orgId, onImporte
     setResult(null)
 
     try {
-      let rows = []
+      let rawRows = []
 
       if (file.name.endsWith('.csv')) {
         const Papa = (await import('papaparse')).default
-        rows = await new Promise((resolve, reject) => {
+        rawRows = await new Promise((resolve, reject) => {
           Papa.parse(file, {
-            header:         true,
-            skipEmptyLines: true,
+            header: true, skipEmptyLines: true,
             complete: r => resolve(r.data),
-            error:    e => reject(e),
+            error:   err => reject(err),
           })
         })
       } else if (file.name.match(/\.xlsx?$/i)) {
@@ -154,27 +357,45 @@ export default function InventoryImportExport({ items, orgName, orgId, onImporte
         const buffer = await file.arrayBuffer()
         const wb     = XLSX.read(buffer, { type: 'array' })
         const ws     = wb.Sheets[wb.SheetNames[0]]
-        rows = XLSX.utils.sheet_to_json(ws, { defval: '' })
+        rawRows = XLSX.utils.sheet_to_json(ws, { defval: '' })
       } else {
         throw new Error('Formato no soportado. Usá CSV o XLSX.')
       }
 
-      // Validar columnas requeridas
-      if (rows.length === 0) throw new Error('El archivo está vacío.')
-      const headers = Object.keys(rows[0])
-      const missing = REQUIRED_COLS.filter(c => !headers.includes(c))
-      if (missing.length) throw new Error(`Columnas requeridas faltantes: ${missing.join(', ')}`)
+      if (rawRows.length === 0) throw new Error('El archivo está vacío.')
 
-      // Obtener códigos existentes
-      const { data: existing } = await supabase
+      // Normalizar: español → inglés interno (con compat retroactiva)
+      const rows = rawRows.map(normalizeRow)
+
+      // Validar columnas requeridas
+      const headers = Object.keys(rows[0])
+      const missing = ['code', 'name'].filter(c => !headers.includes(c))
+      if (missing.length) {
+        throw new Error(`Columnas requeridas faltantes: ${missing.join(', ')} (o en español: codigo, nombre)`)
+      }
+
+      // Obtener inventario completo actual (para backup y lógica de upsert)
+      const { data: existing, error: fetchErr } = await supabase
         .from('inventory')
-        .select('id, code')
+        .select('*')
         .eq('org_id', orgId)
+      if (fetchErr) throw fetchErr
+
+      const importCodes = new Set(
+        rows.map(r => String(r.code ?? '').trim().toLowerCase()).filter(Boolean)
+      )
+
       const existingByCode = {}
-      ;(existing ?? []).forEach(i => { if (i.code) existingByCode[i.code.toLowerCase()] = i.id })
+      const itemsToBackup  = []
+      ;(existing ?? []).forEach(i => {
+        if (!i.code) return
+        const key = i.code.toLowerCase()
+        existingByCode[key] = i.id
+        if (importCodes.has(key)) itemsToBackup.push(i)
+      })
 
       // Procesar fila por fila
-      const stats = { updated: 0, inserted: 0, errors: [] }
+      const stats = { updated: 0, inserted: 0, errors: [], insertedIds: [] }
 
       for (const [idx, row] of rows.entries()) {
         const code = String(row.code ?? '').trim()
@@ -184,10 +405,8 @@ export default function InventoryImportExport({ items, orgName, orgId, onImporte
         }
 
         const payload = rowToPayload(row, orgId)
-
-        // Eliminar campos que pueden no existir en la DB para evitar errores
-        if (payload.biweekly_rate == null)           delete payload.biweekly_rate
-        if (payload.cost_owner_commission_pct == null) delete payload.cost_owner_commission_pct
+        if (payload.biweekly_rate == null)             delete payload.biweekly_rate
+        if (payload.cost_owner_commission_pct == null)  delete payload.cost_owner_commission_pct
 
         try {
           const existingId = existingByCode[code.toLowerCase()]
@@ -196,32 +415,74 @@ export default function InventoryImportExport({ items, orgName, orgId, onImporte
             if (error) throw error
             stats.updated++
           } else {
-            const { error } = await supabase.from('inventory').insert(payload)
+            const { data: inserted, error } = await supabase
+              .from('inventory').insert(payload).select('id').single()
             if (error) throw error
             stats.inserted++
+            if (inserted?.id) stats.insertedIds.push(inserted.id)
           }
         } catch (err) {
           stats.errors.push({ row: idx + 2, msg: err.message })
         }
       }
 
+      // Guardar backup para rollback
+      if (itemsToBackup.length > 0 || stats.insertedIds.length > 0) {
+        localStorage.setItem(bkKey(orgId), JSON.stringify({
+          updatedItems: itemsToBackup,
+          insertedIds:  stats.insertedIds,
+          timestamp:    Date.now(),
+        }))
+        refreshBackup()
+      }
+
       setResult(stats)
       if (stats.inserted + stats.updated > 0) onImported()
     } catch (err) {
-      setResult({ updated: 0, inserted: 0, errors: [{ row: '—', msg: err.message }] })
+      setResult({ updated: 0, inserted: 0, errors: [{ row: '—', msg: err.message }], insertedIds: [] })
     } finally {
       setImporting(false)
       e.target.value = ''
     }
   }
 
+  // ── Rollback (desde el modal) ────────────────────────────────
+
+  async function handleRollback() {
+    if (!backup) return
+    setRolling(true)
+    setRollbackError('')
+    try {
+      for (const item of (backup.updatedItems ?? [])) {
+        const { error: e } = await supabase.from('inventory').update(item).eq('id', item.id)
+        if (e) throw e
+      }
+      if (backup.insertedIds?.length) {
+        const { error: e } = await supabase.from('inventory').delete().in('id', backup.insertedIds)
+        if (e) throw e
+      }
+      localStorage.removeItem(bkKey(orgId))
+      setBackup(null)
+      setMins(0)
+      setResult(null)
+      onImported()
+    } catch (err) {
+      setRollbackError(`Error al revertir: ${err.message}`)
+    } finally {
+      setRolling(false)
+    }
+  }
+
+  // ── Render ───────────────────────────────────────────────────
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
-      <div className="relative z-10 flex w-full max-w-lg flex-col rounded-2xl border border-surface-700 bg-surface-900 shadow-2xl">
+      <div className="relative z-10 flex w-full max-w-lg flex-col rounded-2xl border border-surface-700 bg-surface-900 shadow-2xl max-h-[90vh] overflow-y-auto">
+
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-surface-700 px-5 py-4">
+        <div className="flex items-center justify-between border-b border-surface-700 px-5 py-4 sticky top-0 bg-surface-900 z-10">
           <p className="font-semibold text-white">Importar / Exportar inventario</p>
           <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg hover:bg-surface-700 transition-colors">
             <X className="h-4 w-4 text-slate-400" />
@@ -229,9 +490,13 @@ export default function InventoryImportExport({ items, orgName, orgId, onImporte
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-surface-700 px-5">
-          {[{ id: 'export', label: 'Exportar CSV' }, { id: 'import', label: 'Importar CSV / Excel' }].map(t => (
-            <button key={t.id} onClick={() => { setTab(t.id); setResult(null) }}
+        <div className="flex border-b border-surface-700 px-5 sticky top-[57px] bg-surface-900 z-10">
+          {[
+            { id: 'export', label: 'Exportar CSV' },
+            { id: 'import', label: 'Importar CSV / Excel' },
+          ].map(t => (
+            <button key={t.id}
+              onClick={() => { setTab(t.id); setResult(null); setShowCategorySelector(false) }}
               className={`px-4 py-3 text-sm font-medium border-b-2 -mb-px transition-colors ${
                 tab === t.id ? 'border-brand text-brand' : 'border-transparent text-slate-500 hover:text-slate-200'
               }`}>
@@ -241,34 +506,88 @@ export default function InventoryImportExport({ items, orgName, orgId, onImporte
         </div>
 
         <div className="p-5 space-y-4">
-          {/* ── Export ── */}
-          {tab === 'export' && (
+
+          {/* ── Exportar: descripción + botón ── */}
+          {tab === 'export' && !showCategorySelector && (
             <>
               <p className="text-sm text-slate-400">
-                Descargá un CSV con todos los {items.length} carteles de tu inventario,
-                incluyendo costos y configuración. Podés editarlo y reimportarlo.
+                Descargá un CSV con los carteles de tu inventario, incluyendo costos y configuración.
+                Podés editarlo y reimportarlo.
               </p>
               <div className="rounded-xl border border-surface-700 bg-surface-800/50 p-4 text-xs text-slate-500 space-y-1">
-                <p className="font-medium text-slate-400">Columnas incluidas ({CSV_COLS.length}):</p>
-                <p className="font-mono leading-relaxed">{CSV_COLS.join(' · ')}</p>
+                <p className="font-medium text-slate-400">Columnas incluidas ({CSV_COLS_ES.length}):</p>
+                <p className="font-mono leading-relaxed">{CSV_COLS_ES.join(' · ')}</p>
               </div>
-              <Button className="w-full" onClick={handleExport}>
+              <Button className="w-full" onClick={() => setShowCategorySelector(true)}>
                 <Download className="h-4 w-4" />
                 Descargar CSV ({items.length} carteles)
               </Button>
             </>
           )}
 
-          {/* ── Import ── */}
+          {/* ── Exportar: selector de categoría ── */}
+          {tab === 'export' && showCategorySelector && (
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm font-semibold text-white mb-0.5">¿Qué querés exportar?</p>
+                <p className="text-xs text-slate-500">Podés elegir uno o varios formatos.</p>
+              </div>
+
+              <div className="space-y-2">
+                {/* Opción: todo */}
+                <label className="flex items-center gap-3 rounded-lg border border-surface-700 bg-surface-800/50 px-3.5 py-2.5 cursor-pointer hover:border-brand/30 transition-colors">
+                  <input type="checkbox" checked={exportAll}
+                    onChange={() => { setExportAll(true); setSelectedFormats(new Set()) }}
+                    className="h-4 w-4 rounded accent-brand" />
+                  <div>
+                    <p className="text-sm font-medium text-white">Todo el inventario</p>
+                    <p className="text-xs text-slate-500">{items.length} carteles</p>
+                  </div>
+                </label>
+
+                {/* Opciones por formato (solo los que tienen ítems) */}
+                {FORMAT_OPTIONS.map(fmt => {
+                  const count = items.filter(i => i.format === fmt.id).length
+                  if (count === 0) return null
+                  return (
+                    <label key={fmt.id} className="flex items-center gap-3 rounded-lg border border-surface-700 bg-surface-800/50 px-3.5 py-2.5 cursor-pointer hover:border-brand/30 transition-colors">
+                      <input type="checkbox"
+                        checked={!exportAll && selectedFormats.has(fmt.id)}
+                        onChange={() => toggleFormat(fmt.id)}
+                        className="h-4 w-4 rounded accent-brand" />
+                      <div>
+                        <p className="text-sm font-medium text-slate-200">Solo {fmt.label}</p>
+                        <p className="text-xs text-slate-500">{count} carteles</p>
+                      </div>
+                    </label>
+                  )
+                })}
+              </div>
+
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setShowCategorySelector(false)}
+                  className="flex-1 rounded-lg border border-surface-700 py-2 text-sm text-slate-400 hover:text-slate-200 transition-colors">
+                  Cancelar
+                </button>
+                <Button className="flex-1" onClick={handleExport}
+                  disabled={!exportAll && selectedFormats.size === 0}>
+                  <Download className="h-4 w-4" />
+                  Descargar
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Importar ── */}
           {tab === 'import' && (
             <>
               <p className="text-sm text-slate-400">
-                Subí un CSV o Excel con tu inventario. Si el código (<code className="text-brand">code</code>) ya existe,
+                Subí un CSV o Excel. Si el código (<code className="text-brand">codigo</code>) ya existe,
                 se actualiza. Si es nuevo, se inserta.
               </p>
               <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300 space-y-1">
-                <p className="font-semibold">Columnas requeridas: <span className="font-mono">code, name</span></p>
-                <p>El resto es opcional — las columnas vacías mantienen sus valores actuales.</p>
+                <p className="font-semibold">Columnas requeridas: <span className="font-mono">codigo, nombre</span></p>
+                <p>El resto es opcional. También acepta columnas en inglés para compatibilidad con imports anteriores.</p>
               </div>
 
               {!importing && !result && (
@@ -276,7 +595,7 @@ export default function InventoryImportExport({ items, orgName, orgId, onImporte
                   className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-surface-700 py-8 text-sm text-slate-500 hover:border-brand/50 hover:text-slate-300 transition-colors">
                   <FileText className="h-8 w-8" />
                   <span>Seleccioná un archivo CSV o XLSX</span>
-                  <span className="text-xs text-slate-600">Clic aquí o arrastrá el archivo</span>
+                  <span className="text-xs text-slate-600">Clic aquí para elegir el archivo</span>
                 </button>
               )}
 
@@ -306,15 +625,15 @@ export default function InventoryImportExport({ items, orgName, orgId, onImporte
 
                   {result.errors.length > 0 && (
                     <div className="max-h-36 overflow-y-auto rounded-xl border border-red-500/20 bg-red-500/5 p-3 space-y-1">
-                      {result.errors.map((e, i) => (
+                      {result.errors.map((err, i) => (
                         <p key={i} className="text-xs text-red-400">
-                          <span className="font-mono font-semibold">Fila {e.row}:</span> {e.msg}
+                          <span className="font-mono font-semibold">Fila {err.row}:</span> {err.msg}
                         </p>
                       ))}
                     </div>
                   )}
 
-                  <button type="button" onClick={() => { setResult(null) }}
+                  <button type="button" onClick={() => setResult(null)}
                     className="w-full rounded-lg border border-surface-700 py-2 text-sm text-slate-400 hover:text-slate-200 transition-colors">
                     Importar otro archivo
                   </button>
@@ -324,6 +643,33 @@ export default function InventoryImportExport({ items, orgName, orgId, onImporte
               <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={handleFileChange} />
             </>
           )}
+
+          {/* ── Banner de rollback (dentro del modal) ── */}
+          {backup && mins > 0 && (
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <RotateCcw className="h-4 w-4 text-amber-400 shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-amber-300">Importación completada</p>
+                    <p className="text-xs text-amber-400/70">
+                      Tenés {mins} {mins === 1 ? 'minuto' : 'minutos'} para revertir los cambios si encontrás algún error.
+                    </p>
+                  </div>
+                </div>
+                <button type="button" onClick={handleRollback} disabled={rolling}
+                  className="shrink-0 flex items-center gap-1.5 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-300 hover:bg-amber-500/20 transition-colors disabled:opacity-50">
+                  {rolling
+                    ? <Spinner size="sm" className="border-amber-400/30 border-t-amber-400" />
+                    : <RotateCcw className="h-3 w-3" />
+                  }
+                  Revertir importación
+                </button>
+              </div>
+              {rollbackError && <p className="text-xs text-red-400">{rollbackError}</p>}
+            </div>
+          )}
+
         </div>
       </div>
     </div>
