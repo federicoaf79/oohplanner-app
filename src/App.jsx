@@ -13,7 +13,7 @@ import Login         from './pages/auth/Login'
 import Register      from './pages/auth/Register'
 import NotFound      from './pages/NotFound'
 
-// Pages — protected
+// Pages — protected app
 import Dashboard    from './pages/app/Dashboard'
 import Campaigns    from './pages/app/Campaigns'
 import Inventory    from './pages/app/Inventory'
@@ -22,6 +22,15 @@ import ProposalNew  from './pages/app/ProposalNew'
 import Reports      from './pages/app/Reports'
 import Team         from './pages/app/Team'
 import Settings     from './pages/app/Settings'
+
+// Pages — admin panel
+import AdminLayout          from './pages/admin/AdminLayout'
+import AdminDashboard       from './pages/admin/AdminDashboard'
+import AdminEmpresas        from './pages/admin/AdminEmpresas'
+import AdminEmpresaDetalle  from './pages/admin/AdminEmpresaDetalle'
+import AdminNuevoCliente    from './pages/admin/AdminNuevoCliente'
+import AdminPlanes          from './pages/admin/AdminPlanes'
+import AdminAdmins          from './pages/admin/AdminAdmins'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -34,19 +43,20 @@ const router = createBrowserRouter([
   { path: '/login',    element: <Login /> },
   { path: '/register', element: <Register /> },
 
-  // Protected: all /app routes
+  // Protected: all authenticated routes
   {
     element: <AuthGuard />,
     children: [
+      // ── App routes ──
       {
         element: <AppShell />,
         children: [
-          { path: '/app',                  element: <Dashboard /> },
-          { path: '/app/campaigns',        element: <Campaigns /> },
-          { path: '/app/proposals',        element: <Proposals /> },
+          { path: '/app',                      element: <Dashboard /> },
+          { path: '/app/campaigns',            element: <Campaigns /> },
+          { path: '/app/proposals',            element: <Proposals /> },
           { path: '/app/proposals/new',        element: <ProposalNew /> },
-          { path: '/app/proposals/:id/edit',  element: <ProposalNew /> },
-          { path: '/app/settings',         element: <Settings /> },
+          { path: '/app/proposals/:id/edit',   element: <ProposalNew /> },
+          { path: '/app/settings',             element: <Settings /> },
 
           // manager + owner only
           {
@@ -64,6 +74,19 @@ const router = createBrowserRouter([
               { path: '/app/team', element: <Team /> },
             ],
           },
+        ],
+      },
+
+      // ── Admin routes (access checked inside AdminLayout) ──
+      {
+        element: <AdminLayout />,
+        children: [
+          { path: '/admin',                  element: <AdminDashboard /> },
+          { path: '/admin/empresas',         element: <AdminEmpresas /> },
+          { path: '/admin/empresas/nueva',   element: <AdminNuevoCliente /> },
+          { path: '/admin/empresas/:id',     element: <AdminEmpresaDetalle /> },
+          { path: '/admin/planes',           element: <AdminPlanes /> },
+          { path: '/admin/admins',           element: <AdminAdmins /> },
         ],
       },
     ],

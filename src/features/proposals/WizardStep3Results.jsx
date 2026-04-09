@@ -252,7 +252,7 @@ function PriceBreakdown({ formData, option }) {
 }
 
 export default function WizardStep3Results({ results, formData, onSave, saving }) {
-  const { profile, org } = useAuth()
+  const { profile, org, user } = useAuth()
   const [activeTab, setActiveTab] = useState('A')
   const [saved, setSaved] = useState(false)
   const [generatingPDF, setGeneratingPDF] = useState(false)
@@ -289,7 +289,7 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
   async function handlePDF() {
     setGeneratingPDF(true)
     try {
-      await generateProposalPDF({ results, formData, profile, org })
+      await generateProposalPDF({ results, formData, profile: { ...profile, email: user?.email }, org })
     } catch (err) {
       console.error('PDF generation error:', err)
     } finally {

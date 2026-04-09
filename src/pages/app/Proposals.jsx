@@ -10,7 +10,7 @@ import Spinner from '../../components/ui/Spinner'
 import { generateProposalPDF } from '../../features/proposals/generateProposalPDF'
 
 export default function Proposals() {
-  const { profile, isOwner, isManager, isSalesperson, org } = useAuth()
+  const { profile, isOwner, isManager, isSalesperson, org, user } = useAuth()
   const navigate = useNavigate()
 
   const [proposals, setProposals]     = useState([])
@@ -128,7 +128,7 @@ export default function Proposals() {
         audience_note: null,
       }
 
-      await generateProposalPDF({ results, formData, profile, org })
+      await generateProposalPDF({ results, formData, profile: { ...profile, email: user?.email }, org })
 
     } catch (err) {
       console.error('PDF error:', err)

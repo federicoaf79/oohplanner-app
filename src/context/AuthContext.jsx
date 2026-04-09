@@ -3,20 +3,37 @@ import { supabase } from '../lib/supabase'
 
 const AuthContext = createContext(null)
 
+function applyOrgExpiry(profileData) {
+  if (!profileData?.organisations) return profileData
+  const org = profileData.organisations
+  const isExpired =
+    org.subscription_status === 'trial' &&
+    org.trial_ends_at != null &&
+    new Date(org.trial_ends_at) < new Date()
+  return { ...profileData, organisations: { ...org, is_expired: isExpired } }
+}
+
 export function AuthProvider({ children }) {
   const [session, setSession]     = useState(undefined) // undefined = loading
   const [profile, setProfile]     = useState(null)
   const [loading, setLoading]     = useState(true)
   const [sessionExpired, setSessionExpired] = useState(false)
-  // Tracks whether the current sign-out was user-initiated, so we can
-  // distinguish it from an automatic sign-out caused by token expiry.
   const intentionalSignOut  = useRef(false)
   const profileLoadedRef    = useRef(false)
 
   async function fetchProfile(userId) {
     const { data, error } = await supabase
       .from('profiles')
-      .select('*, organisations(id, name, slug, logo_url, plan, max_discount_salesperson, max_discount_manager)')
+      .select(`*,
+        organisations(
+          id, name, slug, logo_url, plan,
+          max_discount_salesperson, max_discount_manager,
+          trial_ends_at, subscription_status, plan_price_usd,
+          office_address, office_phone, office_hours, website,
+          billing_cuit, billing_razon_social, billing_contact,
+          billing_phone, billing_address, billing_email, notes
+        )
+      `)
       .eq('id', userId)
       .single()
 
@@ -24,7 +41,7 @@ export function AuthProvider({ children }) {
       console.error('Error fetching profile:', error.message)
       return null
     }
-    return data
+    return applyOrgExpiry(data)
   }
 
   useEffect(() => {
@@ -44,8 +61,6 @@ export function AuthProvider({ children }) {
         setSession(session)
 
         if (event === 'TOKEN_REFRESHED') {
-          // Token silently refreshed — session already updated, no need to
-          // re-fetch the profile.
           setLoading(false)
           return
         }
@@ -53,8 +68,6 @@ export function AuthProvider({ children }) {
         if (event === 'SIGNED_OUT') {
           profileLoadedRef.current = false
           setProfile(null)
-          // If the sign-out wasn't user-initiated (e.g. refresh token expired),
-          // flag the session as expired so the login page can show a message.
           if (!intentionalSignOut.current) {
             setSessionExpired(true)
           }
@@ -66,14 +79,13 @@ export function AuthProvider({ children }) {
         if (event === 'SIGNED_IN') {
           setProfile(currentProfile => {
             if (currentProfile?.id === session.user.id) return currentProfile
-            // Usuario nuevo — cargar perfil y actualizar estado
             fetchProfile(session.user.id).then(p => { if (p) setProfile(p) })
             return currentProfile
           })
           return
         }
 
-        // INITIAL_SESSION, USER_UPDATED — fetch/refresh profile
+        // INITIAL_SESSION, USER_UPDATED
         if (session?.user) {
           const p = await fetchProfile(session.user.id)
           setProfile(p)
@@ -93,20 +105,13 @@ export function AuthProvider({ children }) {
   }
 
   async function signUp({ email, password, fullName, orgName }) {
-    // El trigger handle_new_user (SECURITY DEFINER) crea la org y el perfil
-    // automáticamente al detectar `org_name` en los metadatos.
-    // No hay inserción directa del cliente en `organisations` → sin problemas de RLS.
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: {
-          full_name: fullName,
-          org_name:  orgName,
-        },
+        data: { full_name: fullName, org_name: orgName },
       },
     })
-
     return { data, error }
   }
 
@@ -122,14 +127,17 @@ export function AuthProvider({ children }) {
     }
   }
 
+  const org = profile?.organisations ?? null
+
   const value = {
     session,
-    user: session?.user ?? null,
+    user:          session?.user ?? null,
     profile,
     loading,
     sessionExpired,
-    role: profile?.role ?? null,
-    org: profile?.organisations ?? null,
+    role:          profile?.role ?? null,
+    org,
+    isExpired:     org?.is_expired ?? false,
     isOwner:       profile?.role === 'owner',
     isManager:     profile?.role === 'manager',
     isSalesperson: profile?.role === 'salesperson',

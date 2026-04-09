@@ -179,12 +179,28 @@ function renderCoverPage(doc, { formData, profile, org, logoBase64, generatedAt,
   y += Math.max(leftData.length, rightData.length) * 8 + 6
   y = hr(doc, y)
 
-  roundRect(doc, 14, y, 182, 32, 3, SURFACE)
+  // Vendor contact lines (phone, email, office_hours)
+  const contactLines = [
+    profile?.phone        ? `Tel: ${profile.phone}`        : null,
+    profile?.email        ? profile.email                   : null,
+    profile?.office_hours ? profile.office_hours            : null,
+  ].filter(Boolean)
+
+  const vendorBoxH = Math.max(32, 28 + contactLines.length * 7)
+
+  roundRect(doc, 14, y, 182, vendorBoxH, 3, SURFACE)
   setFont(doc, 'bold'); doc.setFontSize(9); setTC(doc, LIGHT)
   doc.text('Preparado por:', 18, y + 8)
   setTC(doc, WHITE); doc.text(vendorName, 18, y + 15)
   setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, LIGHT)
   doc.text(orgName, 18, y + 22)
+
+  let vly = y + 29
+  for (const line of contactLines) {
+    setTC(doc, [165, 180, 252])
+    doc.text(line, 18, vly)
+    vly += 7
+  }
 
   setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, LIGHT)
   doc.text('Fecha de emisión:', 112, y + 8)
@@ -192,7 +208,7 @@ function renderCoverPage(doc, { formData, profile, org, logoBase64, generatedAt,
   doc.text(generatedAt, 112, y + 15)
   setFont(doc, 'normal'); setTC(doc, AMBER)
   doc.text(`Válida hasta: ${validUntil}`, 112, y + 22)
-  y += 40
+  y += vendorBoxH + 8
 
   roundRect(doc, 14, y, 182, 12, 2, [45, 35, 10])
   setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, AMBER)
