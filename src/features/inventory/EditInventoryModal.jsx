@@ -75,7 +75,7 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
       longitude:     item.longitude ?? '',
       photo_url:     item.photo_url ?? '',
       // Banda negativa
-      banda_negativa:          item.banda_negativa ?? false,
+      banda_negativa:          item.banda_negativa_enabled ?? false,
       banda_negativa_rate:     item.banda_negativa_rate ?? 0,
       banda_negativa_min_months: item.banda_negativa_min_months ?? 1,
       // Costos fijos
@@ -139,7 +139,7 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
         latitude:      form.latitude ? Number(form.latitude) : null,
         longitude:     form.longitude ? Number(form.longitude) : null,
         photo_url:     form.photo_url || null,
-        banda_negativa: form.banda_negativa,
+        banda_negativa_enabled: form.banda_negativa,
         banda_negativa_rate:      form.banda_negativa_rate,
         banda_negativa_min_months: form.banda_negativa_min_months,
         cost_rent:                form.cost_rent,

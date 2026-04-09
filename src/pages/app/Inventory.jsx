@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Search, MapPin, List, LayoutGrid, ChevronDown, ChevronUp, Save, Pencil, RefreshCw } from 'lucide-react'
+import { Search, MapPin, List, LayoutGrid, ChevronDown, ChevronUp, Save, Pencil, RefreshCw, Download, Image } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { formatCurrency, formatDate } from '../../lib/utils'
 import Spinner from '../../components/ui/Spinner'
 import { FORMAT_MAP } from '../../lib/constants'
 import EditInventoryModal from '../../features/inventory/EditInventoryModal'
+import InventoryImportExport from '../../features/inventory/InventoryImportExport'
+import InventoryPhotosUpload from '../../features/inventory/InventoryPhotosUpload'
 
 const FETCH_TIMEOUT_MS = 10_000
 
@@ -373,7 +375,8 @@ function InventoryCard({ item, onEdit }) {
 // ── Main page ─────────────────────────────────────────────────
 
 export default function Inventory() {
-  const { profile } = useAuth()
+  const { profile, isOwner, isManager } = useAuth()
+  const canAdmin = isOwner || isManager
   const [items, setItems]         = useState([])
   const [loading, setLoading]     = useState(false)
   const [fetchError, setFetchError] = useState('')
@@ -381,7 +384,9 @@ export default function Inventory() {
   const [viewMode, setViewMode]   = useState(
     () => localStorage.getItem('inventory_view') ?? 'list'
   )
-  const [editingItem, setEditingItem] = useState(null)
+  const [editingItem, setEditingItem]         = useState(null)
+  const [showImportExport, setShowImportExport] = useState(false)
+  const [showPhotosUpload, setShowPhotosUpload] = useState(false)
 
   function toggleView(mode) {
     setViewMode(mode)
@@ -441,6 +446,22 @@ export default function Inventory() {
           <h2 className="text-lg font-bold text-white">Inventario</h2>
           <p className="text-sm text-slate-500">{items.length} espacios registrados</p>
         </div>
+
+        {/* Acciones owner/manager */}
+        {canAdmin && (
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setShowPhotosUpload(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-surface-700 bg-surface-800 px-3 py-1.5 text-xs font-medium text-slate-400 hover:border-brand/50 hover:text-slate-200 transition-colors">
+              <Image className="h-3.5 w-3.5" />
+              Subir fotos
+            </button>
+            <button type="button" onClick={() => setShowImportExport(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-surface-700 bg-surface-800 px-3 py-1.5 text-xs font-medium text-slate-400 hover:border-brand/50 hover:text-slate-200 transition-colors">
+              <Download className="h-3.5 w-3.5" />
+              Importar / Exportar
+            </button>
+          </div>
+        )}
 
         {/* Toggle lista / grilla */}
         <div className="flex items-center rounded-lg border border-surface-700 bg-surface-800 p-0.5">
@@ -509,6 +530,27 @@ export default function Inventory() {
           item={editingItem}
           onClose={() => setEditingItem(null)}
           onSaved={handleSaved}
+        />
+      )}
+
+      {/* Import / Export modal */}
+      {showImportExport && (
+        <InventoryImportExport
+          items={items}
+          orgName={profile?.organisations?.name}
+          orgId={profile?.org_id}
+          onImported={() => { loadItems(); setShowImportExport(false) }}
+          onClose={() => setShowImportExport(false)}
+        />
+      )}
+
+      {/* Bulk photos upload modal */}
+      {showPhotosUpload && (
+        <InventoryPhotosUpload
+          items={items}
+          orgId={profile?.org_id}
+          onDone={() => { loadItems(); setShowPhotosUpload(false) }}
+          onClose={() => setShowPhotosUpload(false)}
         />
       )}
     </div>
