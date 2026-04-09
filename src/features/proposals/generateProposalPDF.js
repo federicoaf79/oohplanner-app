@@ -233,7 +233,7 @@ async function renderOption(doc, { option, label, formData, orgName, mapBase64 }
     roundRect(doc, 14, y, 182, discount > 0 ? 28 : 18, 2, SURFACE)
     doc.setFontSize(8); setFont(doc, 'normal'); setTC(doc, LIGHT)
     doc.text('Precio de lista:', 18, y + 7)
-    setTC(doc, [100, 116, 139])
+    setFont(doc, 'bold'); setTC(doc, WHITE)
     doc.text(formatCurrency(listTotal), 192, y + 7, { align: 'right' })
 
     if (discount > 0) {
@@ -274,8 +274,10 @@ async function renderOption(doc, { option, label, formData, orgName, mapBase64 }
   y += 6
 
   for (const site of (option.sites ?? [])) {
+    const hasDiscount = site.client_price && site.client_price !== site.list_price
     const hasJ = !!site.justification
-    const rowH = hasJ ? 26 : 18
+    // Altura: nombre(7) + dirección(7) + precio(7) + justificación opcional(7) + padding
+    const rowH = hasJ ? 33 : 26
 
     if (y + rowH > 278) {
       doc.addPage()
@@ -285,33 +287,46 @@ async function renderOption(doc, { option, label, formData, orgName, mapBase64 }
     }
 
     roundRect(doc, 14, y, 182, rowH, 2, SURFACE)
-    setFont(doc, 'bold'); doc.setFontSize(8.5); setTC(doc, WHITE)
-    doc.text(truncate(doc, site.name ?? '—', site.is_mandatory ? 90 : 110), 18, y + 7)
 
+    // Línea 1: Nombre del cartel
+    setFont(doc, 'bold'); doc.setFontSize(8.5); setTC(doc, WHITE)
+    const nameMaxW = site.is_mandatory ? 120 : 145
+    doc.text(truncate(doc, site.name ?? '—', nameMaxW), 18, y + 7)
+
+    // Badge obligatorio
     if (site.is_mandatory) {
-      roundRect(doc, 112, y + 2, 22, 6, 1, [80, 50, 10])
+      roundRect(doc, 148, y + 2, 26, 6, 1, [80, 50, 10])
       setFont(doc, 'bold'); doc.setFontSize(6); setTC(doc, AMBER)
-      doc.text('OBLIGATORIO', 113, y + 6.5)
+      doc.text('OBLIGATORIO', 149, y + 6.5)
     }
 
+    // Formato (alineado a la derecha)
     const fmt = FORMAT_MAP[site.format]
     if (fmt) {
       setFont(doc, 'normal'); doc.setFontSize(7); setTC(doc, LIGHT)
       doc.text(fmt.label, 192, y + 7, { align: 'right' })
     }
 
+    // Línea 2: Dirección
     setFont(doc, 'normal'); doc.setFontSize(7.5); setTC(doc, LIGHT)
-    doc.text(truncate(doc, site.address ?? '', 115), 18, y + 14)
+    doc.text(truncate(doc, site.address ?? '', 140), 18, y + 14)
 
-    const priceStr = site.client_price && site.client_price !== site.list_price
-      ? `Lista: ${formatCurrency(site.list_price)}  →  Cliente: ${formatCurrency(site.client_price)}`
-      : formatCurrency(site.list_price ?? 0)
-    setFont(doc, 'bold'); doc.setFontSize(7.5); setTC(doc, [165, 180, 252])
-    doc.text(priceStr, 192, y + 14, { align: 'right' })
+    // Línea 3: Precios — siempre completos, nunca truncados
+    doc.setFontSize(7.5)
+    if (hasDiscount) {
+      setFont(doc, 'normal'); setTC(doc, [100, 116, 139])
+      doc.text(`Lista: ${formatCurrency(site.list_price)}`, 18, y + 21)
+      setFont(doc, 'bold'); setTC(doc, GREEN)
+      doc.text(`Cliente: ${formatCurrency(site.client_price)}`, 90, y + 21)
+    } else {
+      setFont(doc, 'bold'); setTC(doc, [165, 180, 252])
+      doc.text(formatCurrency(site.list_price ?? 0), 18, y + 21)
+    }
 
+    // Línea 4: Justificación
     if (hasJ) {
       setFont(doc, 'italic'); doc.setFontSize(7); setTC(doc, [100, 116, 139])
-      doc.text(`"${truncate(doc, site.justification, 170)}"`, 18, y + 21)
+      doc.text(`"${truncate(doc, site.justification, 170)}"`, 18, y + 28)
     }
 
     y += rowH + 2
