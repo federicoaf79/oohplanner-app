@@ -96,6 +96,10 @@ export default function ProposalNew() {
         await mockDelay()
         data = MOCK_RESPONSE
       } else {
+        // Obtener token de sesión actual
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.access_token) throw new Error('No hay sesión activa. Volvé a iniciar sesión.')
+
         const { data: fnData, error: fnError } = await supabase.functions.invoke('plan-pauta', {
           body: {
             formData: {
@@ -116,6 +120,9 @@ export default function ProposalNew() {
               audience:         formData.audience,
             },
             orgId: profile.org_id,
+          },
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
           },
         })
 
@@ -170,8 +177,6 @@ export default function ProposalNew() {
       selectedOption:   optionLabel,
     }
 
-    // Detecta si un error de Supabase es por columnas de migration_v3
-    // que aún no fueron ejecutadas en el SQL Editor.
     function isMissingColumnError(err) {
       const msg = err?.message ?? ''
       return msg.includes('discount_pct') ||
@@ -181,7 +186,6 @@ export default function ProposalNew() {
 
     try {
       if (isEditing && existingProposal) {
-        // ── Update existing proposal ──
         const updates = {
           title,
           client_name:  formData.clientName,
@@ -198,7 +202,6 @@ export default function ProposalNew() {
           .update(updates)
           .eq('id', existingProposal.id)
 
-        // Fallback: si migration_v3 no fue ejecutada, reintentar sin columnas nuevas
         if (upErr && isMissingColumnError(upErr)) {
           const { title: t, client_name, client_email, total_value, valid_until, brief_data } = updates
           const { error: upErr2 } = await supabase
@@ -210,7 +213,6 @@ export default function ProposalNew() {
 
         if (upErr) throw upErr
 
-        // Write history for changed fields
         const trackFields = {
           client_name:  [existingProposal.client_name,               formData.clientName],
           client_email: [existingProposal.client_email ?? '',        formData.clientEmail],
@@ -232,7 +234,6 @@ export default function ProposalNew() {
         }
 
       } else {
-        // ── Insert new proposal ──
         const fullInsert = {
           org_id:       profile.org_id,
           title,
@@ -252,7 +253,6 @@ export default function ProposalNew() {
           .select()
           .single()
 
-        // Fallback: si migration_v3 no fue ejecutada, reintentar sin columnas nuevas
         if (propErr && isMissingColumnError(propErr)) {
           const { org_id, title: t, client_name, client_email, total_value, valid_until, created_by, brief_data } = fullInsert
           const res2 = await supabase
@@ -266,7 +266,6 @@ export default function ProposalNew() {
 
         if (propErr) throw propErr
 
-        // Insert proposal_items
         const items = (option.sites ?? [])
           .filter(s => s.id && !s.id.startsWith('mock-'))
           .map(s => ({
@@ -292,7 +291,6 @@ export default function ProposalNew() {
     }
   }
 
-  // ── Progress indicator ──────────────────────────────────────
   const steps = [
     { n: 1, label: 'Brief' },
     { n: 2, label: 'Procesando' },
