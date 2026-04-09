@@ -7,90 +7,15 @@ import Button from '../../components/ui/Button'
 import { StatusBadge } from '../../components/ui/Badge'
 import { formatDate, formatCurrency } from '../../lib/utils'
 import Spinner from '../../components/ui/Spinner'
-import jsPDF from 'jspdf'
-
-function generateBasicPDF(proposal, orgName) {
-  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
-  const W = doc.internal.pageSize.getWidth()
-
-  // Header bar
-  doc.setFillColor(99, 102, 241)
-  doc.rect(0, 0, W, 22, 'F')
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(14)
-  doc.setFont('helvetica', 'bold')
-  doc.text('OOH Planner', 14, 14)
-  if (orgName) {
-    doc.setFontSize(9)
-    doc.setFont('helvetica', 'normal')
-    doc.text(orgName, W - 14, 14, { align: 'right' })
-  }
-
-  // Title
-  doc.setTextColor(30, 30, 30)
-  doc.setFontSize(16)
-  doc.setFont('helvetica', 'bold')
-  doc.text(proposal.title ?? 'Propuesta', 14, 38)
-
-  // Details
-  doc.setFontSize(11)
-  doc.setFont('helvetica', 'normal')
-  doc.setTextColor(80, 80, 80)
-
-  const lines = [
-    ['Cliente:', proposal.client_name ?? '—'],
-    ['Monto total:', proposal.total_value ? formatCurrency(proposal.total_value) : '—'],
-    ['Estado:', proposal.status ?? '—'],
-    ['Fecha:', formatDate(proposal.created_at)],
-  ]
-
-  if (proposal.discount_pct > 0) {
-    lines.push(['Descuento aplicado:', `${proposal.discount_pct}%`])
-  }
-
-  const brief = proposal.brief_data ?? {}
-  if (brief.startDate && brief.endDate) {
-    lines.push(['Período:', `${brief.startDate} al ${brief.endDate}`])
-  }
-  if (brief.cities?.length) {
-    lines.push(['Ciudades:', brief.cities.join(', ')])
-  }
-  if (brief.objective) {
-    lines.push(['Objetivo:', brief.objective])
-  }
-
-  let y = 52
-  lines.forEach(([label, value]) => {
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(50, 50, 50)
-    doc.text(label, 14, y)
-    doc.setFont('helvetica', 'normal')
-    doc.setTextColor(80, 80, 80)
-    doc.text(String(value), 60, y)
-    y += 9
-  })
-
-  // Footer
-  const pageCount = doc.internal.getNumberOfPages()
-  for (let i = 1; i <= pageCount; i++) {
-    doc.setPage(i)
-    doc.setFontSize(8)
-    doc.setTextColor(160, 160, 160)
-    doc.text(`Generado por OOH Planner · Pág. ${i} / ${pageCount}`, W / 2, 287, { align: 'center' })
-  }
-
-  const clientSlug = (proposal.client_name ?? 'propuesta').replace(/\s+/g, '_')
-  const date = new Date(proposal.created_at).toISOString().slice(0, 10)
-  doc.save(`Propuesta_${clientSlug}_${date}.pdf`)
-}
+import { generateProposalPDF } from '../../features/proposals/generateProposalPDF'
 
 export default function Proposals() {
-  const { profile, isOwner, isManager, isSalesperson } = useAuth()
+  const { profile, isOwner, isManager, isSalesperson, org } = useAuth()
   const navigate = useNavigate()
 
-  const [proposals, setProposals] = useState([])
-  const [loading, setLoading]     = useState(false)
-  const [search, setSearch]       = useState('')
+  const [proposals, setProposals]     = useState([])
+  const [loading, setLoading]         = useState(false)
+  const [search, setSearch]           = useState('')
   const [generatingPDF, setGeneratingPDF] = useState(null)
 
   useEffect(() => {
@@ -123,10 +48,91 @@ export default function Proposals() {
   async function handlePDF(p) {
     setGeneratingPDF(p.id)
     try {
-      const orgName = profile?.organisations?.name ?? ''
-      generateBasicPDF(p, orgName)
+      // Buscar los carteles guardados en proposal_items + inventory
+      const { data: items } = await supabase
+        .from('proposal_items')
+        .select(`
+          rate,
+          notes,
+          site:inventory(
+            id, name, address, city, format,
+            latitude, longitude, daily_traffic,
+            base_rate, photo_url
+          )
+        `)
+        .eq('proposal_id', p.id)
+
+      const sites = (items ?? [])
+        .filter(i => i.site)
+        .map(i => ({
+          id:              i.site.id,
+          name:            i.site.name,
+          address:         i.site.address,
+          city:            i.site.city,
+          format:          i.site.format,
+          latitude:        i.site.latitude,
+          longitude:       i.site.longitude,
+          monthly_impacts: i.site.daily_traffic ? i.site.daily_traffic * 30 : 0,
+          list_price:      i.rate ?? i.site.base_rate ?? 0,
+          client_price:    i.rate
+            ? Math.round(i.rate * (1 - (p.discount_pct ?? 0) / 100))
+            : 0,
+          justification:   i.notes ?? null,
+          photo_url:       i.site.photo_url ?? null,
+        }))
+
+      const brief = p.brief_data ?? {}
+
+      // Reconstruir formData desde brief_data
+      const formData = {
+        clientName:   p.client_name ?? '',
+        clientEmail:  p.client_email ?? '',
+        objective:    brief.objective ?? '',
+        formats:      brief.formats ?? [],
+        provinces:    brief.provinces ?? [],
+        cities:       brief.cities ?? [brief.city ?? ''],
+        budget:       brief.budget ?? '0',
+        discountPct:  p.discount_pct ?? 0,
+        startDate:    brief.startDate ?? '',
+        endDate:      brief.endDate ?? p.valid_until ?? '',
+        audience:     brief.audience ?? {},
+      }
+
+      // Calcular totales
+      const discount    = p.discount_pct ?? 0
+      const listTotal   = sites.reduce((s, x) => s + (x.list_price ?? 0), 0)
+      const clientTotal = p.total_value ?? Math.round(listTotal * (1 - discount / 100))
+      const totalImpacts = sites.reduce((s, x) => s + (x.monthly_impacts ?? 0), 0)
+
+      // Armar results con una sola opción (la guardada)
+      const optionLabel = brief.selectedOption === 'B' ? 'Máximo Impacto' : 'Máximo Alcance'
+      const singleOption = {
+        title:             optionLabel,
+        rationale:         null,
+        sites,
+        total_list_price:  listTotal,
+        total_client_price: clientTotal,
+        discount_amount:   listTotal - clientTotal,
+        budget_remaining:  Math.max(0, Number(brief.budget ?? 0) - clientTotal),
+        next_billboard_gap: 0,
+        total_impacts:     totalImpacts,
+        estimated_reach:   Math.round(totalImpacts * 0.19),
+        cpm:               totalImpacts > 0 ? Math.round((clientTotal / totalImpacts) * 1000) : 0,
+        format_mix:        {},
+      }
+
+      const results = {
+        optionA: singleOption,
+        optionB: null,
+        audience_mode: 'full',
+        audience_note: null,
+      }
+
+      await generateProposalPDF({ results, formData, profile, org })
+
     } catch (err) {
       console.error('PDF error:', err)
+      alert('Error al generar el PDF: ' + err.message)
     } finally {
       setGeneratingPDF(null)
     }
@@ -135,7 +141,14 @@ export default function Proposals() {
   function handleWhatsApp(p) {
     const monto = p.total_value ? formatCurrency(p.total_value) : 'a consultar'
     const fecha = formatDate(p.created_at)
-    const msg = `Hola! Te comparto la propuesta de pauta OOH para ${p.client_name ?? 'tu empresa'}:\n📋 ${p.title}\n💰 Inversión: ${monto}\n📅 Generada: ${fecha}\n\nPara ver el detalle completo, solicitá acceso a la plataforma OOH Planner.`
+    const msg = [
+      `Hola! Te comparto la propuesta de pauta OOH para ${p.client_name ?? 'tu empresa'}:`,
+      `📋 ${p.title}`,
+      `💰 Inversión: ${monto}`,
+      `📅 Generada: ${fecha}`,
+      ``,
+      `Para ver el detalle completo, solicitá acceso a la plataforma OOH Planner.`,
+    ].join('\n')
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
   }
 
@@ -188,7 +201,6 @@ export default function Proposals() {
                   </div>
                 </div>
 
-                {/* Action buttons */}
                 <div className="shrink-0 flex items-center gap-1.5">
                   {/* PDF */}
                   <button
@@ -198,7 +210,10 @@ export default function Proposals() {
                     className="flex items-center gap-1 rounded-lg border border-surface-600 bg-surface-800 px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:border-brand/40 hover:text-brand transition-colors disabled:opacity-50"
                     title="Descargar PDF"
                   >
-                    <Download className="h-3 w-3" />
+                    {generatingPDF === p.id
+                      ? <span className="h-3 w-3 animate-spin rounded-full border border-slate-600 border-t-brand" />
+                      : <Download className="h-3 w-3" />
+                    }
                     PDF
                   </button>
 
