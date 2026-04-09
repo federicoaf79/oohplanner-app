@@ -69,15 +69,30 @@ function renderFooter(doc, vendorName, orgName, pageNum, totalPages) {
 
 async function fetchStaticMap(sites) {
   try {
-    const validSites = (sites ?? []).filter(s => s.latitude && s.longitude)
+    const validSites = (sites ?? []).filter(s =>
+      s.latitude != null && s.longitude != null &&
+      !isNaN(Number(s.latitude)) && !isNaN(Number(s.longitude))
+    )
     if (validSites.length === 0) return null
-    const avgLat = validSites.reduce((s, x) => s + x.latitude, 0) / validSites.length
-    const avgLon = validSites.reduce((s, x) => s + x.longitude, 0) / validSites.length
-    const markers = validSites.map(s => `${s.latitude},${s.longitude},red-pushpin`).join('|')
-    const url = `https://staticmap.openstreetmap.de/staticmap.php?center=${avgLat},${avgLon}&zoom=12&size=560x220&markers=${markers}`
-    const response = await fetch(url)
+
+    const avgLat = validSites.reduce((s, x) => s + Number(x.latitude), 0) / validSites.length
+    const avgLon = validSites.reduce((s, x) => s + Number(x.longitude), 0) / validSites.length
+    const markers = validSites
+      .map(s => `${Number(s.latitude).toFixed(6)},${Number(s.longitude).toFixed(6)},red-pushpin`)
+      .join('|')
+
+    const url = `https://staticmap.openstreetmap.de/staticmap.php?center=${avgLat.toFixed(6)},${avgLon.toFixed(6)}&zoom=12&size=560x220&markers=${markers}`
+
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 8000)
+
+    const response = await fetch(url, { signal: controller.signal })
+    clearTimeout(timeout)
+
     if (!response.ok) return null
     const blob = await response.blob()
+    if (!blob.type.startsWith('image/')) return null
+
     return new Promise((resolve) => {
       const reader = new FileReader()
       reader.onload = () => resolve(reader.result)
@@ -205,6 +220,7 @@ async function renderOption(doc, { option, label, formData, orgName, mapBase64 }
     y += 22
   }
 
+  // Métricas
   const metrics = [
     { label: 'Impactos/mes',    value: option.total_impacts    ? `~${(option.total_impacts / 1000).toFixed(0)}k`   : '—' },
     { label: 'Alcance estimado',value: option.estimated_reach  ? `~${(option.estimated_reach / 1000).toFixed(0)}k` : '—' },
@@ -222,6 +238,7 @@ async function renderOption(doc, { option, label, formData, orgName, mapBase64 }
   })
   y += 24
 
+  // Desglose precio
   const discount    = formData.discountPct ?? 0
   const listTotal   = option.total_list_price ?? 0
   const clientTotal = option.total_client_price ?? 0
@@ -265,19 +282,29 @@ async function renderOption(doc, { option, label, formData, orgName, mapBase64 }
     y += 4
   }
 
+  // Mapa
   if (mapBase64) {
-    try { doc.addImage(mapBase64, 'PNG', 14, y, 182, 52); y += 56 } catch { y += 2 }
+    try {
+      doc.addImage(mapBase64, 'JPEG', 14, y, 182, 52)
+      y += 56
+    } catch {
+      try {
+        doc.addImage(mapBase64, 'PNG', 14, y, 182, 52)
+        y += 56
+      } catch {
+        y += 2
+      }
+    }
   }
 
+  // Carteles
   setFont(doc, 'bold'); doc.setFontSize(9); setTC(doc, LIGHT)
   doc.text(`Carteles seleccionados (${(option.sites ?? []).length})`, 14, y)
   y += 6
 
   for (const site of (option.sites ?? [])) {
-    const hasDiscount = site.client_price && site.client_price !== site.list_price
     const hasJ = !!site.justification
-    // Altura: nombre(7) + dirección(7) + precio(7) + justificación opcional(7) + padding
-    const rowH = hasJ ? 33 : 26
+    const rowH = hasJ ? 26 : 19
 
     if (y + rowH > 278) {
       doc.addPage()
@@ -288,9 +315,9 @@ async function renderOption(doc, { option, label, formData, orgName, mapBase64 }
 
     roundRect(doc, 14, y, 182, rowH, 2, SURFACE)
 
-    // Línea 1: Nombre del cartel
+    // Nombre
     setFont(doc, 'bold'); doc.setFontSize(8.5); setTC(doc, WHITE)
-    const nameMaxW = site.is_mandatory ? 120 : 145
+    const nameMaxW = site.is_mandatory ? 110 : 130
     doc.text(truncate(doc, site.name ?? '—', nameMaxW), 18, y + 7)
 
     // Badge obligatorio
@@ -300,33 +327,26 @@ async function renderOption(doc, { option, label, formData, orgName, mapBase64 }
       doc.text('OBLIGATORIO', 149, y + 6.5)
     }
 
-    // Formato (alineado a la derecha)
+    // Formato
     const fmt = FORMAT_MAP[site.format]
     if (fmt) {
       setFont(doc, 'normal'); doc.setFontSize(7); setTC(doc, LIGHT)
       doc.text(fmt.label, 192, y + 7, { align: 'right' })
     }
 
-    // Línea 2: Dirección
+    // Dirección + precio cliente (solo precio con descuento aplicado)
     setFont(doc, 'normal'); doc.setFontSize(7.5); setTC(doc, LIGHT)
-    doc.text(truncate(doc, site.address ?? '', 140), 18, y + 14)
+    doc.text(truncate(doc, site.address ?? '', 120), 18, y + 14)
 
-    // Línea 3: Precios — siempre completos, nunca truncados
-    doc.setFontSize(7.5)
-    if (hasDiscount) {
-      setFont(doc, 'normal'); setTC(doc, [100, 116, 139])
-      doc.text(`Lista: ${formatCurrency(site.list_price)}`, 18, y + 21)
-      setFont(doc, 'bold'); setTC(doc, GREEN)
-      doc.text(`Cliente: ${formatCurrency(site.client_price)}`, 90, y + 21)
-    } else {
-      setFont(doc, 'bold'); setTC(doc, [165, 180, 252])
-      doc.text(formatCurrency(site.list_price ?? 0), 18, y + 21)
-    }
+    // Solo mostrar precio cliente (ya con descuento aplicado)
+    const precioCliente = site.client_price ?? site.list_price ?? 0
+    setFont(doc, 'bold'); doc.setFontSize(7.5); setTC(doc, GREEN)
+    doc.text(formatCurrency(precioCliente), 192, y + 14, { align: 'right' })
 
-    // Línea 4: Justificación
+    // Justificación
     if (hasJ) {
       setFont(doc, 'italic'); doc.setFontSize(7); setTC(doc, [100, 116, 139])
-      doc.text(`"${truncate(doc, site.justification, 170)}"`, 18, y + 28)
+      doc.text(`"${truncate(doc, site.justification, 170)}"`, 18, y + 21)
     }
 
     y += rowH + 2
