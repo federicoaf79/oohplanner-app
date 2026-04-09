@@ -7,8 +7,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// ── Tipos ────────────────────────────────────────────────────
-
 interface FormData {
   clientName: string
   clientEmail?: string
@@ -47,11 +45,9 @@ interface InventoryItem {
   cluster_audiencia: string | null
 }
 
-// ── Prompts ──────────────────────────────────────────────────
-
 const SYSTEM_PROMPT = `Sos un experto en planificación publicitaria OOH en Argentina.
 Conocés el mercado de vía pública, los corredores publicitarios y la comercialización por agencias.
-Respondé EXCLUSIVAMENTE con JSON válido, sin markdown, sin texto extra, sin bloques de código.`
+Respondé EXCLUSIVAMENTE con JSON válido. No uses markdown, no uses bloques de código, no uses comillas triples. Solo el objeto JSON puro.`
 
 function buildUserPrompt(fd: FormData, inventory: InventoryItem[], mandatoryIds: Set<string>, corridorName: string | null, audienceMode: string): string {
   const budget = Number(fd.budget) || 0
@@ -130,59 +126,35 @@ INSTRUCCIONES:
 8. Opción B "Máximo Impacto": mejor match de audiencia, mayor tráfico y ubicaciones premium
 ${audienceMode === 'geographic_only' ? '9. En Opción B, priorizar carteles con mayor daily_traffic y densidad poblacional de la zona' : ''}
 
-JSON DE RESPUESTA (seguir EXACTAMENTE este esquema):
-{
-  "audience_mode": "${audienceMode}",
-  "audience_note": ${audienceMode === 'geographic_only' ? '"No hay datos de audiencia para esta zona. La planificación se basa en tránsito y densidad poblacional."' : 'null'},
-  "optionA": {
-    "title": "Máximo Alcance",
-    "rationale": "2 oraciones explicando la estrategia de la opción A",
-    "sites": [
-      {
-        "id": "el uuid exacto del cartel",
-        "name": "nombre",
-        "address": "dirección",
-        "city": "ciudad",
-        "province": "provincia inferida",
-        "format": "formato",
-        "latitude": 0.0,
-        "longitude": 0.0,
-        "monthly_impacts": 0,
-        "list_price": 0,
-        "client_price": 0,
-        "audience_score": 85,
-        "is_mandatory": false,
-        "justification": "1 oración explicando por qué este cartel"
-      }
-    ],
-    "total_list_price": 0,
-    "total_client_price": 0,
-    "discount_amount": 0,
-    "budget_remaining": 0,
-    "next_billboard_gap": 0,
-    "total_impacts": 0,
-    "estimated_reach": 0,
-    "cpm": 0,
-    "format_mix": {"billboard": 0, "digital": 0}
-  },
-  "optionB": {
-    "title": "Máximo Impacto",
-    "rationale": "2 oraciones explicando la estrategia de la opción B",
-    "sites": [ ...mismo esquema que optionA... ],
-    "total_list_price": 0,
-    "total_client_price": 0,
-    "discount_amount": 0,
-    "budget_remaining": 0,
-    "next_billboard_gap": 0,
-    "total_impacts": 0,
-    "estimated_reach": 0,
-    "cpm": 0,
-    "format_mix": {}
-  }
-}`
+RESPUESTA REQUERIDA — devolvé ÚNICAMENTE este JSON sin ningún texto adicional:
+{"audience_mode":"${audienceMode}","audience_note":${audienceMode === 'geographic_only' ? '"No hay datos de audiencia para esta zona. La planificación se basa en tránsito y densidad poblacional."' : 'null'},"optionA":{"title":"Máximo Alcance","rationale":"explica la estrategia","sites":[{"id":"uuid","name":"nombre","address":"dirección","city":"ciudad","province":"provincia","format":"formato","latitude":0.0,"longitude":0.0,"monthly_impacts":0,"list_price":0,"client_price":0,"audience_score":75,"is_mandatory":false,"justification":"razón"}],"total_list_price":0,"total_client_price":0,"discount_amount":0,"budget_remaining":0,"next_billboard_gap":0,"total_impacts":0,"estimated_reach":0,"cpm":0,"format_mix":{}},"optionB":{"title":"Máximo Impacto","rationale":"explica la estrategia","sites":[],"total_list_price":0,"total_client_price":0,"discount_amount":0,"budget_remaining":0,"next_billboard_gap":0,"total_impacts":0,"estimated_reach":0,"cpm":0,"format_mix":{}}}`
 }
 
-// ── Handler ─────────────────────────────────────────────────
+/** Extrae el primer objeto JSON válido del texto */
+function extractJSON(text: string): string {
+  // Remover bloques de código markdown
+  let clean = text
+    .replace(/^```[a-zA-Z]*\s*/gm, '')
+    .replace(/```\s*$/gm, '')
+    .trim()
+
+  // Buscar el primer { y el último } balanceado
+  const start = clean.indexOf('{')
+  if (start === -1) throw new Error('No se encontró JSON en la respuesta')
+
+  let depth = 0
+  let end = -1
+  for (let i = start; i < clean.length; i++) {
+    if (clean[i] === '{') depth++
+    else if (clean[i] === '}') {
+      depth--
+      if (depth === 0) { end = i; break }
+    }
+  }
+
+  if (end === -1) throw new Error('JSON incompleto en la respuesta')
+  return clean.slice(start, end + 1)
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -204,7 +176,6 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     )
 
-    const discountPct = formData.discountPct ?? 0
     const cities  = formData.cities  ?? []
     const formats = formData.formats ?? []
 
@@ -256,8 +227,6 @@ serve(async (req) => {
       }
     }
 
-    // Asegurar que los carteles obligatorios estén en el inventario
-    // (puede haber obligatorios fuera de la zona filtrada — agregarlos)
     if (mandatoryIds.size > 0) {
       const presentIds = new Set(inventory.map(i => i.id))
       const missingMandatory = [...mandatoryIds].filter(id => !presentIds.has(id))
@@ -268,9 +237,7 @@ serve(async (req) => {
           .select('id, name, format, address, city, latitude, longitude, daily_traffic, base_rate, illuminated, cluster_audiencia')
           .in('id', missingMandatory)
 
-        if (extra) {
-          inventory.push(...extra)
-        }
+        if (extra) inventory.push(...extra)
       }
     }
 
@@ -286,7 +253,7 @@ serve(async (req) => {
 
     const message = await anthropic.messages.create({
       model:       'claude-haiku-4-5-20251001',
-      max_tokens:  4000,
+      max_tokens:  4096,
       temperature: 0.2,
       system:      SYSTEM_PROMPT,
       messages:    [{ role: 'user', content: buildUserPrompt(formData as FormData, inventory, mandatoryIds, corridorName, audienceMode) }],
@@ -294,15 +261,16 @@ serve(async (req) => {
 
     const rawText = (message.content[0] as { text: string }).text.trim()
 
-    // ── PASO 5: Parsear y devolver ───────────────────────────
+    // ── PASO 5: Parsear con extractor robusto ────────────────
     let result
     try {
-      const jsonStr = rawText.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim()
+      const jsonStr = extractJSON(rawText)
       result = JSON.parse(jsonStr)
-    } catch {
-      console.error('Claude raw response:', rawText.slice(0, 500))
+    } catch (parseErr) {
+      console.error('Parse error:', (parseErr as Error).message)
+      console.error('Claude raw response (first 500):', rawText.slice(0, 500))
       return new Response(
-        JSON.stringify({ error: 'La IA no devolvió JSON válido. Intentá de nuevo.', raw: rawText.slice(0, 300) }),
+        JSON.stringify({ error: 'La IA no devolvió JSON válido. Intentá de nuevo.' }),
         { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
