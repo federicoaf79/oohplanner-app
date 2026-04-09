@@ -1,14 +1,13 @@
 import { useState } from 'react'
 import {
   MapPin, TrendingUp, DollarSign, Target, Users,
-  Save, Printer, MessageCircle, ChevronRight, Star,
-  Clock, CheckCircle, Tag, Loader2
+  Save, Printer, MessageCircle, Star,
+  Clock, CheckCircle, Tag, Loader2, Info
 } from 'lucide-react'
 import ProposalMap from './ProposalMap'
 import { FORMAT_MAP } from '../../lib/constants'
 import { formatCurrency } from '../../lib/utils'
 import Button from '../../components/ui/Button'
-import Card from '../../components/ui/Card'
 import { useAuth } from '../../context/AuthContext'
 import { generateProposalPDF } from './generateProposalPDF'
 
@@ -49,17 +48,31 @@ function ScoreBar({ score }) {
   )
 }
 
-function BillboardCard({ site, idx }) {
+function BillboardCard({ site }) {
   return (
     <div className="card p-4 flex gap-4 hover:border-brand/30 transition-colors">
-      {/* Placeholder image */}
-      <div className="shrink-0 h-16 w-20 rounded-lg overflow-hidden bg-surface-700 flex items-center justify-center">
-        <MapPin className="h-6 w-6 text-slate-600" />
-      </div>
+      {/* Photo or placeholder */}
+      {site.photo_url ? (
+        <img src={site.photo_url} alt={site.name}
+          className="shrink-0 h-16 w-20 rounded-lg object-cover" />
+      ) : (
+        <div className="shrink-0 h-16 w-20 rounded-lg overflow-hidden bg-surface-700 flex items-center justify-center">
+          <MapPin className="h-6 w-6 text-slate-600" />
+        </div>
+      )}
 
       <div className="min-w-0 flex-1">
         <div className="flex items-start justify-between gap-2 flex-wrap">
-          <p className="text-sm font-semibold text-white leading-tight">{site.name}</p>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-white leading-tight">
+              {site.name}
+              {site.is_mandatory && (
+                <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-500/15 px-1.5 py-0.5 text-xs font-medium text-amber-400">
+                  Obligatorio
+                </span>
+              )}
+            </p>
+          </div>
           <FormatBadge format={site.format} />
         </div>
         <p className="mt-0.5 text-xs text-slate-500 truncate">{site.address}</p>
@@ -67,16 +80,22 @@ function BillboardCard({ site, idx }) {
         <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
           <span className="text-slate-500">Impactos/mes</span>
           <span className="font-medium text-slate-300">
-            {site.impactsPerMonth ? `~${(site.impactsPerMonth / 1000).toFixed(0)}k` : '—'}
+            {site.monthly_impacts ? `~${(site.monthly_impacts / 1000).toFixed(0)}k` : '—'}
           </span>
-          <span className="text-slate-500">Tarifa</span>
-          <span className="font-medium text-slate-300">{formatCurrency(site.rate, 'ARS')}</span>
+          <span className="text-slate-500">Precio lista</span>
+          <span className="font-medium text-slate-300">{formatCurrency(site.list_price, 'ARS')}</span>
+          {site.client_price !== site.list_price && (
+            <>
+              <span className="text-slate-500">Precio cliente</span>
+              <span className="font-semibold text-emerald-400">{formatCurrency(site.client_price, 'ARS')}</span>
+            </>
+          )}
         </div>
 
-        {site.audienceMatchScore != null && (
+        {site.audience_score != null && (
           <div className="mt-2">
             <p className="text-xs text-slate-500 mb-1">Match audiencia</p>
-            <ScoreBar score={site.audienceMatchScore} />
+            <ScoreBar score={site.audience_score} />
           </div>
         )}
 
@@ -88,14 +107,28 @@ function BillboardCard({ site, idx }) {
   )
 }
 
-function OptionPanel({ option, formData }) {
+function OptionPanel({ option, formData, audienceNote }) {
   if (!option) return null
-  const { sites = [], metrics = {}, rationale } = option
+  const { sites = [], rationale } = option
 
-  const formatMix = metrics.formatMix ?? {}
+  const formatMix = option.format_mix ?? {}
+
+  const budgetPct = (() => {
+    const budget = Number(formData.budget ?? 0)
+    if (!budget || !option.total_client_price) return null
+    return Math.min(100, Math.round((option.total_client_price / budget) * 100))
+  })()
 
   return (
     <div className="space-y-5 animate-fade-in">
+      {/* Audience geographic-only note */}
+      {audienceNote && (
+        <div className="flex gap-2.5 rounded-xl border border-blue-500/20 bg-blue-500/5 p-3.5">
+          <Info className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />
+          <p className="text-xs text-blue-300/90 leading-relaxed">{audienceNote}</p>
+        </div>
+      )}
+
       {/* Rationale */}
       {rationale && (
         <div className="rounded-xl border border-brand/20 bg-brand/5 p-4">
@@ -109,28 +142,24 @@ function OptionPanel({ option, formData }) {
       {/* Metrics */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard icon={Users} label="Impactos/mes" color="text-blue-400"
-          value={metrics.totalImpactsPerMonth
-            ? `${(metrics.totalImpactsPerMonth / 1000).toFixed(0)}k`
-            : '—'}
+          value={option.total_impacts ? `${(option.total_impacts / 1000).toFixed(0)}k` : '—'}
           sub="Impresiones brutas" />
         <MetricCard icon={TrendingUp} label="Alcance estimado" color="text-emerald-400"
-          value={metrics.estimatedReach
-            ? `${(metrics.estimatedReach / 1000).toFixed(0)}k`
-            : '—'}
+          value={option.estimated_reach ? `${(option.estimated_reach / 1000).toFixed(0)}k` : '—'}
           sub="Personas únicas" />
         <MetricCard icon={DollarSign} label="CPM estimado" color="text-amber-400"
-          value={metrics.estimatedCPM ? `$${metrics.estimatedCPM}` : '—'}
+          value={option.cpm ? `$${option.cpm}` : '—'}
           sub="Costo por mil impactos" />
         <MetricCard icon={Target} label="Presupuesto usado" color="text-purple-400"
-          value={metrics.budgetUsedPct ? `${Math.round(metrics.budgetUsedPct)}%` : '—'}
-          sub={metrics.totalRate ? formatCurrency(metrics.totalRate, 'ARS') : ''} />
+          value={budgetPct != null ? `${budgetPct}%` : '—'}
+          sub={option.total_client_price ? formatCurrency(option.total_client_price, 'ARS') : ''} />
       </div>
 
       {/* Format mix */}
       {Object.keys(formatMix).length > 0 && (
         <div className="flex items-center gap-4 flex-wrap text-xs">
           <span className="text-slate-500 font-medium">Mix:</span>
-          {Object.entries(formatMix).filter(([,v]) => v > 0).map(([fmt, count]) => (
+          {Object.entries(formatMix).filter(([, v]) => v > 0).map(([fmt, count]) => (
             <span key={fmt} className="flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full"
                 style={{ background: FORMAT_MAP[fmt]?.color ?? '#64748b' }} />
@@ -150,7 +179,7 @@ function OptionPanel({ option, formData }) {
         </h3>
         <div className="space-y-3">
           {sites.map((site, i) => (
-            <BillboardCard key={site.site_id ?? i} site={site} idx={i} />
+            <BillboardCard key={site.id ?? i} site={site} />
           ))}
         </div>
       </div>
@@ -158,20 +187,16 @@ function OptionPanel({ option, formData }) {
   )
 }
 
-function PriceBreakdown({ formData, totalListRate }) {
+function PriceBreakdown({ formData, option }) {
   const discount = formData.discountPct ?? 0
-  if (!totalListRate) return null
-  const discountAmt  = Math.round(totalListRate * discount / 100)
-  const clientTotal  = totalListRate - discountAmt
+  const listTotal  = option?.total_list_price ?? 0
+  const clientTotal = option?.total_client_price ?? 0
+  const discountAmt = option?.discount_amount ?? Math.round(listTotal * discount / 100)
+  const budgetRaw  = Number(formData.budget ?? 0)
+  const remaining  = option?.budget_remaining ?? Math.max(0, budgetRaw - clientTotal)
+  const gap        = option?.next_billboard_gap ?? 0
 
-  // Cuánto falta para agregar 1 cartel más
-  const avgRate      = totalListRate / Math.max(1, formData._sitesCount ?? 1)
-  const effAvgRate   = Math.round(avgRate * (1 - discount / 100))
-  const usedBudget   = clientTotal
-  const budgetRaw    = Number(formData.budget ?? 0)
-  const remaining    = budgetRaw - usedBudget
-  const nextCost     = effAvgRate
-  const diffForNext  = nextCost > 0 ? nextCost - remaining : null
+  if (!listTotal) return null
 
   return (
     <div className="card p-4">
@@ -182,7 +207,9 @@ function PriceBreakdown({ formData, totalListRate }) {
       <div className="space-y-2 text-sm">
         <div className="flex justify-between items-center">
           <span className="text-slate-500">Precio de lista</span>
-          <span className="text-slate-400 line-through">{formatCurrency(totalListRate)}</span>
+          <span className={discount > 0 ? 'text-slate-400 line-through' : 'text-slate-200'}>
+            {formatCurrency(listTotal)}
+          </span>
         </div>
         {discount > 0 && (
           <div className="flex justify-between items-center text-emerald-400">
@@ -194,10 +221,16 @@ function PriceBreakdown({ formData, totalListRate }) {
           <span>Total cliente</span>
           <span className="text-lg">{formatCurrency(clientTotal)}</span>
         </div>
+        {remaining > 0 && (
+          <div className="flex justify-between items-center text-xs text-slate-500 border-t border-surface-700/50 pt-1.5">
+            <span>Presupuesto restante</span>
+            <span className="text-slate-400">{formatCurrency(remaining)}</span>
+          </div>
+        )}
       </div>
-      {remaining >= 0 && remaining < nextCost && diffForNext > 0 && (
+      {gap > 0 && (
         <p className="mt-3 text-xs text-blue-400 bg-blue-500/10 rounded-lg px-3 py-2">
-          Diferencia: {formatCurrency(remaining)} disponible — con {formatCurrency(diffForNext)} más podés agregar 1 cartel
+          Con {formatCurrency(gap)} más podés agregar el siguiente cartel disponible.
         </p>
       )}
       {formData._pendingApproval && (
@@ -225,20 +258,23 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
   const [generatingPDF, setGeneratingPDF] = useState(false)
 
   const activeOption = activeTab === 'A' ? results?.optionA : results?.optionB
+  const audienceNote = results?.audience_mode === 'geographic_only' ? results?.audience_note : null
+
+  const locationLabel = (formData.cities ?? []).join(', ') || formData.city || '—'
 
   function handleWhatsApp() {
     if (!activeOption) return
-    const { metrics, sites = [] } = activeOption
+    const { sites = [] } = activeOption
     const text = [
       `*Propuesta OOH — ${formData.clientName}*`,
       `Objetivo: ${formData.objective}`,
-      `Ciudad: ${formData.city}`,
+      `Zona: ${locationLabel}`,
       ``,
-      `*${activeOption.label}*`,
+      `*${activeOption.title ?? activeTab}*`,
       `• ${sites.length} carteles seleccionados`,
-      `• Impactos/mes: ~${((metrics?.totalImpactsPerMonth ?? 0) / 1000).toFixed(0)}k`,
-      `• CPM estimado: $${metrics?.estimatedCPM ?? '—'}`,
-      `• Inversión: ${formatCurrency(metrics?.totalRate ?? 0, 'ARS')}/mes`,
+      `• Impactos/mes: ~${((activeOption.total_impacts ?? 0) / 1000).toFixed(0)}k`,
+      `• CPM estimado: $${activeOption.cpm ?? '—'}`,
+      `• Inversión: ${formatCurrency(activeOption.total_client_price ?? 0, 'ARS')}/mes`,
       ``,
       `Generado con OOH Planner IA`,
     ].join('\n')
@@ -270,11 +306,10 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
             Pauta planificada para <span className="text-brand">{formData.clientName}</span>
           </h2>
           <p className="text-sm text-slate-500">
-            {formData.city} · {formData.startDate} → {formData.endDate}
+            {locationLabel} · {formData.startDate} → {formData.endDate}
           </p>
         </div>
 
-        {/* Action buttons */}
         <div className="flex flex-wrap gap-2">
           <button onClick={handleWhatsApp}
             className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-400 hover:bg-emerald-500/20 transition-colors">
@@ -282,7 +317,7 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
             <span className="hidden sm:inline">WhatsApp</span>
           </button>
           <button onClick={handlePDF} disabled={generatingPDF}
-            className="flex items-center gap-1.5 rounded-lg border border-surface-700 bg-surface-800 px-3 py-2 text-sm font-medium text-slate-400 hover:bg-surface-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
+            className="flex items-center gap-1.5 rounded-lg border border-surface-700 bg-surface-800 px-3 py-2 text-sm font-medium text-slate-400 hover:bg-surface-700 transition-colors disabled:opacity-50">
             {generatingPDF
               ? <Loader2 className="h-4 w-4 animate-spin" />
               : <Printer className="h-4 w-4" />}
@@ -298,34 +333,27 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
       {/* Tabs */}
       <div className="flex gap-2 rounded-xl border border-surface-700 bg-surface-800 p-1">
         {[
-          { key: 'A', label: results?.optionA?.label ?? 'Opción A' },
-          { key: 'B', label: results?.optionB?.label ?? 'Opción B' },
+          { key: 'A', label: results?.optionA?.title ?? 'Máximo Alcance' },
+          { key: 'B', label: results?.optionB?.title ?? 'Máximo Impacto' },
         ].map(tab => (
-          <button
-            key={tab.key}
+          <button key={tab.key}
             onClick={() => { setActiveTab(tab.key); setSaved(false) }}
             className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all ${
               activeTab === tab.key
                 ? 'bg-brand text-white shadow-sm'
                 : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <span className="font-bold mr-1.5">
-              {tab.key === 'A' ? '⚡' : '🎯'}
-            </span>
+            }`}>
+            <span className="font-bold mr-1.5">{tab.key === 'A' ? '⚡' : '🎯'}</span>
             {tab.label}
           </button>
         ))}
       </div>
 
       {/* Price breakdown */}
-      <PriceBreakdown
-        formData={{ ...formData, _sitesCount: activeOption?.sites?.length ?? 0 }}
-        totalListRate={activeOption?.metrics?.totalRate}
-      />
+      <PriceBreakdown formData={formData} option={activeOption} />
 
       {/* Active option content */}
-      <OptionPanel option={activeOption} formData={formData} />
+      <OptionPanel option={activeOption} formData={formData} audienceNote={audienceNote} />
     </div>
   )
 }

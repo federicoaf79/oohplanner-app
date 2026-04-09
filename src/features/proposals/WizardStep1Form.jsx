@@ -1,9 +1,10 @@
-import { useState, useRef } from 'react'
-import { CheckCircle, Upload, X, ChevronDown, AlertTriangle, Info } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { CheckCircle, Upload, X, ChevronDown, AlertTriangle, Info, Search, MapPin } from 'lucide-react'
 import {
   OOH_FORMATS, CAMPAIGN_OBJECTIVES, AUDIENCE_INTERESTS,
-  NSE_OPTIONS, DIGITAL_FREQUENCIES, CABA_CITIES,
+  NSE_OPTIONS, DIGITAL_FREQUENCIES, PROVINCES_CITIES,
 } from '../../lib/constants'
+import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
@@ -85,6 +86,45 @@ export default function WizardStep1Form({ formData, setFormData, onSubmit }) {
   const [imagePreview, setImagePreview] = useState(null)
   const fileRef = useRef(null)
 
+  // Corredores
+  const [corridors, setCorridors] = useState([])
+
+  // Búsqueda de cartel obligatorio
+  const [billboardSearch, setBillboardSearch]   = useState('')
+  const [billboardResults, setBillboardResults] = useState([])
+  const [searchingBillboard, setSearchingBillboard] = useState(false)
+
+  // Cargar corredores al montar
+  useEffect(() => {
+    if (!org?.id) return
+    supabase
+      .from('corridors')
+      .select('id, name')
+      .eq('org_id', org.id)
+      .eq('active', true)
+      .order('name')
+      .then(({ data }) => setCorridors(data ?? []))
+  }, [org?.id])
+
+  // Búsqueda de cartel con debounce
+  const searchBillboard = useCallback(async (q) => {
+    if (!q || q.length < 2 || !org?.id) { setBillboardResults([]); return }
+    setSearchingBillboard(true)
+    const { data } = await supabase
+      .from('inventory')
+      .select('id, name, address, city')
+      .eq('org_id', org.id)
+      .or(`name.ilike.%${q}%,address.ilike.%${q}%`)
+      .limit(6)
+    setBillboardResults(data ?? [])
+    setSearchingBillboard(false)
+  }, [org?.id])
+
+  useEffect(() => {
+    const timer = setTimeout(() => searchBillboard(billboardSearch), 350)
+    return () => clearTimeout(timer)
+  }, [billboardSearch, searchBillboard])
+
   // Descuento máximo según rol (configurable por owner en Ajustes)
   const maxDiscount = role === 'owner' ? 100
     : role === 'manager' ? (org?.max_discount_manager ?? 30)
@@ -134,7 +174,7 @@ export default function WizardStep1Form({ formData, setFormData, onSubmit }) {
     if (!formData.endDate)              e.endDate     = 'Fecha de fin requerida'
     if (formData.startDate && formData.endDate && formData.endDate <= formData.startDate)
                                         e.endDate     = 'La fecha de fin debe ser posterior al inicio'
-    if (!formData.city)                 e.city        = 'Seleccioná una ciudad'
+    if (!formData.provinces?.length)     e.provinces   = 'Seleccioná al menos una provincia'
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -336,35 +376,190 @@ export default function WizardStep1Form({ formData, setFormData, onSubmit }) {
       </div>
 
       {/* ── 5. Zona geográfica ──────────────────────────────── */}
-      <div className="card p-5">
-        <SectionHeader number="5" title="Zona geográfica *" />
-        <div className="grid gap-5 sm:grid-cols-2">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-slate-300">Ciudad *</label>
+      <div className="card p-5 space-y-5">
+        <SectionHeader number="5" title="Zona geográfica *"
+          subtitle="Seleccioná las provincias y ciudades donde planificar" />
+
+        {/* Provincias */}
+        <div>
+          <p className="mb-2 text-sm font-medium text-slate-300">Provincia *</p>
+          {errors.provinces && <p className="mb-2 text-xs text-red-400">{errors.provinces}</p>}
+          <div className="flex flex-wrap gap-2">
+            {PROVINCES_CITIES.map(prov => {
+              const selected = (formData.provinces ?? []).includes(prov.id)
+              return (
+                <Toggle key={prov.id} label={prov.name} checked={selected}
+                  onChange={(checked) => {
+                    const next = checked
+                      ? [...(formData.provinces ?? []), prov.id]
+                      : (formData.provinces ?? []).filter(p => p !== prov.id)
+                    // Al deseleccionar provincia, también quitar sus ciudades
+                    const removedCities = checked ? [] : prov.cities
+                    const nextCities = (formData.cities ?? []).filter(c => !removedCities.includes(c))
+                    setFormData(prev => ({ ...prev, provinces: next, cities: nextCities }))
+                    if (errors.provinces) setErrors(e => { const n = { ...e }; delete n.provinces; return n })
+                  }}
+                />
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Ciudades — filtradas por provincia seleccionada */}
+        {(formData.provinces ?? []).length > 0 && (() => {
+          const availableCities = PROVINCES_CITIES
+            .filter(p => (formData.provinces ?? []).includes(p.id))
+            .flatMap(p => p.cities)
+          return (
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-medium text-slate-300">
+                  Ciudades
+                  {(formData.cities ?? []).length > 0 && (
+                    <span className="ml-1.5 text-xs text-brand font-normal">
+                      ({(formData.cities ?? []).length} seleccionadas)
+                    </span>
+                  )}
+                </p>
+                <button type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, cities: availableCities }))}
+                  className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
+                  Todas
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                {availableCities.map(city => {
+                  const checked = (formData.cities ?? []).includes(city)
+                  return (
+                    <button key={city} type="button"
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={() => {
+                        const arr = formData.cities ?? []
+                        update('cities', checked ? arr.filter(c => c !== city) : [...arr, city])
+                      }}
+                      className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-xs text-left transition-colors ${
+                        checked
+                          ? 'border-brand bg-brand/10 text-brand'
+                          : 'border-surface-700 text-slate-400 hover:border-slate-500 hover:text-slate-200'
+                      }`}>
+                      <div className={`h-3 w-3 shrink-0 rounded border transition-colors ${
+                        checked ? 'border-brand bg-brand' : 'border-slate-600'
+                      }`}>
+                        {checked && (
+                          <svg className="h-full w-full text-white" fill="none" viewBox="0 0 12 12">
+                            <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                          </svg>
+                        )}
+                      </div>
+                      <span className="truncate">{city}</span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })()}
+
+        {/* Corredor preferido (opcional) */}
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-slate-300">
+            ¿El cliente prefiere algún corredor?
+            <span className="ml-1.5 text-xs font-normal text-slate-500">Opcional</span>
+          </label>
+          {corridors.length === 0 ? (
+            <p className="text-xs text-slate-600 italic">
+              No hay corredores definidos. Podés crearlos en Inventario → Corredores.
+            </p>
+          ) : (
             <div className="relative">
-              <select className={`input-field appearance-none pr-8 ${errors.city ? 'border-red-500' : ''}`}
-                value={formData.city} onChange={e => update('city', e.target.value)}>
-                <option value="">Seleccioná una ciudad</option>
-                {CABA_CITIES.map(c => <option key={c} value={c}>{c}</option>)}
+              <select
+                className="input-field appearance-none pr-8"
+                value={formData.corridorId ?? ''}
+                onChange={e => {
+                  const id = e.target.value || null
+                  const name = corridors.find(c => c.id === id)?.name ?? null
+                  setFormData(prev => ({ ...prev, corridorId: id, corridorName: name }))
+                }}>
+                <option value="">Sin corredor preferido</option>
+                {corridors.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
               </select>
               <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
             </div>
-            {errors.city && <p className="mt-1 text-xs text-red-400">{errors.city}</p>}
+          )}
+        </div>
+
+        {/* Cartel obligatorio (opcional) */}
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-slate-300">
+            ¿Hay algún cartel que deba incluirse?
+            <span className="ml-1.5 text-xs font-normal text-slate-500">Opcional</span>
+          </label>
+
+          {/* Selected fixed billboards */}
+          {(formData.fixedBillboards ?? []).length > 0 && (
+            <div className="mb-2 space-y-1.5">
+              {(formData.fixedBillboards ?? []).map(b => (
+                <div key={b.id} className="flex items-center justify-between gap-2 rounded-lg border border-brand/20 bg-brand/5 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-brand truncate">{b.name}</p>
+                    <p className="text-xs text-slate-500 truncate flex items-center gap-1">
+                      <MapPin className="h-3 w-3 shrink-0" />{b.address}
+                    </p>
+                  </div>
+                  <button type="button"
+                    onClick={() => update('fixedBillboards', (formData.fixedBillboards ?? []).filter(x => x.id !== b.id))}
+                    className="shrink-0 h-5 w-5 flex items-center justify-center rounded-full hover:bg-red-500/20 text-slate-500 hover:text-red-400 transition-colors">
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Search input */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+            <input
+              className="input-field pl-9 text-sm"
+              placeholder="Buscar cartel por nombre o dirección..."
+              value={billboardSearch}
+              onChange={e => setBillboardSearch(e.target.value)}
+              onBlur={() => setTimeout(() => setBillboardResults([]), 200)}
+            />
           </div>
 
-          <div>
-            <label className="mb-1.5 flex items-center justify-between text-sm font-medium text-slate-300">
-              <span>Radio de búsqueda</span>
-              <span className="font-bold text-brand">{formData.radiusKm} km</span>
-            </label>
-            <input type="range" min="1" max="30" step="1"
-              className="w-full accent-brand"
-              value={formData.radiusKm}
-              onChange={e => update('radiusKm', Number(e.target.value))} />
-            <div className="flex justify-between text-xs text-slate-600 mt-1">
-              <span>1 km</span><span>15 km</span><span>30 km</span>
+          {/* Results dropdown */}
+          {(billboardResults.length > 0 || searchingBillboard) && billboardSearch.length >= 2 && (
+            <div className="mt-1 rounded-xl border border-surface-700 bg-surface-800 shadow-lg divide-y divide-surface-700">
+              {searchingBillboard ? (
+                <p className="px-4 py-3 text-xs text-slate-500">Buscando...</p>
+              ) : billboardResults.map(item => {
+                const alreadyAdded = (formData.fixedBillboards ?? []).some(b => b.id === item.id)
+                return (
+                  <button key={item.id} type="button"
+                    disabled={alreadyAdded}
+                    onMouseDown={() => {
+                      if (alreadyAdded) return
+                      update('fixedBillboards', [...(formData.fixedBillboards ?? []), { id: item.id, name: item.name, address: item.address }])
+                      setBillboardSearch('')
+                      setBillboardResults([])
+                    }}
+                    className={`flex items-start gap-2.5 w-full px-3.5 py-2.5 text-left transition-colors ${
+                      alreadyAdded ? 'opacity-40 cursor-default' : 'hover:bg-surface-700'
+                    }`}>
+                    <MapPin className="h-3.5 w-3.5 text-slate-500 shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-white truncate">{item.name}</p>
+                      <p className="text-xs text-slate-500 truncate">{item.address}{item.city ? `, ${item.city}` : ''}</p>
+                    </div>
+                    {alreadyAdded && <span className="shrink-0 text-xs text-brand ml-auto">Agregado</span>}
+                  </button>
+                )
+              })}
             </div>
-          </div>
+          )}
         </div>
       </div>
 

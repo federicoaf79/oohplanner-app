@@ -8,6 +8,7 @@ import { FORMAT_MAP } from '../../lib/constants'
 import EditInventoryModal from '../../features/inventory/EditInventoryModal'
 import InventoryImportExport, { RollbackBanner } from '../../features/inventory/InventoryImportExport'
 import InventoryPhotosUpload from '../../features/inventory/InventoryPhotosUpload'
+import CorridorsManager from '../../features/inventory/CorridorsManager'
 
 const FETCH_TIMEOUT_MS = 10_000
 
@@ -384,9 +385,10 @@ export default function Inventory() {
   const [viewMode, setViewMode]   = useState(
     () => localStorage.getItem('inventory_view') ?? 'list'
   )
-  const [editingItem, setEditingItem]         = useState(null)
+  const [editingItem, setEditingItem]           = useState(null)
   const [showImportExport, setShowImportExport] = useState(false)
   const [showPhotosUpload, setShowPhotosUpload] = useState(false)
+  const [activeTab, setActiveTab]               = useState('items') // 'items' | 'corridors'
 
   function toggleView(mode) {
     setViewMode(mode)
@@ -480,10 +482,35 @@ export default function Inventory() {
         </div>
       </div>
 
+      {/* Tabs (owner/manager only) */}
+      {canAdmin && (
+        <div className="flex gap-1 rounded-xl border border-surface-700 bg-surface-800 p-1 w-fit">
+          {[
+            { id: 'items',    label: 'Carteles' },
+            { id: 'corridors', label: 'Corredores' },
+          ].map(t => (
+            <button key={t.id} type="button" onClick={() => setActiveTab(t.id)}
+              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition-colors ${
+                activeTab === t.id ? 'bg-brand text-white' : 'text-slate-400 hover:text-slate-200'
+              }`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Rollback banner */}
-      {profile?.org_id && (
+      {profile?.org_id && activeTab === 'items' && (
         <RollbackBanner orgId={profile.org_id} onRollbackDone={loadItems} />
       )}
+
+      {/* Corredores tab */}
+      {activeTab === 'corridors' && (
+        <CorridorsManager items={items} />
+      )}
+
+      {/* Items tab */}
+      {activeTab === 'items' && <>
 
       {/* Search */}
       <div className="relative">
@@ -528,6 +555,8 @@ export default function Inventory() {
           ))}
         </div>
       )}
+
+      </> /* end items tab */}
 
       {/* Edit modal */}
       {editingItem && (

@@ -9,10 +9,9 @@ import WizardStep3Results from '../../features/proposals/WizardStep3Results'
 import { MOCK_RESPONSE, mockDelay } from '../../lib/mockPlanData'
 import Spinner from '../../components/ui/Spinner'
 
-// Default to mock=true so deploys without the env var don't hang waiting
-// for an Edge Function that may not be deployed yet.
-// Set VITE_USE_MOCK_AI=false in Vercel env vars to enable the real AI.
-const USE_MOCK = import.meta.env.VITE_USE_MOCK_AI !== 'false'
+// VITE_USE_MOCK_AI=true habilita el mock (sin Edge Function).
+// Por defecto (producción): usar la Edge Function real.
+const USE_MOCK = import.meta.env.VITE_USE_MOCK_AI === 'true'
 
 const EMPTY_FORM = {
   clientName: '',
@@ -20,8 +19,11 @@ const EMPTY_FORM = {
   objective: '',
   formats: [],
   digitalFrequency: 'indistinto',
-  city: 'Buenos Aires (CABA)',
-  radiusKm: 10,
+  provinces: ['CABA'],
+  cities: ['Buenos Aires (CABA)'],
+  corridorId: null,
+  corridorName: null,
+  fixedBillboards: [],  // [{ id, name, address }]
   budget: '',
   discountPct: 0,
   startDate: '',
@@ -66,8 +68,11 @@ export default function ProposalNew() {
           objective:        b.objective ?? '',
           formats:          b.formats ?? [],
           digitalFrequency: b.digitalFrequency ?? 'indistinto',
-          city:             b.city ?? 'Buenos Aires (CABA)',
-          radiusKm:         b.radiusKm ?? 10,
+          provinces:        b.provinces ?? ['CABA'],
+          cities:           b.cities ?? [b.city ?? 'Buenos Aires (CABA)'],
+          corridorId:       b.corridorId ?? null,
+          corridorName:     b.corridorName ?? null,
+          fixedBillboards:  b.fixedBillboards ?? [],
           budget:           b.budget ?? '',
           discountPct:      data.discount_pct ?? 0,
           startDate:        b.startDate ?? '',
@@ -99,9 +104,13 @@ export default function ProposalNew() {
               objective:        formData.objective,
               formats:          formData.formats,
               digitalFrequency: formData.digitalFrequency,
-              city:             formData.city,
-              radiusKm:         formData.radiusKm,
+              provinces:        formData.provinces,
+              cities:           formData.cities,
+              corridorId:       formData.corridorId ?? null,
+              corridorName:     formData.corridorName ?? null,
+              fixedBillboards:  formData.fixedBillboards ?? [],
               budget:           formData.budget,
+              discountPct:      formData.discountPct ?? 0,
               startDate:        formData.startDate,
               endDate:          formData.endDate,
               audience:         formData.audience,
@@ -110,7 +119,8 @@ export default function ProposalNew() {
           },
         })
 
-        if (fnError) throw new Error(fnError.message)
+        if (fnError) throw new Error(fnError.message || 'Error al llamar a la Edge Function. ¿Está desplegada?')
+
         if (fnData?.error) throw new Error(fnData.error)
         data = fnData
       }
@@ -139,15 +149,19 @@ export default function ProposalNew() {
       : (org?.max_discount_salesperson ?? 20)
     const needsApproval = discountPct > maxDiscount
 
-    const listTotal  = option.metrics?.totalRate ?? 0
-    const totalValue = Math.round(listTotal * (1 - discountPct / 100))
-    const title      = `Pauta ${formData.clientName} — ${formData.city} (${optionLabel})`
+    const listTotal  = option.total_list_price ?? 0
+    const totalValue = option.total_client_price ?? Math.round(listTotal * (1 - discountPct / 100))
+    const locationLabel = (formData.cities ?? []).join(', ') || 'Argentina'
+    const title      = `Pauta ${formData.clientName} — ${locationLabel} (${optionLabel})`
     const briefData  = {
       objective:        formData.objective,
       formats:          formData.formats,
       digitalFrequency: formData.digitalFrequency,
-      city:             formData.city,
-      radiusKm:         formData.radiusKm,
+      provinces:        formData.provinces,
+      cities:           formData.cities,
+      corridorId:       formData.corridorId,
+      corridorName:     formData.corridorName,
+      fixedBillboards:  formData.fixedBillboards,
       budget:           formData.budget,
       discountPct,
       startDate:        formData.startDate,
@@ -254,12 +268,12 @@ export default function ProposalNew() {
 
         // Insert proposal_items
         const items = (option.sites ?? [])
-          .filter(s => s.site_id && !s.site_id.startsWith('mock-'))
+          .filter(s => s.id && !s.id.startsWith('mock-'))
           .map(s => ({
             proposal_id: proposal.id,
-            site_id:     s.site_id,
+            site_id:     s.id,
             org_id:      profile.org_id,
-            rate:        s.rate ?? null,
+            rate:        s.list_price ?? null,
             notes:       s.justification ?? null,
           }))
 

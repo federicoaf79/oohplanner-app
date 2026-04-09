@@ -194,3 +194,97 @@ export const CABA_CITIES = [
   'Almagro',
   'Núñez',
 ]
+
+// Provincias y ciudades de Argentina para el planificador
+export const PROVINCES_CITIES = [
+  {
+    id: 'CABA',
+    name: 'CABA',
+    cities: ['Buenos Aires (CABA)', 'Palermo', 'Belgrano', 'Recoleta', 'San Telmo', 'Caballito', 'Flores', 'Villa Crespo', 'Almagro', 'Núñez', 'Barracas', 'Boedo'],
+  },
+  {
+    id: 'Buenos Aires',
+    name: 'Buenos Aires (Prov.)',
+    cities: ['La Plata', 'Mar del Plata', 'Quilmes', 'Lomas de Zamora', 'Lanús', 'Morón', 'Bahía Blanca', 'San Isidro', 'Tigre', 'Vicente López', 'Ramos Mejía', 'San Miguel'],
+  },
+  {
+    id: 'Córdoba',
+    name: 'Córdoba',
+    cities: ['Córdoba', 'Villa Carlos Paz', 'Río Cuarto', 'Villa María', 'Alta Gracia', 'Bell Ville'],
+  },
+  {
+    id: 'Santa Fe',
+    name: 'Santa Fe',
+    cities: ['Rosario', 'Santa Fe', 'Rafaela', 'Venado Tuerto', 'Reconquista'],
+  },
+  {
+    id: 'Mendoza',
+    name: 'Mendoza',
+    cities: ['Mendoza', 'San Rafael', 'Godoy Cruz', 'Las Heras', 'Maipú'],
+  },
+  {
+    id: 'Tucumán',
+    name: 'Tucumán',
+    cities: ['San Miguel de Tucumán', 'Yerba Buena', 'Tafí Viejo', 'Banda del Río Salí'],
+  },
+  {
+    id: 'Neuquén',
+    name: 'Neuquén',
+    cities: ['Neuquén', 'San Martín de los Andes', 'Zapala', 'Cipolletti'],
+  },
+  {
+    id: 'Salta',
+    name: 'Salta',
+    cities: ['Salta', 'Tartagal', 'Orán', 'Cafayate'],
+  },
+  {
+    id: 'Entre Ríos',
+    name: 'Entre Ríos',
+    cities: ['Paraná', 'Concordia', 'Gualeguaychú', 'Concepción del Uruguay'],
+  },
+  {
+    id: 'Chaco',
+    name: 'Chaco',
+    cities: ['Resistencia', 'Presidencia R. S. Peña', 'Barranqueras'],
+  },
+  {
+    id: 'Corrientes',
+    name: 'Corrientes',
+    cities: ['Corrientes', 'Goya', 'Mercedes', 'Paso de los Libres'],
+  },
+  {
+    id: 'Misiones',
+    name: 'Misiones',
+    cities: ['Posadas', 'Oberá', 'Puerto Iguazú', 'Eldorado'],
+  },
+  {
+    id: 'Río Negro',
+    name: 'Río Negro',
+    cities: ['Bariloche', 'Viedma', 'Cipolletti', 'General Roca'],
+  },
+  {
+    id: 'Chubut',
+    name: 'Chubut',
+    cities: ['Comodoro Rivadavia', 'Trelew', 'Puerto Madryn', 'Rawson'],
+  },
+  {
+    id: 'Jujuy',
+    name: 'Jujuy',
+    cities: ['San Salvador de Jujuy', 'Palpalá', 'San Pedro'],
+  },
+  {
+    id: 'San Juan',
+    name: 'San Juan',
+    cities: ['San Juan', 'Rivadavia', 'Caucete'],
+  },
+  {
+    id: 'San Luis',
+    name: 'San Luis',
+    cities: ['San Luis', 'Villa Mercedes', 'Merlo'],
+  },
+  {
+    id: 'La Pampa',
+    name: 'La Pampa',
+    cities: ['Santa Rosa', 'General Pico'],
+  },
+]

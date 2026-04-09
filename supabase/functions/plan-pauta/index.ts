@@ -7,86 +7,179 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// ── Prompt ──────────────────────────────────────────────────
+// ── Tipos ────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `Eres un experto en planificación de medios OOH (Out-of-Home) en Argentina.
-Recibirás los datos de una campaña y un inventario de soportes disponibles.
-Tu misión es generar DOS propuestas de pauta distintas y complementarias.
+interface FormData {
+  clientName: string
+  clientEmail?: string
+  objective: string
+  formats: string[]
+  digitalFrequency?: string
+  provinces: string[]
+  cities: string[]
+  corridorId?: string | null
+  corridorName?: string | null
+  fixedBillboards?: Array<{ id: string; name: string; address: string }>
+  budget: string
+  discountPct: number
+  startDate: string
+  endDate: string
+  audience?: {
+    ageMin?: number
+    ageMax?: number
+    gender?: string
+    interests?: string[]
+    nse?: string[]
+  }
+}
 
-REGLAS ESTRICTAS:
-1. Responde EXCLUSIVAMENTE con JSON válido, sin markdown, sin texto extra, sin bloques de código.
-2. Selecciona entre 3 y 8 soportes por opción, tomando solo del inventario recibido.
-3. Opción A "Máximo Alcance": prioriza cobertura geográfica, diversidad de zonas.
-4. Opción B "Máximo Impacto": prioriza daily_traffic alto y formatos digitales si los hay.
-5. La suma de base_rate de los soportes seleccionados NO debe superar el budget.
-6. audienceMatchScore (0-100): estimá el match entre el soporte y la audiencia descrita.
+interface InventoryItem {
+  id: string
+  name: string
+  format: string
+  address: string
+  city: string
+  latitude: number | null
+  longitude: number | null
+  daily_traffic: number | null
+  base_rate: number | null
+  illuminated: boolean
+  cluster_audiencia: string | null
+}
 
-ESQUEMA DE RESPUESTA (seguilo exactamente):
-{
-  "optionA": {
-    "label": "Máximo Alcance",
-    "rationale": "2 oraciones explicando la estrategia",
-    "sites": [
-      {
-        "site_id": "string",
-        "name": "string",
-        "format": "billboard|digital|ambient",
-        "address": "string",
-        "city": "string",
-        "latitude": number,
-        "longitude": number,
-        "rate": number,
-        "dailyTraffic": number,
-        "impactsPerMonth": number,
-        "audienceMatchScore": number,
-        "justification": "1 oración"
-      }
-    ],
-    "metrics": {
-      "totalRate": number,
-      "budgetAvailable": number,
-      "budgetUsedPct": number,
-      "totalImpactsPerMonth": number,
-      "estimatedReach": number,
-      "estimatedCPM": number,
-      "formatMix": { "billboard": number, "digital": number, "ambient": number }
-    }
-  },
-  "optionB": { ...mismo esquema... }
-}`
+// ── Prompts ──────────────────────────────────────────────────
 
-function buildUserPrompt(fd: Record<string, unknown>, inventory: Record<string, unknown>[]): string {
+const SYSTEM_PROMPT = `Sos un experto en planificación publicitaria OOH en Argentina.
+Conocés el mercado de vía pública, los corredores publicitarios y la comercialización por agencias.
+Respondé EXCLUSIVAMENTE con JSON válido, sin markdown, sin texto extra, sin bloques de código.`
+
+function buildUserPrompt(fd: FormData, inventory: InventoryItem[], mandatoryIds: Set<string>, corridorName: string | null, audienceMode: string): string {
   const budget = Number(fd.budget) || 0
+  const discountPct = fd.discountPct ?? 0
+  const multiplier = 1 - discountPct / 100
+
   const campaignDays = fd.startDate && fd.endDate
-    ? Math.ceil((new Date(fd.endDate as string).getTime() - new Date(fd.startDate as string).getTime()) / 86400000)
+    ? Math.ceil((new Date(fd.endDate).getTime() - new Date(fd.startDate).getTime()) / 86400000)
     : 30
 
-  const audienceStr = fd.audience
-    ? (() => {
-        const a = fd.audience as Record<string, unknown>
-        const parts = []
-        if (a.ageMin || a.ageMax) parts.push(`edad ${a.ageMin}-${a.ageMax} años`)
-        if (a.gender && a.gender !== 'all') parts.push(`género: ${a.gender}`)
-        if (Array.isArray(a.interests) && a.interests.length) parts.push(`intereses: ${(a.interests as string[]).join(', ')}`)
-        if (Array.isArray(a.nse) && a.nse.length) parts.push(`NSE: ${(a.nse as string[]).join('/')}`)
-        return parts.join(' | ') || 'No especificada'
-      })()
-    : 'No especificada'
+  const audienceStr = (() => {
+    const a = fd.audience ?? {}
+    const parts: string[] = []
+    if (a.ageMin || a.ageMax) parts.push(`edad ${a.ageMin ?? 18}-${a.ageMax ?? 55} años`)
+    if (a.gender && a.gender !== 'all') parts.push(`género: ${a.gender === 'male' ? 'masculino' : 'femenino'}`)
+    if (a.interests?.length) parts.push(`intereses: ${a.interests.join(', ')}`)
+    if (a.nse?.length) parts.push(`NSE: ${a.nse.join('/')}`)
+    return parts.join(' | ') || 'No especificada'
+  })()
+
+  const inventoryLines = inventory.map(item => {
+    const clientPrice = item.base_rate ? Math.round(item.base_rate * multiplier) : null
+    const impacts = item.daily_traffic ? item.daily_traffic * 30 : null
+    const mandatory = mandatoryIds.has(item.id)
+    const audienceInfo = item.cluster_audiencia
+      ? `audiencia: ${item.cluster_audiencia}`
+      : 'sin datos de audiencia'
+    return JSON.stringify({
+      id: item.id,
+      name: item.name,
+      address: item.address,
+      city: item.city,
+      format: item.format,
+      illuminated: item.illuminated,
+      daily_traffic: item.daily_traffic ?? 0,
+      monthly_impacts: impacts ?? 0,
+      list_price: item.base_rate ?? 0,
+      client_price: clientPrice ?? 0,
+      latitude: item.latitude,
+      longitude: item.longitude,
+      audience_info: audienceInfo,
+      is_mandatory: mandatory,
+    })
+  }).join('\n')
+
+  const audienceNote = audienceMode === 'geographic_only'
+    ? '\nMODO GEOGRÁFICO: No hay datos de audiencia para esta zona. Planificá según tráfico_diario y densidad geográfica.'
+    : ''
 
   return `BRIEF DE CAMPAÑA:
 - Cliente: ${fd.clientName}
 - Objetivo: ${fd.objective}
-- Ciudad: ${fd.city}
-- Formatos solicitados: ${(fd.formats as string[]).join(', ')}
-${(fd.formats as string[]).includes('digital') ? `- Frecuencia digital preferida: ${fd.digitalFrequency}` : ''}
-- Presupuesto mensual: ARS ${budget.toLocaleString('es-AR')}
+- Presupuesto del cliente: ARS ${budget.toLocaleString('es-AR')}
+- Descuento aplicado: ${discountPct}% (precio_cliente = precio_lista × ${multiplier.toFixed(2)})
 - Período: ${fd.startDate} al ${fd.endDate} (${campaignDays} días)
-- Audiencia objetivo: ${audienceStr}
+- Ciudades: ${fd.cities.join(', ')}
+- Provincias: ${fd.provinces.join(', ')}
+- Formatos solicitados: ${fd.formats.join(', ')}
+${fd.digitalFrequency ? `- Frecuencia digital: ${fd.digitalFrequency}` : ''}
+- Audiencia: ${audienceStr}
+- Modo audiencia: ${audienceMode}${audienceNote}
+${corridorName ? `- Corredor preferido: "${corridorName}" — priorizar sus carteles` : ''}
+${mandatoryIds.size > 0 ? `- CARTELES OBLIGATORIOS (id): ${[...mandatoryIds].join(', ')} — incluir SIEMPRE en ambas opciones` : ''}
 
-INVENTARIO DISPONIBLE (${inventory.length} soportes):
-${JSON.stringify(inventory, null, 2)}
+INVENTARIO DISPONIBLE (${inventory.length} carteles):
+${inventoryLines}
 
-Genera las 2 opciones de pauta siguiendo el esquema exacto. El budget es ${budget} ARS.`
+INSTRUCCIONES:
+1. Incluir SIEMPRE los carteles marcados con is_mandatory:true en ambas opciones
+2. Respetar el corredor preferido (si aplica) priorizando sus carteles
+3. La suma de client_price de los carteles seleccionados NO debe superar el presupuesto (${budget})
+4. Seleccionar entre 3 y 10 carteles por opción
+5. Si hay presupuesto sobrante, indicarlo en budget_remaining
+6. Si no alcanza para un cartel más, calcular el gap (next_billboard_gap = precio del siguiente - sobrante)
+7. Opción A "Máximo Alcance": mayor cobertura geográfica, diversidad de zonas y formatos
+8. Opción B "Máximo Impacto": mejor match de audiencia, mayor tráfico y ubicaciones premium
+${audienceMode === 'geographic_only' ? '9. En Opción B, priorizar carteles con mayor daily_traffic y densidad poblacional de la zona' : ''}
+
+JSON DE RESPUESTA (seguir EXACTAMENTE este esquema):
+{
+  "audience_mode": "${audienceMode}",
+  "audience_note": ${audienceMode === 'geographic_only' ? '"No hay datos de audiencia para esta zona. La planificación se basa en tránsito y densidad poblacional."' : 'null'},
+  "optionA": {
+    "title": "Máximo Alcance",
+    "rationale": "2 oraciones explicando la estrategia de la opción A",
+    "sites": [
+      {
+        "id": "el uuid exacto del cartel",
+        "name": "nombre",
+        "address": "dirección",
+        "city": "ciudad",
+        "province": "provincia inferida",
+        "format": "formato",
+        "latitude": 0.0,
+        "longitude": 0.0,
+        "monthly_impacts": 0,
+        "list_price": 0,
+        "client_price": 0,
+        "audience_score": 85,
+        "is_mandatory": false,
+        "justification": "1 oración explicando por qué este cartel"
+      }
+    ],
+    "total_list_price": 0,
+    "total_client_price": 0,
+    "discount_amount": 0,
+    "budget_remaining": 0,
+    "next_billboard_gap": 0,
+    "total_impacts": 0,
+    "estimated_reach": 0,
+    "cpm": 0,
+    "format_mix": {"billboard": 0, "digital": 0}
+  },
+  "optionB": {
+    "title": "Máximo Impacto",
+    "rationale": "2 oraciones explicando la estrategia de la opción B",
+    "sites": [ ...mismo esquema que optionA... ],
+    "total_list_price": 0,
+    "total_client_price": 0,
+    "discount_amount": 0,
+    "budget_remaining": 0,
+    "next_billboard_gap": 0,
+    "total_impacts": 0,
+    "estimated_reach": 0,
+    "cpm": 0,
+    "format_mix": {}
+  }
+}`
 }
 
 // ── Handler ─────────────────────────────────────────────────
@@ -97,80 +190,126 @@ serve(async (req) => {
   }
 
   try {
-    const { formData, orgId } = await req.json()
+    const { formData, orgId }: { formData: FormData; orgId: string } = await req.json()
 
     if (!formData || !orgId) {
-      return new Response(JSON.stringify({ error: 'formData y orgId son requeridos' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      return new Response(
+        JSON.stringify({ error: 'formData y orgId son requeridos' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
-    // ── 1. Query inventory ───────────────────────────────────
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     )
 
-    const formats: string[] = formData.formats ?? []
+    const discountPct = formData.discountPct ?? 0
+    const cities  = formData.cities  ?? []
+    const formats = formData.formats ?? []
 
-    const { data: inventory, error: dbErr } = await supabase
+    // ── PASO 1: Leer inventario filtrado ─────────────────────
+    let query = supabase
       .from('inventory')
-      .select('id, name, format, address, city, latitude, longitude, daily_traffic, base_rate, illuminated')
+      .select('id, name, format, address, city, latitude, longitude, daily_traffic, base_rate, illuminated, cluster_audiencia')
       .eq('org_id', orgId)
-      .ilike('city', `%${(formData.city as string).split(' ')[0]}%`)
-      .in('format', formats.length > 0 ? formats : ['billboard', 'digital', 'ambient'])
       .eq('is_available', true)
-      .limit(40)
+      .limit(60)
+
+    if (formats.length > 0) {
+      query = query.in('format', formats)
+    }
+
+    if (cities.length === 1) {
+      query = query.ilike('city', `%${cities[0]}%`)
+    } else if (cities.length > 1) {
+      query = query.or(cities.map(c => `city.ilike.%${c}%`).join(','))
+    }
+
+    const { data: inventory, error: dbErr } = await query
 
     if (dbErr) throw new Error(`DB error: ${dbErr.message}`)
     if (!inventory || inventory.length === 0) {
       return new Response(
-        JSON.stringify({ error: 'No hay carteles disponibles con los filtros seleccionados.' }),
+        JSON.stringify({ error: 'No hay carteles disponibles con los filtros seleccionados. Revisá las ciudades y formatos elegidos.' }),
         { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
 
-    // Flatten for the prompt (rename fields to be clear)
-    const inventoryForPrompt = inventory.map(s => ({
-      site_id:      s.id,
-      name:         s.name,
-      format:       s.format,
-      address:      s.address,
-      city:         s.city,
-      latitude:     s.latitude,
-      longitude:    s.longitude,
-      base_rate:    s.base_rate,
-      daily_traffic: s.daily_traffic ?? 50000,
-      illuminated:  s.illuminated,
-    }))
+    // ── PASO 2: Corredores y carteles obligatorios ───────────
+    const mandatoryIds = new Set<string>(
+      (formData.fixedBillboards ?? []).map(b => b.id).filter(Boolean)
+    )
 
-    // ── 2. Call Claude ───────────────────────────────────────
+    let corridorName: string | null = formData.corridorName ?? null
+
+    if (formData.corridorId) {
+      const { data: corridor } = await supabase
+        .from('corridors')
+        .select('name, inventory_ids')
+        .eq('id', formData.corridorId)
+        .single()
+
+      if (corridor) {
+        corridorName = corridor.name
+        ;(corridor.inventory_ids ?? []).forEach((id: string) => mandatoryIds.add(id))
+      }
+    }
+
+    // Asegurar que los carteles obligatorios estén en el inventario
+    // (puede haber obligatorios fuera de la zona filtrada — agregarlos)
+    if (mandatoryIds.size > 0) {
+      const presentIds = new Set(inventory.map(i => i.id))
+      const missingMandatory = [...mandatoryIds].filter(id => !presentIds.has(id))
+
+      if (missingMandatory.length > 0) {
+        const { data: extra } = await supabase
+          .from('inventory')
+          .select('id, name, format, address, city, latitude, longitude, daily_traffic, base_rate, illuminated, cluster_audiencia')
+          .in('id', missingMandatory)
+
+        if (extra) {
+          inventory.push(...extra)
+        }
+      }
+    }
+
+    // ── PASO 3: Modo audiencia ───────────────────────────────
+    const hasAudienceData = inventory.some(item => item.cluster_audiencia != null && item.cluster_audiencia !== '')
+    const audienceMode = hasAudienceData ? 'full' : 'geographic_only'
+
+    // ── PASO 4: Llamar a Claude Haiku ────────────────────────
     const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
-    if (!apiKey) throw new Error('ANTHROPIC_API_KEY no configurado')
+    if (!apiKey) throw new Error('ANTHROPIC_API_KEY no configurado en los secrets de la Edge Function.')
 
     const anthropic = new Anthropic({ apiKey })
 
     const message = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 3000,
-      temperature: 0.3,
-      system: SYSTEM_PROMPT,
-      messages: [
-        { role: 'user', content: buildUserPrompt(formData, inventoryForPrompt) }
-      ],
+      model:       'claude-haiku-4-5-20251001',
+      max_tokens:  4000,
+      temperature: 0.2,
+      system:      SYSTEM_PROMPT,
+      messages:    [{ role: 'user', content: buildUserPrompt(formData as FormData, inventory, mandatoryIds, corridorName, audienceMode) }],
     })
 
     const rawText = (message.content[0] as { text: string }).text.trim()
 
-    // ── 3. Parse JSON ────────────────────────────────────────
+    // ── PASO 5: Parsear y devolver ───────────────────────────
     let result
     try {
-      // Strip markdown fences if present
       const jsonStr = rawText.replace(/^```[a-z]*\n?/i, '').replace(/\n?```$/i, '').trim()
       result = JSON.parse(jsonStr)
     } catch {
-      console.error('Claude raw response:', rawText)
+      console.error('Claude raw response:', rawText.slice(0, 500))
       return new Response(
         JSON.stringify({ error: 'La IA no devolvió JSON válido. Intentá de nuevo.', raw: rawText.slice(0, 300) }),
+        { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    if (!result?.optionA || !result?.optionB) {
+      return new Response(
+        JSON.stringify({ error: 'La IA no generó las dos opciones requeridas. Intentá de nuevo.' }),
         { status: 422, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -181,7 +320,9 @@ serve(async (req) => {
 
   } catch (err) {
     console.error('plan-pauta error:', err)
-    return new Response(JSON.stringify({ error: (err as Error).message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    return new Response(
+      JSON.stringify({ error: (err as Error).message }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
   }
 })
