@@ -22,6 +22,8 @@ import ProposalNew  from './pages/app/ProposalNew'
 import Reports      from './pages/app/Reports'
 import Team         from './pages/app/Team'
 import Settings     from './pages/app/Settings'
+import Support      from './pages/app/Support'
+import Billing      from './pages/app/Billing'
 
 // Pages — admin panel
 import AdminLayout          from './pages/admin/AdminLayout'
@@ -31,6 +33,8 @@ import AdminEmpresaDetalle  from './pages/admin/AdminEmpresaDetalle'
 import AdminNuevoCliente    from './pages/admin/AdminNuevoCliente'
 import AdminPlanes          from './pages/admin/AdminPlanes'
 import AdminAdmins          from './pages/admin/AdminAdmins'
+import AdminTickets         from './pages/admin/AdminTickets'
+import AdminFacturacion     from './pages/admin/AdminFacturacion'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -57,6 +61,8 @@ const router = createBrowserRouter([
           { path: '/app/proposals/new',        element: <ProposalNew /> },
           { path: '/app/proposals/:id/edit',   element: <ProposalNew /> },
           { path: '/app/settings',             element: <Settings /> },
+          { path: '/app/support',              element: <Support /> },
+          { path: '/app/billing',              element: <Billing /> },
 
           // manager + owner only
           {
@@ -87,6 +93,8 @@ const router = createBrowserRouter([
           { path: '/admin/empresas/:id',     element: <AdminEmpresaDetalle /> },
           { path: '/admin/planes',           element: <AdminPlanes /> },
           { path: '/admin/admins',           element: <AdminAdmins /> },
+          { path: '/admin/tickets',          element: <AdminTickets /> },
+          { path: '/admin/facturacion',      element: <AdminFacturacion /> },
         ],
       },
     ],

@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, Copy, Check, UserPlus } from 'lucide-react'
+import { ArrowLeft, Copy, Check, UserPlus, Send } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '../../lib/supabase'
+import { sendEmail } from '../../lib/email'
 import Card, { CardHeader } from '../../components/ui/Card'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
@@ -29,10 +30,12 @@ export default function AdminNuevoCliente() {
     ownerName:  '',
     ownerEmail: '',
   })
-  const [result, setResult]     = useState(null)
-  const [creating, setCreating] = useState(false)
-  const [error, setError]       = useState('')
-  const [copied, setCopied]     = useState(null)
+  const [result, setResult]       = useState(null)
+  const [creating, setCreating]   = useState(false)
+  const [error, setError]         = useState('')
+  const [copied, setCopied]       = useState(null)
+  const [emailSent, setEmailSent] = useState(false)
+  const [sendingEmail, setSendingEmail] = useState(false)
 
   const { data: plans = [] } = useQuery({
     queryKey: ['admin-plans'],
@@ -87,7 +90,7 @@ export default function AdminNuevoCliente() {
         `Ingresá con este link: [LINK DE INVITACIÓN]\n\n` +
         `¡Bienvenido/a a OOH Planner!`
 
-      setResult({
+      const resultData = {
         orgId:       org.id,
         orgName:     org.name,
         ownerEmail:  form.ownerEmail,
@@ -95,7 +98,52 @@ export default function AdminNuevoCliente() {
         planName:    selectedPlan?.name ?? form.planSlug,
         trialDays:   form.trialDays,
         mailTemplate,
-      })
+      }
+      setResult(resultData)
+
+      // Send invitation email automatically
+      const inviteHtml = `
+        <div style="font-family:sans-serif;max-width:540px;margin:0 auto">
+          <div style="background:#6366f1;padding:24px 32px;border-radius:12px 12px 0 0">
+            <h1 style="color:#fff;font-size:18px;margin:0">⚡ ¡Bienvenido/a a OOH Planner!</h1>
+          </div>
+          <div style="background:#fff;padding:28px 32px;border-radius:0 0 12px 12px;border:1px solid #e2e8f0;border-top:none">
+            <p style="color:#1e293b;font-size:15px;font-weight:600">Hola ${form.ownerName},</p>
+            <p style="color:#64748b;font-size:14px;line-height:1.6;margin:12px 0">
+              Tu acceso a <strong>OOH Planner</strong> está listo.
+            </p>
+            <table style="width:100%;border-collapse:collapse;font-size:13px;color:#475569;margin:16px 0;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
+              <tr style="background:#f8fafc">
+                <td style="padding:10px 16px;font-weight:600;color:#1e293b;width:140px">Plan</td>
+                <td style="padding:10px 16px">${resultData.planName}</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 16px;font-weight:600;color:#1e293b">Trial</td>
+                <td style="padding:10px 16px">${form.trialDays} días gratis</td>
+              </tr>
+              <tr style="background:#f8fafc">
+                <td style="padding:10px 16px;font-weight:600;color:#1e293b">Empresa</td>
+                <td style="padding:10px 16px">${org.name}</td>
+              </tr>
+            </table>
+            <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin-top:16px">
+              <p style="color:#1e40af;font-size:13px;margin:0;line-height:1.6">
+                <strong>Próximo paso:</strong> Te enviaremos un link de acceso por separado desde Supabase Auth.<br>
+                Si no lo recibís en las próximas horas, escribinos a <a href="mailto:hola@oohplanner.net" style="color:#6366f1">hola@oohplanner.net</a>
+              </p>
+            </div>
+            <p style="color:#94a3b8;font-size:12px;margin-top:24px">
+              ¡Esperamos que OOH Planner potencie tu negocio!<br>
+              — El equipo de OOH Planner
+            </p>
+          </div>
+        </div>
+      `
+      sendEmail({
+        to: form.ownerEmail,
+        subject: `¡Bienvenido/a a OOH Planner! — ${org.name}`,
+        html: inviteHtml,
+      }).then(() => setEmailSent(true)).catch(() => {})
     } catch (err) {
       setError(err.message)
     } finally {
@@ -132,6 +180,12 @@ export default function AdminNuevoCliente() {
             <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-3 text-sm text-emerald-400">
               Organización <strong>{result.orgName}</strong> creada. Plan: {result.planName} — Trial: {result.trialDays} días.
             </div>
+            {emailSent && (
+              <div className="rounded-lg bg-blue-500/10 border border-blue-500/30 p-3 text-sm text-blue-400 flex items-center gap-2">
+                <Send className="h-4 w-4 shrink-0" />
+                Mail de bienvenida enviado a <strong>{result.ownerEmail}</strong>
+              </div>
+            )}
 
             <div>
               <p className="text-xs text-slate-400 mb-2">

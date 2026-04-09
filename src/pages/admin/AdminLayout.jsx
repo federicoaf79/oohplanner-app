@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Building2, Package, Shield, ArrowLeft } from 'lucide-react'
+import { LayoutDashboard, Building2, Package, Shield, ArrowLeft, TicketCheck, Receipt } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
 import Spinner from '../../components/ui/Spinner'
@@ -44,9 +44,11 @@ export default function AdminLayout() {
   const isSuperAdmin = adminRole === 'super_admin'
 
   const navItems = [
-    { to: '/admin',          end: true,  label: 'Dashboard', icon: LayoutDashboard },
-    { to: '/admin/empresas',             label: 'Empresas',  icon: Building2 },
-    { to: '/admin/planes',               label: 'Planes',    icon: Package },
+    { to: '/admin',              end: true,  label: 'Dashboard',   icon: LayoutDashboard },
+    { to: '/admin/empresas',                 label: 'Empresas',    icon: Building2 },
+    { to: '/admin/tickets',                  label: 'Tickets',     icon: TicketCheck },
+    { to: '/admin/facturacion',              label: 'Facturación', icon: Receipt },
+    { to: '/admin/planes',                   label: 'Planes',      icon: Package },
     ...(isSuperAdmin ? [{ to: '/admin/admins', label: 'Admins', icon: Shield }] : []),
   ]
 

@@ -14,6 +14,8 @@ const PAGE_TITLES = {
   '/app/reports':          'Reportes',
   '/app/team':             'Equipo',
   '/app/settings':         'Ajustes',
+  '/app/support':          'Soporte',
+  '/app/billing':          'Facturación',
 }
 
 export default function AppShell() {

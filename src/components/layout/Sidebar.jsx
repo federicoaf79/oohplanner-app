@@ -1,19 +1,21 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Megaphone, MapPin, FileText,
-  BarChart2, Users, Settings, X, Zap
+  BarChart2, Users, Settings, X, Zap, HelpCircle, Receipt,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { cn } from '../../lib/utils'
 
 const NAV = [
-  { label: 'Dashboard',   path: '/app',             icon: LayoutDashboard, end: true,  roles: ['owner','manager','salesperson'] },
-  { label: 'Campañas',    path: '/app/campaigns',   icon: Megaphone,                   roles: ['owner','manager','salesperson'] },
-  { label: 'Inventario',  path: '/app/inventory',   icon: MapPin,                      roles: ['owner','manager'] },
-  { label: 'Propuestas',  path: '/app/proposals',   icon: FileText,                    roles: ['owner','manager','salesperson'] },
-  { label: 'Reportes',    path: '/app/reports',     icon: BarChart2,                   roles: ['owner','manager'] },
-  { label: 'Equipo',      path: '/app/team',        icon: Users,                       roles: ['owner'] },
-  { label: 'Ajustes',     path: '/app/settings',    icon: Settings,                    roles: ['owner','manager','salesperson'] },
+  { label: 'Dashboard',    path: '/app',             icon: LayoutDashboard, end: true,  roles: ['owner','manager','salesperson'] },
+  { label: 'Campañas',     path: '/app/campaigns',   icon: Megaphone,                   roles: ['owner','manager','salesperson'] },
+  { label: 'Inventario',   path: '/app/inventory',   icon: MapPin,                      roles: ['owner','manager'] },
+  { label: 'Propuestas',   path: '/app/proposals',   icon: FileText,                    roles: ['owner','manager','salesperson'] },
+  { label: 'Reportes',     path: '/app/reports',     icon: BarChart2,                   roles: ['owner','manager'] },
+  { label: 'Equipo',       path: '/app/team',        icon: Users,                       roles: ['owner'] },
+  { label: 'Facturación',  path: '/app/billing',     icon: Receipt,                     roles: ['owner'] },
+  { label: 'Soporte',      path: '/app/support',     icon: HelpCircle,                  roles: ['owner','manager','salesperson'] },
+  { label: 'Ajustes',      path: '/app/settings',    icon: Settings,                    roles: ['owner','manager','salesperson'] },
 ]
 
 export default function Sidebar({ open, onClose }) {
