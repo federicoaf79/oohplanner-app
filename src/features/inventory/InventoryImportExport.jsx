@@ -599,6 +599,14 @@ export default function InventoryImportExport({ items, orgName, orgId, onImporte
                 <Download className="h-4 w-4" />
                 Descargar CSV ({items.length} carteles)
               </Button>
+              <a
+                href="/plantilla_inventario_oohplanner.xlsx"
+                download
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-surface-700 py-2.5 text-sm font-medium text-slate-400 hover:text-slate-200 hover:border-brand/30 transition-colors"
+              >
+                <Download className="h-4 w-4" />
+                Descargar plantilla vacía
+              </a>
             </>
           )}
 
