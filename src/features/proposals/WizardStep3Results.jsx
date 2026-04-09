@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import {
   MapPin, TrendingUp, DollarSign, Target, Users,
   Save, Printer, MessageCircle, Star,
@@ -107,7 +107,7 @@ function BillboardCard({ site }) {
   )
 }
 
-function OptionPanel({ option, formData, audienceNote }) {
+function OptionPanel({ option, formData, audienceNote, mapRef }) {
   if (!option) return null
   const { sites = [], rationale } = option
 
@@ -170,7 +170,7 @@ function OptionPanel({ option, formData, audienceNote }) {
       )}
 
       {/* Map */}
-      <ProposalMap sites={sites} className="h-64 lg:h-80" />
+      <ProposalMap sites={sites} className="h-64 lg:h-80" mapRef={mapRef} />
 
       {/* Site cards */}
       <div>
@@ -256,6 +256,8 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
   const [activeTab, setActiveTab] = useState('A')
   const [saved, setSaved] = useState(false)
   const [generatingPDF, setGeneratingPDF] = useState(false)
+  const mapARef = useRef(null)
+  const mapBRef = useRef(null)
 
   const activeOption = activeTab === 'A' ? results?.optionA : results?.optionB
   const audienceNote = results?.audience_mode === 'geographic_only' ? results?.audience_note : null
@@ -289,7 +291,38 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
   async function handlePDF() {
     setGeneratingPDF(true)
     try {
-      await generateProposalPDF({ results, formData, profile: { ...profile, email: user?.email }, org })
+      // Capturar mapas con html2canvas
+      const html2canvas = (await import('html2canvas')).default
+
+      async function captureMap(ref) {
+        if (!ref.current) return null
+        try {
+          const canvas = await html2canvas(ref.current, {
+            useCORS: true,
+            allowTaint: true,
+            scale: 2,
+            backgroundColor: '#1a2035',
+            logging: false,
+          })
+          return canvas.toDataURL('image/png')
+        } catch {
+          return null
+        }
+      }
+
+      const [mapA, mapB] = await Promise.all([
+        captureMap(mapARef),
+        captureMap(mapBRef),
+      ])
+
+      await generateProposalPDF({
+        results,
+        formData,
+        profile: { ...profile, email: user?.email },
+        org,
+        mapA,
+        mapB,
+      })
     } catch (err) {
       console.error('PDF generation error:', err)
     } finally {
@@ -353,7 +386,15 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
       <PriceBreakdown formData={formData} option={activeOption} />
 
       {/* Active option content */}
-      <OptionPanel option={activeOption} formData={formData} audienceNote={audienceNote} />
+      <OptionPanel option={activeOption} formData={formData} audienceNote={audienceNote} mapRef={activeTab === 'A' ? mapARef : mapBRef} />
+
+      {/* Hidden panels para captura de ambos mapas */}
+      <div style={{ position: 'absolute', left: '-9999px', top: 0, width: '600px', height: '300px', pointerEvents: 'none' }}>
+        <OptionPanel option={results?.optionA} formData={formData} audienceNote={null} mapRef={mapARef} />
+      </div>
+      <div style={{ position: 'absolute', left: '-9999px', top: 0, width: '600px', height: '300px', pointerEvents: 'none' }}>
+        <OptionPanel option={results?.optionB} formData={formData} audienceNote={null} mapRef={mapBRef} />
+      </div>
     </div>
   )
 }
