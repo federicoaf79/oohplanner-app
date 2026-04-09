@@ -473,6 +473,83 @@ export default function InventoryImportExport({ items, orgName, orgId, onImporte
     }
   }
 
+  // ── Template download ─────────────────────────────────────────
+
+  async function downloadTemplate() {
+    const XLSX = await import('xlsx')
+
+    const EXAMPLE = [
+      'BLL001',
+      'Cartel Av. Libertador',
+      'Av. Libertador 1234',
+      'Buenos Aires (CABA)',
+      'billboard',
+      12.5,
+      4,
+      'rented',
+      'si',
+      -34.5765,
+      -58.4123,
+      85000,
+      45000,
+      'no',
+      0,
+      0,
+      15000,
+      2000,
+      500,
+      1000,
+      500,
+      5000,
+      1200,
+      3000,
+      1500,
+      5,
+      0,
+      0,
+    ]
+
+    // Hoja principal: encabezados + fila ejemplo
+    const ws = XLSX.utils.aoa_to_sheet([CSV_COLS_ES, EXAMPLE])
+
+    // Negrita en encabezados (fila 0)
+    CSV_COLS_ES.forEach((_, colIdx) => {
+      const ref = XLSX.utils.encode_cell({ r: 0, c: colIdx })
+      if (ws[ref]) ws[ref].s = { font: { bold: true, name: 'Calibri', sz: 11 } }
+    })
+
+    // Anchos de columna proporcionales a la longitud del encabezado
+    ws['!cols'] = CSV_COLS_ES.map(h => ({ wch: Math.max(h.length + 4, 14) }))
+
+    // Hoja de referencia
+    const REF_ROWS = [
+      ['Campo',            'Valores válidos / Notas'],
+      ['formato',          'billboard · digital · ambient · poster · urban_furniture · urban_furniture_digital · mobile_screen'],
+      ['tipo_propiedad',   'owned · rented'],
+      ['iluminado',        'si · no'],
+      ['banda_negativa',   'si · no'],
+      ['',                 ''],
+      ['NOTAS',            ''],
+      ['ancho_m / alto_m',       'Medidas en metros con punto decimal. Ej: 12.5'],
+      ['latitud / longitud',     'Coordenadas decimales. Ej: -34.5765 / -58.4123'],
+      ['precio_mensual',         'Precio en moneda local, sin separadores de miles'],
+      ['comision_*_pct',         'Porcentaje como número entero. Ej: 5 = 5 %'],
+      ['codigo',                 'Si el código ya existe en la plataforma, esa fila ACTUALIZA el cartel existente'],
+    ]
+
+    const wsRef = XLSX.utils.aoa_to_sheet(REF_ROWS)
+    wsRef['!cols'] = [{ wch: 24 }, { wch: 88 }]
+    ;['A1', 'B1', 'A7'].forEach(ref => {
+      if (wsRef[ref]) wsRef[ref].s = { font: { bold: true, name: 'Calibri', sz: 11 } }
+    })
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Inventario')
+    XLSX.utils.book_append_sheet(wb, wsRef, 'Referencia')
+
+    XLSX.writeFile(wb, 'plantilla_inventario_oohplanner.xlsx')
+  }
+
   // ── Render ───────────────────────────────────────────────────
 
   return (
@@ -589,6 +666,15 @@ export default function InventoryImportExport({ items, orgName, orgId, onImporte
                 <p className="font-semibold">Columnas requeridas: <span className="font-mono">codigo, nombre</span></p>
                 <p>El resto es opcional. También acepta columnas en inglés para compatibilidad con imports anteriores.</p>
               </div>
+
+              <button
+                type="button"
+                onClick={downloadTemplate}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-brand/30 bg-brand/10 py-2.5 text-sm font-medium text-brand hover:bg-brand/20 transition-colors"
+              >
+                <Download className="h-4 w-4" />
+                Descargar plantilla vacía (.xlsx)
+              </button>
 
               {!importing && !result && (
                 <button type="button" onClick={() => fileRef.current?.click()}
