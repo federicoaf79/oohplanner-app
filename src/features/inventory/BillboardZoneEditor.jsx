@@ -12,7 +12,7 @@ const DEFAULT_ZONE = {
 
 const POINT_KEYS   = ['tl', 'tr', 'bl', 'br']
 const POINT_LABELS = { tl: 'TL', tr: 'TR', bl: 'BL', br: 'BR' }
-const POINT_RADIUS = 14
+const POINT_RADIUS = 10   // px — pixel-based SVG coords, so this is actual pixels
 
 function initCaras(item) {
   return Array.isArray(item.caras) && item.caras.length > 0
@@ -83,18 +83,28 @@ export default function BillboardZoneEditor({ item, caraIndex: initialCaraIndex 
   const [saveError,      setSaveError]      = useState('')
   const [photoUploading, setPhotoUploading] = useState(false)
   const [photoError,     setPhotoError]     = useState('')
+  const [imgSize,        setImgSize]        = useState({ w: 0, h: 0 })
 
   const svgRef       = useRef(null)
   const imgRef       = useRef(null)
   const dragging     = useRef(null)
   const photoInputRef = useRef(null)
 
-  // Reset zone when cara changes
+  // Reset zone + imgSize when cara changes
   useEffect(() => {
     setZone(getInitialZone(localCaras[caraIndex]))
     setSaved(false)
     setSaveError('')
+    setImgSize({ w: 0, h: 0 })
   }, [caraIndex]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Capture rendered image dimensions (handles cached images that skip onLoad)
+  useEffect(() => {
+    const el = imgRef.current
+    if (el?.complete && el.clientWidth > 0) {
+      setImgSize({ w: el.clientWidth, h: el.clientHeight })
+    }
+  }, [localCaras, caraIndex])
 
   // ── Coordinate helpers ────────────────────────────────────────────────────
 
@@ -233,8 +243,12 @@ export default function BillboardZoneEditor({ item, caraIndex: initialCaraIndex 
   const photoUrl    = currentCara?.photo_url ?? null
   const { tl, tr, bl, br } = zone
 
-  const toSvgPt = (pt) => `${(pt.x * 100).toFixed(2)}% ${(pt.y * 100).toFixed(2)}%`
-  const polygonPoints = `${toSvgPt(tl)} ${toSvgPt(tr)} ${toSvgPt(br)} ${toSvgPt(bl)}`
+  // Pixel-based SVG coordinates (viewBox = actual rendered image px dimensions)
+  const W = imgSize.w || 1
+  const H = imgSize.h || 1
+  const px  = (pt) => pt.x * W
+  const py  = (pt) => pt.y * H
+  const polygonPoints = `${px(tl)},${py(tl)} ${px(tr)},${py(tr)} ${px(br)},${py(br)} ${px(bl)},${py(bl)}`
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-surface-900 overflow-hidden">
@@ -286,67 +300,59 @@ export default function BillboardZoneEditor({ item, caraIndex: initialCaraIndex 
                 alt={item.name}
                 className="block max-w-full max-h-[70vh] lg:max-h-[80vh] object-contain select-none rounded-lg"
                 draggable={false}
+                onLoad={e => setImgSize({ w: e.target.clientWidth, h: e.target.clientHeight })}
               />
-              {/* SVG overlay */}
-              <svg
-                ref={svgRef}
-                className="absolute inset-0 w-full h-full cursor-crosshair"
-                viewBox="0 0 100 100"
-                preserveAspectRatio="none"
-                onTouchMove={handleTouchMove}
-                onTouchEnd={handleTouchEnd}
-              >
-                <polygon
-                  points={polygonPoints}
-                  fill="rgba(99,102,241,0.15)"
-                  stroke="rgba(99,102,241,0.8)"
-                  strokeWidth="0.5"
-                  vectorEffect="non-scaling-stroke"
-                />
-
-                {[
-                  [tl, tr], [tr, br], [br, bl], [bl, tl],
-                  [tl, br], [tr, bl],
-                ].map(([a, b], i) => (
-                  <line
-                    key={i}
-                    x1={`${a.x * 100}%`} y1={`${a.y * 100}%`}
-                    x2={`${b.x * 100}%`} y2={`${b.y * 100}%`}
-                    stroke={i < 4 ? 'rgba(99,102,241,0.9)' : 'rgba(99,102,241,0.25)'}
-                    strokeWidth={i < 4 ? '0.5' : '0.3'}
-                    strokeDasharray={i >= 4 ? '1 1' : undefined}
+              {/* SVG overlay — pixel-based viewBox matches rendered image dimensions */}
+              {imgSize.w > 0 && (
+                <svg
+                  ref={svgRef}
+                  className="absolute inset-0 w-full h-full"
+                  viewBox={`0 0 ${W} ${H}`}
+                  preserveAspectRatio="none"
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
+                >
+                  {/* Polygon: yellow stroke, translucent gray fill — drawn under points */}
+                  <polygon
+                    points={polygonPoints}
+                    fill="rgba(100,100,100,0.45)"
+                    stroke="#FACC15"
+                    strokeWidth="2"
                     vectorEffect="non-scaling-stroke"
                   />
-                ))}
 
-                {POINT_KEYS.map(key => {
-                  const pt = zone[key]
-                  const cx = `${pt.x * 100}%`
-                  const cy = `${pt.y * 100}%`
-                  return (
-                    <g
-                      key={key}
-                      style={{ cursor: 'grab' }}
-                      onMouseDown={e => handleMouseDown(key, e)}
-                      onTouchStart={e => handleTouchStart(key, e)}
-                    >
-                      <circle cx={cx} cy={cy} r={POINT_RADIUS} fill="white" vectorEffect="non-scaling-stroke" />
-                      <circle cx={cx} cy={cy} r={POINT_RADIUS - 3} fill="rgb(99,102,241)" vectorEffect="non-scaling-stroke" />
-                      <text
-                        x={cx} y={cy}
-                        textAnchor="middle"
-                        dominantBaseline="central"
-                        fontSize="8"
-                        fontWeight="bold"
-                        fill="white"
-                        style={{ pointerEvents: 'none', userSelect: 'none' }}
+                  {/* Draggable corner points */}
+                  {POINT_KEYS.map(key => {
+                    const pt = zone[key]
+                    const cx = px(pt)
+                    const cy = py(pt)
+                    return (
+                      <g
+                        key={key}
+                        style={{ cursor: 'crosshair' }}
+                        onMouseDown={e => handleMouseDown(key, e)}
+                        onTouchStart={e => handleTouchStart(key, e)}
                       >
-                        {POINT_LABELS[key]}
-                      </text>
-                    </g>
-                  )
-                })}
-              </svg>
+                        {/* White border ring */}
+                        <circle cx={cx} cy={cy} r={POINT_RADIUS} fill="white" vectorEffect="non-scaling-stroke" />
+                        {/* Brand fill */}
+                        <circle cx={cx} cy={cy} r={POINT_RADIUS - 2} fill="#6366f1" vectorEffect="non-scaling-stroke" />
+                        <text
+                          x={cx} y={cy}
+                          textAnchor="middle"
+                          dominantBaseline="central"
+                          fontSize="8"
+                          fontWeight="bold"
+                          fill="white"
+                          style={{ pointerEvents: 'none', userSelect: 'none' }}
+                        >
+                          {POINT_LABELS[key]}
+                        </text>
+                      </g>
+                    )
+                  })}
+                </svg>
+              )}
             </div>
           ) : (
             /* No-photo placeholder — accepts drop + click */
