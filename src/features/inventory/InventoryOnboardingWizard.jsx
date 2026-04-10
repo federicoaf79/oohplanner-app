@@ -733,17 +733,6 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
                     </table>
                   </div>
 
-                  {/* Botón importar */}
-                  <button
-                    onClick={handleImport}
-                    disabled={importing || (okCount + warningCount) === 0}
-                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-brand py-3 text-sm font-semibold text-white hover:bg-brand/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {importing
-                      ? <><Loader2 className="h-4 w-4 animate-spin" /> Importando...</>
-                      : <><CheckCircle className="h-4 w-4" /> Importar {items.length - errorCount} cartel{items.length - errorCount !== 1 ? 'es' : ''}{errorCount > 0 ? ` (${errorCount} con error omitido${errorCount !== 1 ? 's' : ''})` : ''}</>
-                    }
-                  </button>
                 </div>
               )}
 
