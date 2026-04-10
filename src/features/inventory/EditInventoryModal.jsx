@@ -85,6 +85,9 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
       cost_maintenance:         item.cost_maintenance ?? 0,
       cost_imponderables:       item.cost_imponderables ?? 0,
       cost_owner_commission:    item.cost_owner_commission ?? 0,
+      // Asociado al cartel
+      asociado_nombre:          item.asociado_nombre ?? '',
+      asociado_comision_pct:    item.asociado_comision_pct ?? 0,
       // Costos campaña
       cost_print_per_m2:        item.cost_print_per_m2 ?? 0,
       cost_installation:        item.cost_installation ?? 0,
@@ -148,6 +151,8 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
         cost_maintenance:         form.cost_maintenance,
         cost_imponderables:       form.cost_imponderables,
         cost_owner_commission:    form.cost_owner_commission,
+        asociado_nombre:          form.asociado_nombre || null,
+        asociado_comision_pct:    form.asociado_comision_pct,
         cost_print_per_m2:        form.cost_print_per_m2,
         cost_installation:        form.cost_installation,
         cost_design:              form.cost_design,
@@ -327,14 +332,44 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
                 <NumericField label="Impuestos y derechos" value={form.cost_taxes} onChange={v => set('cost_taxes', v)} prefix="$" />
                 <NumericField label="Mantenimiento estimado" value={form.cost_maintenance} onChange={v => set('cost_maintenance', v)} prefix="$" />
                 <NumericField label="Imponderables" value={form.cost_imponderables} onChange={v => set('cost_imponderables', v)} prefix="$" />
-                <NumericField label="Costo dueño del cartel (si alquilado)" value={form.cost_owner_commission} onChange={v => set('cost_owner_commission', v)} prefix="$" />
+              </div>
+
+              {/* Asociado al cartel */}
+              <div className="rounded-xl border border-surface-700 bg-surface-800/50 p-4 space-y-3">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Asociado al cartel</p>
+                <p className="text-xs text-slate-500">Persona o empresa que trae el cartel y cobra una comisión sobre el precio de venta del espacio.</p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-400">Nombre del asociado</label>
+                    <input
+                      type="text"
+                      value={form.asociado_nombre}
+                      onChange={e => set('asociado_nombre', e.target.value)}
+                      placeholder="Ej: Juan García"
+                      className="w-full rounded-lg border border-surface-700 bg-surface-800 px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-brand focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-slate-400">% comisión sobre venta</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        value={form.asociado_comision_pct}
+                        onChange={e => set('asociado_comision_pct', Number(e.target.value))}
+                        min="0" max="100" step="0.5"
+                        className="w-full rounded-lg border border-surface-700 bg-surface-800 px-3 py-2 pr-8 text-sm text-white focus:border-brand focus:outline-none"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">%</span>
+                    </div>
+                  </div>
+                </div>
               </div>
               <div className="rounded-xl border border-surface-700 bg-surface-800/50 p-4 text-sm">
                 <span className="text-slate-500">Total costos fijos/mes: </span>
                 <span className="font-bold text-white">
                   ${(
                     (form.cost_rent||0) + (form.cost_electricity||0) + (form.cost_taxes||0) +
-                    (form.cost_maintenance||0) + (form.cost_imponderables||0) + (form.cost_owner_commission||0)
+                    (form.cost_maintenance||0) + (form.cost_imponderables||0)
                   ).toLocaleString('es-AR')}
                 </span>
               </div>
@@ -354,6 +389,20 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
                 <NumericField label="Comisión vendedor" value={form.cost_seller_commission_pct} onChange={v => set('cost_seller_commission_pct', v)} suffix="%" />
                 <NumericField label="Comisión agencia" value={form.cost_agency_commission_pct} onChange={v => set('cost_agency_commission_pct', v)} suffix="%" />
               </div>
+
+              {/* Asociado al cartel — solo si está configurado */}
+              {form.asociado_nombre && (
+                <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+                  <p className="text-xs font-semibold text-amber-400 mb-1">Comisión del asociado</p>
+                  <p className="text-xs text-slate-400">
+                    <span className="text-white font-medium">{form.asociado_nombre}</span>
+                    {' '}cobra el{' '}
+                    <span className="text-amber-400 font-semibold">{form.asociado_comision_pct}%</span>
+                    {' '}sobre el precio de venta del espacio.
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">Configurado en la pestaña Costos fijos.</p>
+                </div>
+              )}
             </div>
           )}
         </div>
