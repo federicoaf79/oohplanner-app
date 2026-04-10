@@ -6,10 +6,10 @@
  *   ALTER TABLE organisations ADD COLUMN IF NOT EXISTS onboarding_step int DEFAULT 0;
  */
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import {
   X, Upload, CheckCircle, ChevronLeft, ChevronRight,
-  Loader2, Clock, Sparkles, FileText,
+  Loader2, Clock, Sparkles, FileText, Image, AlertCircle,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
@@ -281,10 +281,11 @@ async function processPdfWithAI(file, systemPrompt, onProgress) {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model:      'claude-haiku-4-5-20251001',
-        max_tokens: 4000,
-        system:     systemPrompt,
-        messages:   [{ role: 'user', content }],
+        model:       'claude-haiku-4-5-20251001',
+        max_tokens:  4000,
+        temperature: 0,
+        system:      systemPrompt,
+        messages:    [{ role: 'user', content }],
       }),
     })
 
@@ -351,13 +352,23 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
   const [savedSteps, setSavedSteps] = useState(new Set())
 
   // Step 1 state
+  // Step 1
   const [file,          setFile]          = useState(null)
+  const [pdfFile,       setPdfFile]       = useState(null)
   const [parsing,       setParsing]       = useState(false)
   const [parseProgress, setParseProgress] = useState('')
   const [parseError,    setParseError]    = useState('')
   const [items,         setItems]         = useState([])
   const [importing,     setImporting]     = useState(false)
   const [importedCount, setImportedCount] = useState(null)
+  const [importedItems, setImportedItems] = useState([])
+
+  // Step 2
+  const [photosPreviews,   setPhotosPreviews]   = useState([])
+  const [photosExtracting, setPhotosExtracting] = useState(false)
+  const [photosUploading,  setPhotosUploading]  = useState(false)
+  const [photosUploaded,   setPhotosUploaded]   = useState(false)
+  const [photosError,      setPhotosError]      = useState('')
 
   const fileInputRef = useRef(null)
   const isDirty      = items.length > 0 && importedCount === null
@@ -406,7 +417,8 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
       } else if (ext === 'csv') {
         parsed = await parseCsv(f)
       } else if (ext === 'pdf' || f.type === 'application/pdf') {
-        // PDF → renderizar páginas con pdfjs + batches a Claude
+        // PDF → guardar en memoria + renderizar páginas con pdfjs + batches a Claude
+        setPdfFile(f)
         const raw = await processPdfWithAI(f, CLAUDE_SYSTEM_PROMPT, setParseProgress)
         parsed = Array.isArray(raw) ? raw.map(r => normalizeRow(r)) : []
       } else {
@@ -462,6 +474,7 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
       if (error) throw new Error(error.message)
 
       setImportedCount(valid.length)
+      setImportedItems(valid)
       await markStepSaved(1)
       return valid.length
     } catch (err) {
@@ -471,6 +484,111 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
       setImporting(false)
     }
   }
+
+  // ── Paso 2: extraer fotos del PDF ──────────────────────────────────────────
+
+  async function extractPhotosFromPdf() {
+    if (!pdfFile || photosExtracting || photosPreviews.length > 0) return
+    setPhotosExtracting(true)
+    try {
+      const pdfjsLib = await import('pdfjs-dist')
+      pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+        'pdfjs-dist/build/pdf.worker.min.mjs',
+        import.meta.url
+      ).toString()
+
+      const arrayBuffer = await pdfFile.arrayBuffer()
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+      const previews = []
+
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page     = await pdf.getPage(i)
+        const viewport = page.getViewport({ scale: 1.5 })
+        const canvas   = document.createElement('canvas')
+        canvas.width   = viewport.width
+        canvas.height  = viewport.height
+        const ctx      = canvas.getContext('2d')
+        await page.render({ canvasContext: ctx, viewport }).promise
+
+        let quality = 0.8
+        let base64  = canvas.toDataURL('image/jpeg', quality).split(',')[1]
+        while (base64.length > 933_000 && quality > 0.3) {
+          quality -= 0.1
+          base64 = canvas.toDataURL('image/jpeg', quality).split(',')[1]
+        }
+
+        const matchedItem = importedItems[i - 1] ?? null
+        previews.push({
+          pageNum:     i,
+          base64,
+          matchedCode: matchedItem?.code ?? null,
+          matchedName: matchedItem?.name ?? null,
+          selected:    !!matchedItem,
+        })
+      }
+      setPhotosPreviews(previews)
+    } catch (err) {
+      console.error('Error extrayendo fotos:', err)
+      setPhotosError('No se pudieron extraer las fotos del PDF.')
+    } finally {
+      setPhotosExtracting(false)
+    }
+  }
+
+  function togglePhotoSelected(pageNum) {
+    setPhotosPreviews(prev =>
+      prev.map(p => p.pageNum === pageNum ? { ...p, selected: !p.selected } : p)
+    )
+  }
+
+  async function uploadPhotos() {
+    const selected = photosPreviews.filter(p => p.selected && p.matchedCode)
+    if (selected.length === 0) return
+    setPhotosUploading(true)
+    setPhotosError('')
+    try {
+      for (const preview of selected) {
+        // Convertir base64 a Blob
+        const res  = await fetch('data:image/jpeg;base64,' + preview.base64)
+        const blob = await res.blob()
+
+        // Subir a Storage
+        const path = `${orgId}/${preview.matchedCode}_A.jpg`
+        const { error: uploadErr } = await supabase.storage
+          .from('inventory-photos')
+          .upload(path, blob, { upsert: true, contentType: 'image/jpeg' })
+        if (uploadErr) { console.error('Upload error:', uploadErr); continue }
+
+        // Obtener URL pública
+        const { data: { publicUrl } } = supabase.storage
+          .from('inventory-photos')
+          .getPublicUrl(path)
+
+        // Actualizar inventory: columna caras con foto
+        const caras = JSON.stringify([{
+          id:             'A',
+          label:          'Cara A',
+          photo_url:      publicUrl,
+          billboard_zone: null,
+        }])
+        await supabase
+          .from('inventory')
+          .update({ caras })
+          .eq('code', preview.matchedCode)
+          .eq('org_id', orgId)
+      }
+      setPhotosUploaded(true)
+      await markStepSaved(2)
+    } catch (err) {
+      setPhotosError(err.message)
+    } finally {
+      setPhotosUploading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (step === 2 && pdfFile) extractPhotosFromPdf()
+  }, [step]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Footer: lógica del botón Siguiente ─────────────────────────────────────
 
@@ -827,8 +945,118 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
             </>
           )}
 
-          {/* ──── PASOS 2–6: Placeholder ──── */}
-          {step > 1 && (
+          {/* ──── PASO 2: Imágenes ──── */}
+          {step === 2 && (
+            <>
+              {/* Extrayendo fotos */}
+              {photosExtracting && (
+                <div className="flex flex-col items-center justify-center gap-4 py-16">
+                  <Loader2 className="h-10 w-10 text-brand animate-spin" />
+                  <p className="text-sm text-slate-400">Extrayendo fotos del PDF…</p>
+                </div>
+              )}
+
+              {/* Subida exitosa */}
+              {photosUploaded && (
+                <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-10 text-center space-y-3">
+                  <CheckCircle className="mx-auto h-12 w-12 text-emerald-400" />
+                  <h3 className="text-lg font-semibold text-white">¡Fotos subidas al inventario!</h3>
+                  <p className="text-sm text-slate-400">Las imágenes ya están asociadas a cada cartel.</p>
+                </div>
+              )}
+
+              {/* Error */}
+              {photosError && (
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-400 flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  {photosError}
+                </div>
+              )}
+
+              {/* Grilla de fotos extraídas del PDF */}
+              {!photosExtracting && !photosUploaded && photosPreviews.length > 0 && (
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">
+                      {photosPreviews.length} página{photosPreviews.length !== 1 ? 's' : ''} extraída{photosPreviews.length !== 1 ? 's' : ''} del PDF
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Seleccioná las páginas que son fotos de carteles y subílas al inventario.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {photosPreviews.map(preview => (
+                      <div
+                        key={preview.pageNum}
+                        onClick={() => togglePhotoSelected(preview.pageNum)}
+                        className={`relative cursor-pointer rounded-xl overflow-hidden border-2 transition-colors ${
+                          preview.selected
+                            ? 'border-brand ring-1 ring-brand/30'
+                            : 'border-surface-700 opacity-60'
+                        }`}
+                      >
+                        <img
+                          src={`data:image/jpeg;base64,${preview.base64}`}
+                          alt={`Página ${preview.pageNum}`}
+                          className="w-full aspect-video object-cover"
+                        />
+                        <div className="absolute inset-x-0 bottom-0 bg-surface-900/80 px-2 py-1.5 space-y-0.5">
+                          {preview.matchedCode ? (
+                            <>
+                              <p className="text-[10px] font-mono text-brand leading-tight">{preview.matchedCode}</p>
+                              <p className="text-[10px] text-slate-300 leading-tight truncate">{preview.matchedName}</p>
+                            </>
+                          ) : (
+                            <p className="text-[10px] text-amber-400">Sin match — pág. {preview.pageNum}</p>
+                          )}
+                        </div>
+                        <div className={`absolute top-2 right-2 h-4 w-4 rounded border-2 flex items-center justify-center ${
+                          preview.selected
+                            ? 'border-brand bg-brand'
+                            : 'border-slate-500 bg-surface-800/70'
+                        }`}>
+                          {preview.selected && <CheckCircle className="h-2.5 w-2.5 text-white" />}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={uploadPhotos}
+                    disabled={photosUploading || photosPreviews.filter(p => p.selected && p.matchedCode).length === 0}
+                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-brand py-3 text-sm font-semibold text-white hover:bg-brand/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {photosUploading
+                      ? <><Loader2 className="h-4 w-4 animate-spin" /> Subiendo…</>
+                      : <><Image className="h-4 w-4" /> Subir {photosPreviews.filter(p => p.selected && p.matchedCode).length} foto{photosPreviews.filter(p => p.selected && p.matchedCode).length !== 1 ? 's' : ''} al inventario</>
+                    }
+                  </button>
+                </div>
+              )}
+
+              {/* Sin PDF: dropzone para ZIP */}
+              {!photosExtracting && !photosUploaded && photosPreviews.length === 0 && !pdfFile && (
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-white mb-1">Subí las fotos de tus carteles</h3>
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                      No se detectó un PDF en el paso anterior. Podés usar el botón <strong className="text-slate-400">"Subir fotos"</strong> desde la pantalla de inventario para subir un ZIP con las imágenes.
+                    </p>
+                  </div>
+                  <div className="rounded-2xl border-2 border-dashed border-surface-600 bg-surface-800/50 p-12 text-center space-y-3">
+                    <Image className="mx-auto h-10 w-10 text-slate-600" />
+                    <p className="text-sm text-slate-500">
+                      Volvé al Paso 1 y subí tu inventario en formato PDF para extraer las fotos automáticamente.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* ──── PASOS 3–6: Placeholder ──── */}
+          {step > 2 && (
             <div className="rounded-2xl border border-surface-700 bg-surface-800/50 p-14 text-center space-y-4">
               <Clock className="mx-auto h-12 w-12 text-slate-700" />
               <div>
