@@ -197,12 +197,10 @@ async function callClaudeWithFile(file) {
     ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
     : { type: 'image',    source: { type: 'base64', media_type: file.type, data: base64 } }
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch('/api/claude', {
     method: 'POST',
     headers: {
-      'Content-Type':    'application/json',
-      'anthropic-version': '2023-06-01',
-      // x-api-key es inyectado por el proxy
+      'Content-Type': 'application/json',
     },
     body: JSON.stringify({
       model:      'claude-haiku-4-5-20251001',
