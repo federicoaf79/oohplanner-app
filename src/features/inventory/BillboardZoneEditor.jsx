@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { X, RotateCcw, Upload, Save, Loader2, CheckCircle } from 'lucide-react'
+import { X, ChevronLeft, RotateCcw, Upload, Save, Loader2, CheckCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 
@@ -250,6 +250,13 @@ export default function BillboardZoneEditor({ item, caraIndex: initialCaraIndex 
 
       {/* Header */}
       <div className="shrink-0 border-b border-surface-700 bg-surface-800 px-5 py-3 flex items-center gap-4">
+        <button
+          onClick={onClose}
+          className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors mr-4"
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Volver
+        </button>
         <div className="flex-1 min-w-0">
           <h2 className="text-sm font-semibold text-white truncate">{item.name}</h2>
           <p className="text-xs text-slate-500">{item.code}{item.address ? ' · ' + item.address : ''}</p>

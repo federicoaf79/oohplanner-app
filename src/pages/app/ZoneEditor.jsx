@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Crosshair, ImageOff, CheckCircle } from 'lucide-react'
+import { Crosshair, ImageOff, LayoutGrid, List } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import Spinner from '../../components/ui/Spinner'
@@ -33,8 +33,9 @@ export default function ZoneEditor() {
   const [items,   setItems]   = useState([])
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState('')
-  const [filter,  setFilter]  = useState('all')
-  const [editing, setEditing] = useState(null) // { item, caraIndex }
+  const [filter,   setFilter]   = useState('all')
+  const [viewMode, setViewMode] = useState('grid')
+  const [editing,  setEditing]  = useState(null) // { item, caraIndex }
 
   useEffect(() => {
     if (!orgId) return
@@ -95,8 +96,8 @@ export default function ZoneEditor() {
             )}
           </div>
 
-          {/* Filters */}
-          <div className="flex gap-2 mt-4 flex-wrap">
+          {/* Filters + view toggle */}
+          <div className="flex items-center gap-2 mt-4 flex-wrap">
             {FILTERS.map(f => (
               <button
                 key={f.id}
@@ -115,6 +116,20 @@ export default function ZoneEditor() {
                 )}
               </button>
             ))}
+            <div className="flex items-center gap-1 ml-auto">
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`p-1.5 rounded transition-colors ${viewMode === 'grid' ? 'bg-brand text-white' : 'text-slate-400 hover:text-white'}`}
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={`p-1.5 rounded transition-colors ${viewMode === 'list' ? 'bg-brand text-white' : 'text-slate-400 hover:text-white'}`}
+              >
+                <List className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -139,77 +154,101 @@ export default function ZoneEditor() {
           </div>
         )}
 
-        {!loading && !error && filtered.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map(item => {
-              const status = itemStatus(item)
-              const thumb  = getThumbUrl(item)
+        {!loading && !error && filtered.length > 0 && (() => {
+          const StatusBadge = ({ status }) => (
+            <span className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+              status === 'ready'    ? 'bg-emerald-500 text-white' :
+              status === 'no_zone' ? 'bg-amber-500/20 text-amber-400' :
+                                     'bg-surface-700 text-slate-500'
+            }`}>
+              {status === 'ready' ? '✓ Listo' : status === 'no_zone' ? 'Marcar zona' : 'Sin foto'}
+            </span>
+          )
 
-              return (
-                <div
-                  key={item.id}
-                  className="rounded-2xl border border-surface-700 bg-surface-800 overflow-hidden flex flex-col hover:border-surface-600 transition-colors"
-                >
-                  {/* Thumbnail */}
-                  <div className="relative aspect-video bg-surface-900 flex items-center justify-center overflow-hidden">
-                    {thumb ? (
-                      <img
-                        src={thumb}
-                        alt={item.name}
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <ImageOff className="h-10 w-10 text-slate-700" />
-                    )}
+          return viewMode === 'grid' ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filtered.map(item => {
+                const status = itemStatus(item)
+                const thumb  = getThumbUrl(item)
+                return (
+                  <div
+                    key={item.id}
+                    className="rounded-2xl border border-surface-700 bg-surface-800 overflow-hidden flex flex-col hover:border-surface-600 transition-colors"
+                  >
+                    {/* Thumbnail */}
+                    <div className="aspect-video bg-surface-900 flex items-center justify-center overflow-hidden">
+                      {thumb
+                        ? <img src={thumb} alt={item.name} className="w-full h-full object-cover" />
+                        : <ImageOff className="h-10 w-10 text-slate-700" />
+                      }
+                    </div>
 
-                    {/* Status badge */}
-                    <div className="absolute top-2 right-2">
-                      {status === 'ready' && (
-                        <span className="flex items-center gap-1 rounded-full bg-emerald-500/20 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
-                          <CheckCircle className="h-3 w-3" /> Listo
-                        </span>
-                      )}
-                      {status === 'no_zone' && (
-                        <span className="rounded-full bg-amber-500/20 border border-amber-500/30 px-2 py-0.5 text-[10px] font-medium text-amber-400">
-                          Marcar zona
-                        </span>
-                      )}
-                      {status === 'no_photo' && (
-                        <span className="rounded-full bg-surface-700 border border-surface-600 px-2 py-0.5 text-[10px] font-medium text-slate-500">
-                          Sin foto
-                        </span>
-                      )}
+                    {/* Info */}
+                    <div className="flex flex-col gap-3 p-4 flex-1">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{item.name}</p>
+                        <div className="flex items-center justify-between gap-2 mt-1">
+                          <span className="text-xs text-slate-500 truncate min-w-0">
+                            <span className="font-mono text-slate-600">{item.code}</span>
+                            {item.address ? ' · ' + item.address : ''}
+                          </span>
+                          <StatusBadge status={status} />
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => setEditing({ item, caraIndex: 0 })}
+                        className={`w-full rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
+                          status === 'ready'
+                            ? 'border border-surface-600 bg-surface-700 text-slate-300 hover:bg-surface-600'
+                            : status === 'no_zone'
+                            ? 'bg-brand text-white hover:bg-brand/90'
+                            : 'border border-surface-600 bg-surface-700 text-slate-400 hover:bg-surface-600'
+                        }`}
+                      >
+                        {status === 'ready' ? 'Editar zona' : status === 'no_zone' ? 'Marcar zona' : 'Subir foto y marcar zona'}
+                      </button>
                     </div>
                   </div>
-
-                  {/* Info */}
-                  <div className="flex flex-col gap-3 p-4 flex-1">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-white truncate">{item.name}</p>
-                      <p className="text-xs text-slate-500 mt-0.5 truncate">
+                )
+              })}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {filtered.map(item => {
+                const status = itemStatus(item)
+                const thumb  = getThumbUrl(item)
+                return (
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-4 p-3 rounded-xl border border-surface-700 bg-surface-800/50 hover:border-brand/30 transition-colors"
+                  >
+                    {thumb
+                      ? <img src={thumb} alt={item.name} className="h-14 w-20 object-cover rounded-lg shrink-0" />
+                      : <div className="h-14 w-20 shrink-0 rounded-lg bg-surface-700 flex items-center justify-center">
+                          <ImageOff className="h-5 w-5 text-slate-600" />
+                        </div>
+                    }
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-white text-sm truncate">{item.name}</p>
+                      <p className="text-xs text-slate-500 truncate">
                         <span className="font-mono text-slate-600">{item.code}</span>
                         {item.address ? ' · ' + item.address : ''}
                       </p>
                     </div>
-
+                    <StatusBadge status={status} />
                     <button
                       onClick={() => setEditing({ item, caraIndex: 0 })}
-                      className={`w-full rounded-lg px-3 py-2 text-xs font-medium transition-colors ${
-                        status === 'ready'
-                          ? 'border border-surface-600 bg-surface-700 text-slate-300 hover:bg-surface-600'
-                          : status === 'no_zone'
-                          ? 'bg-brand text-white hover:bg-brand/90'
-                          : 'border border-surface-600 bg-surface-700 text-slate-400 hover:bg-surface-600'
-                      }`}
+                      className="shrink-0 rounded-lg border border-surface-700 px-3 py-1.5 text-xs text-slate-300 hover:border-brand/40 hover:text-white transition-colors"
                     >
-                      {status === 'ready' ? 'Editar zona' : status === 'no_zone' ? 'Marcar zona' : 'Subir foto y marcar zona'}
+                      {status === 'ready' ? 'Editar zona' : 'Marcar zona'}
                     </button>
                   </div>
-                </div>
-              )
-            })}
-          </div>
-        )}
+                )
+              })}
+            </div>
+          )
+        })()}
       </div>
 
       {/* Zone editor modal */}
