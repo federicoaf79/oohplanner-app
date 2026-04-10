@@ -10,12 +10,14 @@ const DEFAULT_ZONE = {
   br: { x: 0.8, y: 0.8 },
 }
 
-const POINT_KEYS = ['tl', 'tr', 'bl', 'br']
+const POINT_KEYS   = ['tl', 'tr', 'bl', 'br']
 const POINT_LABELS = { tl: 'TL', tr: 'TR', bl: 'BL', br: 'BR' }
 const POINT_RADIUS = 14
 
-function getPhotoUrl(cara) {
-  return cara?.photo_url ?? null
+function initCaras(item) {
+  return Array.isArray(item.caras) && item.caras.length > 0
+    ? item.caras
+    : [{ id: 'A', label: 'Cara A', photo_url: item.photo_url ?? item.image_url ?? null, billboard_zone: null }]
 }
 
 function getInitialZone(cara) {
@@ -23,28 +25,73 @@ function getInitialZone(cara) {
   return { ...DEFAULT_ZONE }
 }
 
+// ── Image compression ────────────────────────────────────────────────────────
+
+function compressImage(file) {
+  return new Promise((resolve) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const canvas = document.createElement('canvas')
+
+      // Scale down if wider than 1920px
+      let { width, height } = img
+      if (width > 1920) {
+        height = Math.round(height * 1920 / width)
+        width  = 1920
+      }
+      canvas.width  = width
+      canvas.height = height
+
+      const ctx = canvas.getContext('2d')
+
+      // Auto-crop if extreme landscape (ratio > 2.5) — take 60% from left
+      let srcX = 0, srcY = 0, srcW = img.width, srcH = img.height
+      if (img.width / img.height > 2.5) {
+        srcW = Math.round(img.width * 0.6)
+      }
+      ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, canvas.width, canvas.height)
+
+      // Iteratively compress until under 700 KB
+      const tryCompress = (q) => {
+        canvas.toBlob((blob) => {
+          if (blob.size > 700_000 && q > 0.3) {
+            tryCompress(q - 0.1)
+          } else {
+            resolve(blob)
+          }
+        }, 'image/jpeg', q)
+      }
+      tryCompress(0.85)
+    }
+    img.src = url
+  })
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
+
 export default function BillboardZoneEditor({ item, caraIndex: initialCaraIndex = 0, onClose, onSaved }) {
   const { profile } = useAuth()
   const orgId = profile?.org_id ?? null
 
-  const caras = Array.isArray(item.caras) && item.caras.length > 0 ? item.caras : [{ id: 'A', label: 'Cara A', photo_url: item.photo_url ?? item.image_url ?? null }]
+  const [localCaras,     setLocalCaras]     = useState(() => initCaras(item))
+  const [caraIndex,      setCaraIndex]      = useState(Math.min(initialCaraIndex, initCaras(item).length - 1))
+  const [zone,           setZone]           = useState(() => getInitialZone(initCaras(item)[Math.min(initialCaraIndex, initCaras(item).length - 1)]))
+  const [saving,         setSaving]         = useState(false)
+  const [saved,          setSaved]          = useState(false)
+  const [saveError,      setSaveError]      = useState('')
+  const [photoUploading, setPhotoUploading] = useState(false)
+  const [photoError,     setPhotoError]     = useState('')
 
-  const [caraIndex, setCaraIndex] = useState(Math.min(initialCaraIndex, caras.length - 1))
-  const [zone, setZone]           = useState(() => getInitialZone(caras[caraIndex]))
-  const [saving, setSaving]       = useState(false)
-  const [saved, setSaved]         = useState(false)
-  const [saveError, setSaveError] = useState('')
-  const [uploading, setUploading] = useState(false)
-  const [uploadError, setUploadError] = useState('')
-
-  const svgRef      = useRef(null)
-  const imgRef      = useRef(null)
-  const dragging    = useRef(null)   // { key, startX, startY, origX, origY }
+  const svgRef       = useRef(null)
+  const imgRef       = useRef(null)
+  const dragging     = useRef(null)
   const photoInputRef = useRef(null)
 
   // Reset zone when cara changes
   useEffect(() => {
-    setZone(getInitialZone(caras[caraIndex]))
+    setZone(getInitialZone(localCaras[caraIndex]))
     setSaved(false)
     setSaveError('')
   }, [caraIndex]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -74,7 +121,7 @@ export default function BillboardZoneEditor({ item, caraIndex: initialCaraIndex 
     const pos = clientToRelative(e.clientX, e.clientY)
     if (!pos) return
     setZone(prev => ({ ...prev, [dragging.current]: pos }))
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleMouseUp = useCallback(() => {
     dragging.current = null
@@ -107,7 +154,52 @@ export default function BillboardZoneEditor({ item, caraIndex: initialCaraIndex 
     dragging.current = null
   }
 
-  // ── Actions ───────────────────────────────────────────────────────────────
+  // ── Photo upload (with compression) ──────────────────────────────────────
+
+  async function handlePhotoUpload(file) {
+    if (!file || !file.type.startsWith('image/')) return
+    setPhotoUploading(true)
+    setPhotoError('')
+    try {
+      const compressed = await compressImage(file)
+      const currentCara = localCaras[caraIndex]
+      const caraId = currentCara?.id ?? 'A'
+      const path = `${orgId}/${item.code}_${caraId}.jpg`
+
+      const { error: uploadErr } = await supabase.storage
+        .from('inventory-photos')
+        .upload(path, compressed, { contentType: 'image/jpeg', upsert: true })
+      if (uploadErr) throw new Error(uploadErr.message)
+
+      const { data: { publicUrl } } = supabase.storage.from('inventory-photos').getPublicUrl(path)
+
+      const updatedCaras = [...localCaras]
+      if (updatedCaras[caraIndex]) {
+        updatedCaras[caraIndex] = { ...updatedCaras[caraIndex], photo_url: publicUrl }
+      } else {
+        updatedCaras.push({ id: caraId, label: 'Cara A', photo_url: publicUrl, billboard_zone: null })
+      }
+
+      await supabase.from('inventory')
+        .update({ caras: updatedCaras, photo_url: publicUrl })
+        .eq('id', item.id)
+
+      setLocalCaras(updatedCaras)
+      onSaved?.({ ...item, caras: updatedCaras })
+    } catch (err) {
+      setPhotoError(err.message)
+    } finally {
+      setPhotoUploading(false)
+    }
+  }
+
+  function handlePhotoDrop(e) {
+    e.preventDefault()
+    const file = e.dataTransfer.files?.[0]
+    if (file) handlePhotoUpload(file)
+  }
+
+  // ── Save zone ─────────────────────────────────────────────────────────────
 
   function handleReset() {
     setZone({ ...DEFAULT_ZONE })
@@ -119,12 +211,13 @@ export default function BillboardZoneEditor({ item, caraIndex: initialCaraIndex 
     setSaving(true)
     setSaveError('')
     try {
-      const updatedCaras = [...caras]
+      const updatedCaras = [...localCaras]
       updatedCaras[caraIndex] = { ...updatedCaras[caraIndex], billboard_zone: { ...zone } }
       const { error } = await supabase.from('inventory')
         .update({ caras: updatedCaras })
         .eq('id', item.id)
       if (error) throw new Error(error.message)
+      setLocalCaras(updatedCaras)
       setSaved(true)
       onSaved?.({ ...item, caras: updatedCaras })
     } catch (err) {
@@ -134,42 +227,12 @@ export default function BillboardZoneEditor({ item, caraIndex: initialCaraIndex 
     }
   }
 
-  async function handlePhotoUpload(e) {
-    const f = e.target.files?.[0]
-    if (!f) return
-    e.target.value = ''
-    setUploading(true)
-    setUploadError('')
-    try {
-      const cara = caras[caraIndex]
-      const caraId = cara?.id ?? 'A'
-      const path = `${orgId}/${item.code}_${caraId}.jpg`
-      const { error: uploadErr } = await supabase.storage
-        .from('inventory-photos')
-        .upload(path, f, { upsert: true, contentType: f.type })
-      if (uploadErr) throw new Error(uploadErr.message)
-      const { data: { publicUrl } } = supabase.storage.from('inventory-photos').getPublicUrl(path)
-      const updatedCaras = [...caras]
-      updatedCaras[caraIndex] = { ...updatedCaras[caraIndex], photo_url: publicUrl }
-      const { error: updateErr } = await supabase.from('inventory')
-        .update({ caras: updatedCaras })
-        .eq('id', item.id)
-      if (updateErr) throw new Error(updateErr.message)
-      onSaved?.({ ...item, caras: updatedCaras })
-    } catch (err) {
-      setUploadError(err.message)
-    } finally {
-      setUploading(false)
-    }
-  }
-
   // ── Render ────────────────────────────────────────────────────────────────
 
-  const currentCara  = caras[caraIndex]
-  const photoUrl     = getPhotoUrl(currentCara)
+  const currentCara = localCaras[caraIndex]
+  const photoUrl    = currentCara?.photo_url ?? null
   const { tl, tr, bl, br } = zone
 
-  // SVG polygon points as percentage strings (used in <polygon>)
   const toSvgPt = (pt) => `${(pt.x * 100).toFixed(2)}% ${(pt.y * 100).toFixed(2)}%`
   const polygonPoints = `${toSvgPt(tl)} ${toSvgPt(tr)} ${toSvgPt(br)} ${toSvgPt(bl)}`
 
@@ -184,9 +247,9 @@ export default function BillboardZoneEditor({ item, caraIndex: initialCaraIndex 
         </div>
 
         {/* Cara tabs */}
-        {caras.length > 1 && (
+        {localCaras.length > 1 && (
           <div className="flex gap-1">
-            {caras.map((c, i) => (
+            {localCaras.map((c, i) => (
               <button
                 key={c.id ?? i}
                 onClick={() => setCaraIndex(i)}
@@ -224,7 +287,7 @@ export default function BillboardZoneEditor({ item, caraIndex: initialCaraIndex 
                 className="block max-w-full max-h-[70vh] lg:max-h-[80vh] object-contain select-none rounded-lg"
                 draggable={false}
               />
-              {/* SVG overlay — positioned absolute over the image */}
+              {/* SVG overlay */}
               <svg
                 ref={svgRef}
                 className="absolute inset-0 w-full h-full cursor-crosshair"
@@ -233,7 +296,6 @@ export default function BillboardZoneEditor({ item, caraIndex: initialCaraIndex 
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
               >
-                {/* Shaded area outside zone */}
                 <polygon
                   points={polygonPoints}
                   fill="rgba(99,102,241,0.15)"
@@ -242,7 +304,6 @@ export default function BillboardZoneEditor({ item, caraIndex: initialCaraIndex 
                   vectorEffect="non-scaling-stroke"
                 />
 
-                {/* Lines connecting corners */}
                 {[
                   [tl, tr], [tr, br], [br, bl], [bl, tl],
                   [tl, br], [tr, bl],
@@ -258,7 +319,6 @@ export default function BillboardZoneEditor({ item, caraIndex: initialCaraIndex 
                   />
                 ))}
 
-                {/* Draggable corner points */}
                 {POINT_KEYS.map(key => {
                   const pt = zone[key]
                   const cx = `${pt.x * 100}%`
@@ -289,12 +349,26 @@ export default function BillboardZoneEditor({ item, caraIndex: initialCaraIndex 
               </svg>
             </div>
           ) : (
-            <div className="flex flex-col items-center gap-4 text-center">
-              <div className="rounded-2xl border-2 border-dashed border-surface-600 p-16">
-                <Upload className="mx-auto h-12 w-12 text-slate-600 mb-3" />
-                <p className="text-sm text-slate-500">Este cartel no tiene foto aún</p>
-                <p className="text-xs text-slate-600 mt-1">Subí una imagen para poder marcar la zona</p>
-              </div>
+            /* No-photo placeholder — accepts drop + click */
+            <div
+              onDrop={handlePhotoDrop}
+              onDragOver={e => e.preventDefault()}
+              onClick={() => photoInputRef.current?.click()}
+              style={{ cursor: 'pointer' }}
+              className="rounded-2xl border-2 border-dashed border-surface-600 p-16 text-center hover:border-brand/40 hover:bg-surface-800/50 transition-colors select-none"
+            >
+              {photoUploading ? (
+                <>
+                  <Loader2 className="mx-auto h-12 w-12 text-brand animate-spin mb-3" />
+                  <p className="text-sm text-slate-400">Subiendo y comprimiendo foto…</p>
+                </>
+              ) : (
+                <>
+                  <Upload className="mx-auto h-12 w-12 text-slate-600 mb-3" />
+                  <p className="text-sm text-slate-400 font-medium">Arrastrá una foto aquí o hacé clic</p>
+                  <p className="text-xs text-slate-600 mt-1">JPG · PNG · WEBP · se comprime automáticamente</p>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -310,7 +384,7 @@ export default function BillboardZoneEditor({ item, caraIndex: initialCaraIndex 
               </p>
             </div>
 
-            {/* Coordinates debug */}
+            {/* Coordinates */}
             <div>
               <p className="text-xs font-medium text-slate-400 mb-2">Coordenadas actuales</p>
               <div className="grid grid-cols-2 gap-1.5">
@@ -318,16 +392,24 @@ export default function BillboardZoneEditor({ item, caraIndex: initialCaraIndex 
                   <div key={key} className="rounded-lg bg-surface-700/60 px-2.5 py-1.5">
                     <p className="text-[10px] font-mono text-brand">{POINT_LABELS[key]}</p>
                     <p className="text-[10px] font-mono text-slate-400">
-                      {(zone[key].x).toFixed(3)}, {(zone[key].y).toFixed(3)}
+                      {zone[key].x.toFixed(3)}, {zone[key].y.toFixed(3)}
                     </p>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* Upload error */}
-            {uploadError && (
-              <p className="text-xs text-red-400">{uploadError}</p>
+            {/* Photo uploading spinner */}
+            {photoUploading && (
+              <div className="flex items-center gap-2 rounded-lg border border-brand/20 bg-brand/5 px-3 py-2">
+                <Loader2 className="h-4 w-4 text-brand animate-spin shrink-0" />
+                <p className="text-xs text-brand">Subiendo foto…</p>
+              </div>
+            )}
+
+            {/* Photo error */}
+            {photoError && (
+              <p className="text-xs text-red-400">{photoError}</p>
             )}
 
             {/* Save error */}
@@ -358,10 +440,10 @@ export default function BillboardZoneEditor({ item, caraIndex: initialCaraIndex 
             <button
               type="button"
               onClick={() => photoInputRef.current?.click()}
-              disabled={uploading}
+              disabled={photoUploading}
               className="w-full flex items-center justify-center gap-2 rounded-lg border border-surface-600 bg-surface-700 px-4 py-2.5 text-sm text-slate-300 hover:bg-surface-600 disabled:opacity-50 transition-colors"
             >
-              {uploading
+              {photoUploading
                 ? <><Loader2 className="h-4 w-4 animate-spin" /> Subiendo…</>
                 : <><Upload className="h-4 w-4" /> Cambiar foto</>
               }
@@ -371,7 +453,7 @@ export default function BillboardZoneEditor({ item, caraIndex: initialCaraIndex 
               type="file"
               accept="image/*"
               className="hidden"
-              onChange={handlePhotoUpload}
+              onChange={e => { handlePhotoUpload(e.target.files?.[0]); e.target.value = '' }}
             />
 
             <button
