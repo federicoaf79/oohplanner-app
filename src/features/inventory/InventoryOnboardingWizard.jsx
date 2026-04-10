@@ -511,6 +511,7 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
       const previews = []
 
       for (let i = 1; i <= pdf.numPages; i++) {
+        setParseProgress(`Procesando página ${i} de ${pdf.numPages}...`)
         const page     = await pdf.getPage(i)
         const viewport = page.getViewport({ scale: 1.5 })
         const canvas   = document.createElement('canvas')
@@ -966,9 +967,34 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
             <>
               {/* Extrayendo fotos */}
               {photosExtracting && (
-                <div className="flex flex-col items-center justify-center gap-4 py-16">
-                  <Loader2 className="h-10 w-10 text-brand animate-spin" />
-                  <p className="text-sm text-slate-400">Extrayendo fotos del PDF…</p>
+                <div className="flex flex-col items-center justify-center py-20 space-y-5">
+                  <div className="relative">
+                    <Loader2 className="h-12 w-12 text-brand animate-spin" />
+                  </div>
+                  <div className="text-center space-y-1">
+                    <p className="text-sm font-semibold text-white">Extrayendo fotos del PDF...</p>
+                    <p className="text-xs text-slate-500">{parseProgress || 'Procesando páginas, esto puede tardar unos segundos'}</p>
+                  </div>
+                  <div className="w-64 rounded-full bg-surface-700 h-1.5 overflow-hidden">
+                    <div className="h-1.5 rounded-full bg-brand animate-pulse w-full" />
+                  </div>
+                  <p className="text-xs text-slate-600">No cerrés esta ventana</p>
+                </div>
+              )}
+
+              {photosUploading && (
+                <div className="flex flex-col items-center justify-center py-20 space-y-5">
+                  <div className="relative">
+                    <Loader2 className="h-12 w-12 text-brand animate-spin" />
+                  </div>
+                  <div className="text-center space-y-1">
+                    <p className="text-sm font-semibold text-white">Subiendo fotos al inventario...</p>
+                    <p className="text-xs text-slate-500">Esto puede tardar unos segundos</p>
+                  </div>
+                  <div className="w-64 rounded-full bg-surface-700 h-1.5 overflow-hidden">
+                    <div className="h-1.5 rounded-full bg-brand animate-pulse w-full" />
+                  </div>
+                  <p className="text-xs text-slate-600">No cerrés esta ventana</p>
                 </div>
               )}
 
@@ -990,7 +1016,7 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
               )}
 
               {/* Grilla de fotos extraídas del PDF */}
-              {!photosExtracting && !photosUploaded && photosPreviews.length > 0 && (
+              {!photosExtracting && !photosUploading && !photosUploaded && photosPreviews.length > 0 && (
                 <div className="space-y-4">
                   <div>
                     <h3 className="text-sm font-semibold text-white">
@@ -1053,7 +1079,7 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
               )}
 
               {/* Sin PDF: dropzone para ZIP */}
-              {!photosExtracting && !photosUploaded && photosPreviews.length === 0 && !pdfFile && (
+              {!photosExtracting && !photosUploading && !photosUploaded && photosPreviews.length === 0 && !pdfFile && (
                 <div className="space-y-4">
                   <div>
                     <h3 className="text-sm font-semibold text-white mb-1">Subí las fotos de tus carteles</h3>
