@@ -316,7 +316,8 @@ async function processPdfWithAI(file, systemPrompt, onProgress) {
 // ── Parseo local de Excel / CSV ───────────────────────────────────────────────
 
 async function parseSpreadsheet(file) {
-  const XLSX = (await import('xlsx')).default
+  const XLSXmod = await import('xlsx')
+  const XLSX = XLSXmod.default ?? XLSXmod
   const buffer = await file.arrayBuffer()
   const wb = XLSX.read(buffer, { type: 'array' })
   const ws = wb.Sheets[wb.SheetNames[0]]
@@ -707,7 +708,8 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
     setLoading[stepNumber](true)
 
     try {
-      const XLSX   = await import('xlsx')
+      const XLSXmod = await import('xlsx')
+      const XLSX    = XLSXmod.default ?? XLSXmod
       const buffer = await step1File.arrayBuffer()
       const wb     = XLSX.read(buffer, { type: 'array' })
 
@@ -755,7 +757,8 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
     setPreview[stepNumber]([])
     setLoading[stepNumber](true)
     try {
-      const XLSX   = await import('xlsx')
+      const XLSXmod = await import('xlsx')
+      const XLSX    = XLSXmod.default ?? XLSXmod
       const buffer = await f.arrayBuffer()
       const wb     = XLSX.read(buffer, { type: 'array' })
       let sheetsContent = ''
@@ -852,7 +855,8 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
   }
 
   async function downloadCostsTemplate() {
-    const XLSX = await import('xlsx')
+    const XLSXmod = await import('xlsx')
+    const XLSX = XLSXmod.default ?? XLSXmod
     const headers = ['codigo','nombre','direccion','precio_mensual','precio_venta',
       'costo_alquiler','costo_luz','costo_impuestos','costo_mantenimiento',
       'costo_imponderables','costo_impresion_m2','costo_instalacion','costo_diseno',
