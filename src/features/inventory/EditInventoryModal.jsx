@@ -111,16 +111,53 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
 
   async function handlePhotoUpload(e) {
     const file = e.target.files?.[0]
-    if (!file || !item) return
+    if (!file) return
     setUploading(true)
-    const ext  = file.name.split('.').pop()
-    const path = `${profile.org_id}/inventory/${item.id}.${ext}`
-    const { error } = await supabase.storage.from('site-photos').upload(path, file, { upsert: true })
-    if (!error) {
-      const { data: { publicUrl } } = supabase.storage.from('site-photos').getPublicUrl(path)
+    try {
+      const compressed = await new Promise((resolve) => {
+        const img = new Image()
+        const url = URL.createObjectURL(file)
+        img.onload = () => {
+          URL.revokeObjectURL(url)
+          const canvas = document.createElement('canvas')
+          let { width, height } = img
+          if (width > 1920) { height = Math.round(height * 1920 / width); width = 1920 }
+          canvas.width = width
+          canvas.height = height
+          canvas.getContext('2d').drawImage(img, 0, 0, width, height)
+          const tryCompress = (q) => {
+            canvas.toBlob((b) => {
+              if (b.size > 700_000 && q > 0.3) tryCompress(q - 0.1)
+              else resolve(b)
+            }, 'image/jpeg', q)
+          }
+          tryCompress(0.85)
+        }
+        img.src = url
+      })
+
+      const path = `${form.org_id || item.org_id}/${item.id}_A.jpg`
+      const { error } = await supabase.storage
+        .from('inventory-photos')
+        .upload(path, compressed, { contentType: 'image/jpeg', upsert: true })
+      if (error) throw error
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('inventory-photos')
+        .getPublicUrl(path)
+
+      const caras = item.caras?.length > 0
+        ? item.caras.map((c, i) => i === 0 ? { ...c, photo_url: publicUrl } : c)
+        : [{ id: 'A', label: 'Cara A', photo_url: publicUrl, billboard_zone: null }]
+
       set('photo_url', publicUrl)
+      set('caras', caras)
+    } catch (err) {
+      console.error('Error subiendo foto:', err)
+    } finally {
+      setUploading(false)
+      e.target.value = ''
     }
-    setUploading(false)
   }
 
   async function handleSave() {
@@ -142,6 +179,7 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
         latitude:      form.latitude ? Number(form.latitude) : null,
         longitude:     form.longitude ? Number(form.longitude) : null,
         photo_url:     form.photo_url || null,
+        caras:         form.caras ?? item.caras ?? null,
         banda_negativa_enabled: form.banda_negativa,
         banda_negativa_rate:      form.banda_negativa_rate,
         banda_negativa_min_months: form.banda_negativa_min_months,

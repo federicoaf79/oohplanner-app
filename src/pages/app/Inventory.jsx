@@ -74,11 +74,11 @@ function InventoryRow({ item, onEdit }) {
   const impactsPerMonth = item.daily_traffic ? item.daily_traffic * 3 : null
 
   return (
-    <div className="card px-4 py-3 hover:border-brand/30 transition-colors">
-      <div className="flex items-center gap-4">
+    <div className="card px-3 py-2 hover:border-brand/30 transition-colors">
+      <div className="flex items-center gap-3">
 
         {/* Ícono del formato */}
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-xl"
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base"
           style={{ background: `${fmt.color}18` }}>
           {icon}
         </div>
@@ -86,20 +86,20 @@ function InventoryRow({ item, onEdit }) {
         {/* Nombre + dirección + badges */}
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <p className="font-semibold text-white truncate">{item.name}</p>
-            <span className="text-xs text-slate-600">{item.code}</span>
+            <p className="text-sm font-semibold text-white truncate">{item.name}</p>
+            <span className="text-[11px] text-slate-600">{item.code}</span>
           </div>
-          <div className="mt-0.5 flex items-center gap-1 text-xs text-slate-500">
+          <div className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-500">
             <MapPin className="h-3 w-3 shrink-0" />
             <span className="truncate">{item.address}{item.city ? `, ${item.city}` : ''}</span>
           </div>
-          <div className="mt-1.5">
+          <div className="mt-1">
             <FormatBadges item={item} />
           </div>
         </div>
 
         {/* Métricas — ocultas en móvil pequeño */}
-        <div className="hidden sm:flex items-center gap-6 shrink-0 text-xs text-slate-500">
+        <div className="hidden sm:flex items-center gap-6 shrink-0 text-[11px] text-slate-500">
           {item.daily_traffic && (
             <div className="text-right">
               <p>{item.daily_traffic.toLocaleString('es-AR')}</p>
@@ -138,7 +138,7 @@ function InventoryRow({ item, onEdit }) {
 
       {/* Libre desde */}
       {!item.is_available && item.available_until && (
-        <p className="mt-1.5 pl-14 text-xs text-amber-400">
+        <p className="mt-1 pl-11 text-[11px] text-amber-400">
           Libre desde: {formatDate(item.available_until)}
         </p>
       )}
@@ -382,7 +382,10 @@ export default function Inventory() {
   const [items, setItems]         = useState([])
   const [loading, setLoading]     = useState(false)
   const [fetchError, setFetchError] = useState('')
-  const [search, setSearch]       = useState('')
+  const [search,       setSearch]       = useState('')
+  const [filterZone,   setFilterZone]   = useState('')
+  const [filterFormat, setFilterFormat] = useState('')
+  const [filterAvail,  setFilterAvail]  = useState('')
   const [viewMode, setViewMode]   = useState(
     () => localStorage.getItem('inventory_view') ?? 'list'
   )
@@ -435,11 +438,19 @@ export default function Inventory() {
     loadItems()
   }
 
-  const filtered = items.filter(i =>
-    (i.name ?? '').toLowerCase().includes(search.toLowerCase()) ||
-    (i.city ?? '').toLowerCase().includes(search.toLowerCase()) ||
-    (i.code ?? '').toLowerCase().includes(search.toLowerCase())
-  )
+  const zones = [...new Set(items.map(i => i.city).filter(Boolean))].sort()
+
+  const filtered = items.filter(item => {
+    const q = search.toLowerCase()
+    const matchSearch = !q ||
+      item.name?.toLowerCase().includes(q) ||
+      item.code?.toLowerCase().includes(q) ||
+      item.address?.toLowerCase().includes(q)
+    const matchZone   = !filterZone   || item.city === filterZone
+    const matchFormat = !filterFormat || item.format === filterFormat
+    const matchAvail  = !filterAvail  || String(item.is_available) === filterAvail
+    return matchSearch && matchZone && matchFormat && matchAvail
+  })
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -522,11 +533,34 @@ export default function Inventory() {
       {/* Items tab */}
       {activeTab === 'items' && <>
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-        <input className="input-field pl-9" placeholder="Buscar por nombre, ciudad o código..."
-          value={search} onChange={e => setSearch(e.target.value)} />
+      {/* Search + filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative max-w-xs w-full">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          <input className="input-field pl-9 text-xs" placeholder="Buscar nombre, código, dirección…"
+            value={search} onChange={e => setSearch(e.target.value)} />
+        </div>
+
+        <select value={filterZone} onChange={e => setFilterZone(e.target.value)}
+          className="rounded-lg border border-surface-700 bg-surface-800 px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-brand/50">
+          <option value="">Todas las zonas</option>
+          {zones.map(z => <option key={z} value={z}>{z}</option>)}
+        </select>
+
+        <select value={filterFormat} onChange={e => setFilterFormat(e.target.value)}
+          className="rounded-lg border border-surface-700 bg-surface-800 px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-brand/50">
+          <option value="">Todos los formatos</option>
+          {Object.entries(FORMAT_MAP).map(([k, v]) =>
+            <option key={k} value={k}>{v.label}</option>
+          )}
+        </select>
+
+        <select value={filterAvail} onChange={e => setFilterAvail(e.target.value)}
+          className="rounded-lg border border-surface-700 bg-surface-800 px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-brand/50">
+          <option value="">Disponibilidad</option>
+          <option value="true">Disponibles</option>
+          <option value="false">Ocupados</option>
+        </select>
       </div>
 
       {/* Content */}
