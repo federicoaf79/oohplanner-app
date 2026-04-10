@@ -146,8 +146,14 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
         .from('inventory-photos')
         .getPublicUrl(path)
 
-      const caras = item.caras?.length > 0
-        ? item.caras.map((c, i) => i === 0 ? { ...c, photo_url: publicUrl } : c)
+      // caras puede llegar como string JSON desde Supabase
+      const carasRaw = item.caras
+      const carasArr = Array.isArray(carasRaw)
+        ? carasRaw
+        : (typeof carasRaw === 'string' ? JSON.parse(carasRaw) : [])
+
+      const caras = carasArr.length > 0
+        ? carasArr.map((c, i) => i === 0 ? { ...c, photo_url: publicUrl } : c)
         : [{ id: 'A', label: 'Cara A', photo_url: publicUrl, billboard_zone: null }]
 
       set('photo_url', publicUrl)
