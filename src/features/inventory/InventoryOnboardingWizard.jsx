@@ -9,7 +9,7 @@
 import { useState, useRef, useEffect } from 'react'
 import {
   X, Upload, CheckCircle, ChevronLeft, ChevronRight,
-  Loader2, Clock, Sparkles, FileText, Image, AlertCircle,
+  Loader2, Sparkles, FileText, Image, AlertCircle,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
@@ -336,6 +336,65 @@ async function parseCsv(file) {
   })
 }
 
+// ── Helpers de formato ───────────────────────────────────────────────────────
+
+function fmtARS(val) {
+  if (val == null || val === '') return '—'
+  return '$' + Math.round(Number(val)).toLocaleString('es-AR')
+}
+function fmtPct(val) {
+  if (val == null || val === '') return '—'
+  return Number(val).toFixed(2).replace('.', ',') + '%'
+}
+function fmtNum(val) {
+  if (val == null || val === '') return '—'
+  return Math.round(Number(val)).toLocaleString('es-AR')
+}
+
+// ── System prompts para pasos 3, 4 y 5 ──────────────────────────────────────
+
+const SYSTEM_PROMPT_COSTS = `Sos un asistente especializado en publicidad exterior OOH argentina.
+Analizá el contenido de estas hojas de cálculo y detectá datos de COSTOS o TARIFAS de carteles publicitarios.
+Devolvé ÚNICAMENTE un array JSON sin texto adicional:
+[{
+  "code": "string",
+  "base_rate": number|null,
+  "biweekly_rate": number|null,
+  "sale_price": number|null,
+  "cost_rent": number|null,
+  "cost_electricity": number|null,
+  "cost_taxes": number|null,
+  "cost_maintenance": number|null,
+  "cost_imponderables": number|null,
+  "cost_print_per_m2": number|null,
+  "cost_installation": number|null,
+  "cost_design": number|null,
+  "cost_seller_commission_pct": number|null,
+  "cost_agency_commission_pct": number|null,
+  "asociado_nombre": "string|null",
+  "asociado_comision_pct": number|null
+}]
+REGLAS: valores monetarios en ARS (pesos argentinos). Porcentajes entre 0 y 100, nunca decimales como 0.05. code es crítico para el match con el inventario. Solo JSON array, sin texto adicional.`
+
+const SYSTEM_PROMPT_AVAIL = `Analizá estas hojas y detectá datos de DISPONIBILIDAD u OCUPACIÓN de carteles publicitarios.
+Devolvé ÚNICAMENTE un array JSON:
+[{
+  "code": "string",
+  "is_available": boolean,
+  "available_until": "string|null"
+}]
+REGLAS: is_available true si está libre, false si ocupado. Interpretá "activo","disponible","libre","free" como true. Interpretá "ocupado","vendido","en campaña" como false. available_until en formato YYYY-MM-DD si aplica, null si no. Solo JSON array, sin texto adicional.`
+
+const SYSTEM_PROMPT_AUDIENCE = `Analizá estas hojas y detectá datos de AUDIENCIA, TRÁFICO o IMPACTOS de carteles publicitarios.
+Devolvé ÚNICAMENTE un array JSON:
+[{
+  "code": "string",
+  "daily_traffic": number|null,
+  "cluster_audiencia": "string|null",
+  "audience_source": "propio"
+}]
+REGLAS: daily_traffic siempre DIARIO. Si el archivo tiene semanal dividí por 7, si tiene mensual dividí por 30. Redondeá al entero más cercano. cluster_audiencia: descripción del segmento si existe. audience_source siempre "propio". Solo JSON array, sin texto adicional.`
+
 // ── Estado de validación por fila ─────────────────────────────────────────────
 
 function rowStatus(item) {
@@ -364,6 +423,10 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
   const [importedCount, setImportedCount] = useState(null)
   const [importedItems, setImportedItems] = useState([])
 
+  // Archivo del paso 1 en memoria (xlsx/csv) + cache de análisis IA
+  const [step1File,     setStep1File]     = useState(null)
+  const [step1Analysis, setStep1Analysis] = useState({})
+
   // Step 2
   const [photosPreviews,   setPhotosPreviews]   = useState([])
   const [photosExtracting, setPhotosExtracting] = useState(false)
@@ -372,7 +435,26 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
   const [photosError,       setPhotosError]       = useState('')
   const [photosFailedCount, setPhotosFailedCount] = useState(0)
 
-  const fileInputRef = useRef(null)
+  // Step 3 — Costos
+  const [costsPreview,   setCostsPreview]   = useState([])
+  const [costsUploading, setCostsUploading] = useState(false)
+  const [costsUploaded,  setCostsUploaded]  = useState(false)
+  const [costsError,     setCostsError]     = useState('')
+
+  // Step 4 — Disponibilidad
+  const [availPreview,   setAvailPreview]   = useState([])
+  const [availUploading, setAvailUploading] = useState(false)
+  const [availUploaded,  setAvailUploaded]  = useState(false)
+  const [availError,     setAvailError]     = useState('')
+
+  // Step 5 — Audiencias
+  const [audiencePreview,   setAudiencePreview]   = useState([])
+  const [audienceUploading, setAudienceUploading] = useState(false)
+  const [audienceUploaded,  setAudienceUploaded]  = useState(false)
+  const [audienceError,     setAudienceError]     = useState('')
+
+  const fileInputRef  = useRef(null)
+  const fileInputSRef = useRef(null) // ref compartido para dropzones de pasos 3-5
   const isDirty      = items.length > 0 && importedCount === null
 
   // ── Cierre ─────────────────────────────────────────────────────────────────
@@ -415,8 +497,10 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
       let parsed = []
 
       if (ext === 'xlsx' || ext === 'xls') {
+        setStep1File(f)
         parsed = await parseSpreadsheet(f)
       } else if (ext === 'csv') {
+        setStep1File(f)
         parsed = await parseCsv(f)
       } else if (ext === 'pdf' || f.type === 'application/pdf') {
         // PDF → guardar en memoria + renderizar páginas con pdfjs + batches a Claude
@@ -603,10 +687,202 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
     if (step === 2 && pdfFile) extractPhotosFromPdf()
   }, [step]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Pasos 3-5: análisis del archivo del paso 1 ─────────────────────────────
+
+  function applyAnalysisToStep(stepNumber, data) {
+    if (stepNumber === 3) setCostsPreview(data)
+    if (stepNumber === 4) setAvailPreview(data)
+    if (stepNumber === 5) setAudiencePreview(data)
+  }
+
+  async function processStep1FileForStep(stepNumber) {
+    if (step1Analysis[stepNumber]) {
+      applyAnalysisToStep(stepNumber, step1Analysis[stepNumber])
+      return
+    }
+    if (!step1File) return
+
+    const setLoading = { 3: setCostsUploading, 4: setAvailUploading, 5: setAudienceUploading }
+    const setError   = { 3: setCostsError,     4: setAvailError,     5: setAudienceError }
+    setLoading[stepNumber](true)
+
+    try {
+      const XLSX   = await import('xlsx')
+      const buffer = await step1File.arrayBuffer()
+      const wb     = XLSX.read(buffer, { type: 'array' })
+
+      let sheetsContent = ''
+      wb.SheetNames.forEach(name => {
+        const csv   = XLSX.utils.sheet_to_csv(wb.Sheets[name])
+        const lines = csv.split('\n').slice(0, 50).join('\n')
+        sheetsContent += `\n=== HOJA: ${name} ===\n${lines}\n`
+      })
+
+      const systemPrompts = { 3: SYSTEM_PROMPT_COSTS, 4: SYSTEM_PROMPT_AVAIL, 5: SYSTEM_PROMPT_AUDIENCE }
+      const response = await fetch('/api/claude', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model:       'claude-haiku-4-5-20251001',
+          max_tokens:  4000,
+          temperature: 0,
+          system:      systemPrompts[stepNumber],
+          messages:    [{ role: 'user', content: sheetsContent }],
+        }),
+      })
+
+      const data  = await response.json()
+      const text  = data.content?.[0]?.text ?? ''
+      const match = text.match(/\[[\s\S]*\]/)
+      if (!match) throw new Error('La IA no detectó datos relevantes en el archivo')
+
+      const parsed = JSON.parse(match[0])
+      setStep1Analysis(prev => ({ ...prev, [stepNumber]: parsed }))
+      applyAnalysisToStep(stepNumber, parsed)
+    } catch (err) {
+      setError[stepNumber](err.message)
+    } finally {
+      setLoading[stepNumber](false)
+    }
+  }
+
+  async function handleStepFile(f, stepNumber) {
+    if (!f) return
+    const setError   = { 3: setCostsError,     4: setAvailError,     5: setAudienceError }
+    const setPreview = { 3: setCostsPreview,    4: setAvailPreview,   5: setAudiencePreview }
+    const setLoading = { 3: setCostsUploading,  4: setAvailUploading, 5: setAudienceUploading }
+    setError[stepNumber]('')
+    setPreview[stepNumber]([])
+    setLoading[stepNumber](true)
+    try {
+      const XLSX   = await import('xlsx')
+      const buffer = await f.arrayBuffer()
+      const wb     = XLSX.read(buffer, { type: 'array' })
+      let sheetsContent = ''
+      wb.SheetNames.forEach(name => {
+        const csv   = XLSX.utils.sheet_to_csv(wb.Sheets[name])
+        const lines = csv.split('\n').slice(0, 50).join('\n')
+        sheetsContent += `\n=== HOJA: ${name} ===\n${lines}\n`
+      })
+      const systemPrompts = { 3: SYSTEM_PROMPT_COSTS, 4: SYSTEM_PROMPT_AVAIL, 5: SYSTEM_PROMPT_AUDIENCE }
+      const response = await fetch('/api/claude', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001', max_tokens: 4000, temperature: 0,
+          system: systemPrompts[stepNumber],
+          messages: [{ role: 'user', content: sheetsContent }],
+        }),
+      })
+      const data  = await response.json()
+      const text  = data.content?.[0]?.text ?? ''
+      const match = text.match(/\[[\s\S]*\]/)
+      if (!match) throw new Error('La IA no detectó datos relevantes en el archivo')
+      const parsed = JSON.parse(match[0])
+      setStep1Analysis(prev => ({ ...prev, [stepNumber]: parsed }))
+      applyAnalysisToStep(stepNumber, parsed)
+    } catch (err) {
+      setError[stepNumber](err.message)
+    } finally {
+      setLoading[stepNumber](false)
+    }
+  }
+
+  async function uploadCosts() {
+    if (costsPreview.length === 0) return
+    setCostsUploading(true); setCostsError('')
+    try {
+      const rows = costsPreview.filter(r => r.code).map(r => ({
+        org_id: orgId, code: r.code,
+        base_rate: r.base_rate ?? null, biweekly_rate: r.biweekly_rate ?? null,
+        sale_price: r.sale_price ?? null,
+        cost_rent: r.cost_rent ?? null, cost_electricity: r.cost_electricity ?? null,
+        cost_taxes: r.cost_taxes ?? null, cost_maintenance: r.cost_maintenance ?? null,
+        cost_imponderables: r.cost_imponderables ?? null,
+        cost_print_per_m2: r.cost_print_per_m2 ?? null,
+        cost_installation: r.cost_installation ?? null, cost_design: r.cost_design ?? null,
+        cost_seller_commission_pct: r.cost_seller_commission_pct ?? null,
+        cost_agency_commission_pct: r.cost_agency_commission_pct ?? null,
+        asociado_nombre: r.asociado_nombre ?? null, asociado_comision_pct: r.asociado_comision_pct ?? null,
+      }))
+      const { error } = await supabase.from('inventory')
+        .upsert(rows, { onConflict: 'org_id,code', ignoreDuplicates: false })
+      if (error) throw new Error(error.message)
+      setCostsUploaded(true)
+      await markStepSaved(3)
+    } catch (err) { setCostsError(err.message) }
+    finally { setCostsUploading(false) }
+  }
+
+  async function uploadAvail() {
+    if (availPreview.length === 0) return
+    setAvailUploading(true); setAvailError('')
+    try {
+      const rows = availPreview.filter(r => r.code).map(r => ({
+        org_id: orgId, code: r.code,
+        is_available:   r.is_available ?? true,
+        available_until: r.available_until ?? null,
+      }))
+      const { error } = await supabase.from('inventory')
+        .upsert(rows, { onConflict: 'org_id,code', ignoreDuplicates: false })
+      if (error) throw new Error(error.message)
+      setAvailUploaded(true)
+      await markStepSaved(4)
+    } catch (err) { setAvailError(err.message) }
+    finally { setAvailUploading(false) }
+  }
+
+  async function uploadAudience() {
+    if (audiencePreview.length === 0) return
+    setAudienceUploading(true); setAudienceError('')
+    try {
+      const rows = audiencePreview.filter(r => r.code).map(r => ({
+        org_id: orgId, code: r.code,
+        daily_traffic:     r.daily_traffic ?? null,
+        cluster_audiencia: r.cluster_audiencia ?? null,
+        audience_source:   r.audience_source ?? 'propio',
+      }))
+      const { error } = await supabase.from('inventory')
+        .upsert(rows, { onConflict: 'org_id,code', ignoreDuplicates: false })
+      if (error) throw new Error(error.message)
+      setAudienceUploaded(true)
+      await markStepSaved(5)
+    } catch (err) { setAudienceError(err.message) }
+    finally { setAudienceUploading(false) }
+  }
+
+  async function downloadCostsTemplate() {
+    const XLSX = await import('xlsx')
+    const headers = ['codigo','nombre','direccion','precio_mensual','precio_venta',
+      'costo_alquiler','costo_luz','costo_impuestos','costo_mantenimiento',
+      'costo_imponderables','costo_impresion_m2','costo_instalacion','costo_diseno',
+      'comision_vendedor_pct','comision_agencia_pct','asociado_nombre','asociado_comision_pct']
+    const rows = importedItems.map(i => [i.code, i.name, i.address, '', '', '', '', '', '', '', '', '', '', '', '', '', ''])
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Costos')
+    XLSX.writeFile(wb, 'plantilla_costos_oohplanner.xlsx')
+  }
+
+  useEffect(() => {
+    if (step === 3 && step1File) processStep1FileForStep(3)
+  }, [step]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (step === 4 && step1File) processStep1FileForStep(4)
+  }, [step]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (step === 5 && step1File) processStep1FileForStep(5)
+  }, [step]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Footer: lógica del botón Siguiente ─────────────────────────────────────
 
-  const pendingImport = step === 1 && items.length > 0 && importedCount === null
-  const pendingPhotos = step === 2 && photosPreviews.length > 0 && !photosUploaded
+  const pendingImport   = step === 1 && items.length > 0 && importedCount === null
+  const pendingPhotos   = step === 2 && photosPreviews.length > 0 && !photosUploaded
+  const pendingCosts    = step === 3 && costsPreview.length > 0 && !costsUploaded
+  const pendingAvail    = step === 4 && availPreview.length > 0 && !availUploaded
+  const pendingAudience = step === 5 && audiencePreview.length > 0 && !audienceUploaded
 
   const nextLabel = step === STEPS.length
     ? 'Finalizar'
@@ -614,7 +890,13 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
       ? 'Importar y continuar'
       : pendingPhotos
         ? 'Subir fotos y continuar'
-        : 'Siguiente'
+        : pendingCosts
+          ? 'Confirmar costos y continuar'
+          : pendingAvail
+            ? 'Confirmar disponibilidad y continuar'
+            : pendingAudience
+              ? 'Confirmar audiencias y continuar'
+              : 'Siguiente'
 
   async function handleNext() {
     if (pendingImport) {
@@ -622,6 +904,15 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
       if (count !== null) setStep(s => s + 1)
     } else if (pendingPhotos) {
       await uploadPhotos()
+      setStep(s => s + 1)
+    } else if (pendingCosts) {
+      await uploadCosts()
+      setStep(s => s + 1)
+    } else if (pendingAvail) {
+      await uploadAvail()
+      setStep(s => s + 1)
+    } else if (pendingAudience) {
+      await uploadAudience()
       setStep(s => s + 1)
     } else if (step === STEPS.length) {
       onComplete?.()
@@ -1101,19 +1392,335 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
             </>
           )}
 
-          {/* ──── PASOS 3–5: Placeholder ──── */}
-          {step > 2 && step < 6 && (
-            <div className="rounded-2xl border border-surface-700 bg-surface-800/50 p-14 text-center space-y-4">
-              <Clock className="mx-auto h-12 w-12 text-slate-700" />
-              <div>
-                <h3 className="text-base font-semibold text-white">{STEPS[step - 1].label}</h3>
-                <p className="mt-1 text-sm text-slate-500">{STEPS[step - 1].desc}</p>
-                <p className="mt-2 text-xs text-slate-600">Esta sección estará disponible próximamente.</p>
-              </div>
-              <span className="inline-block rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs text-amber-400">
-                Próximamente
-              </span>
-            </div>
+          {/* ──── PASO 3: Costos y tarifas ──── */}
+          {step === 3 && (
+            <>
+              {costsUploading && (
+                <div className="flex flex-col items-center justify-center py-20 space-y-5">
+                  <Loader2 className="h-12 w-12 text-brand animate-spin" />
+                  <div className="text-center space-y-1">
+                    <p className="text-sm font-semibold text-white">
+                      {costsPreview.length === 0 ? 'Analizando tarifas con IA…' : 'Guardando costos…'}
+                    </p>
+                    <p className="text-xs text-slate-500">No cerrés esta ventana</p>
+                  </div>
+                </div>
+              )}
+
+              {costsUploaded && (
+                <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-10 text-center space-y-3">
+                  <CheckCircle className="mx-auto h-12 w-12 text-emerald-400" />
+                  <h3 className="text-lg font-semibold text-white">¡Costos actualizados!</h3>
+                  <p className="text-sm text-slate-400">Las tarifas ya están guardadas en tu inventario.</p>
+                </div>
+              )}
+
+              {costsError && (
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-400 flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  {costsError}
+                </div>
+              )}
+
+              {!costsUploading && !costsUploaded && costsPreview.length > 0 && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-white">
+                      {costsPreview.length} cartel{costsPreview.length !== 1 ? 'es' : ''} con datos de costos
+                    </h3>
+                    <span className="flex items-center gap-1.5 text-xs text-brand">
+                      <Sparkles className="h-3 w-3" /> Detectado con IA
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto rounded-xl border border-surface-700">
+                    <table className="w-full min-w-[560px] text-xs">
+                      <thead>
+                        <tr className="border-b border-surface-700 bg-surface-800">
+                          <th className="px-3 py-2 text-left font-medium text-slate-500">Código</th>
+                          <th className="px-3 py-2 text-right font-medium text-slate-500">Tarifa mensual</th>
+                          <th className="px-3 py-2 text-right font-medium text-slate-500">Precio venta</th>
+                          <th className="px-3 py-2 text-right font-medium text-slate-500">Alquiler</th>
+                          <th className="px-3 py-2 text-right font-medium text-slate-500">Com. vendedor</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {costsPreview.map((r, i) => (
+                          <tr key={i} className={`border-b border-surface-700/40 ${i % 2 === 0 ? 'bg-surface-900' : 'bg-surface-800/20'}`}>
+                            <td className="px-3 py-1.5 font-mono text-slate-300">{r.code}</td>
+                            <td className="px-3 py-1.5 text-right text-slate-300">{fmtARS(r.base_rate)}</td>
+                            <td className="px-3 py-1.5 text-right text-slate-300">{fmtARS(r.sale_price)}</td>
+                            <td className="px-3 py-1.5 text-right text-slate-300">{fmtARS(r.cost_rent)}</td>
+                            <td className="px-3 py-1.5 text-right text-slate-300">{fmtPct(r.cost_seller_commission_pct)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {!costsUploading && !costsUploaded && costsPreview.length === 0 && !costsError && (
+                <div className="space-y-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-white mb-1">Costos y tarifas</h3>
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                      {step1File
+                        ? 'No se detectaron datos de costos en tu archivo. Podés subir una planilla específica de tarifas.'
+                        : 'Subí una planilla con las tarifas de tus carteles para actualizarlas automáticamente.'}
+                    </p>
+                  </div>
+                  <button
+                    onClick={downloadCostsTemplate}
+                    className="flex items-center gap-1.5 text-xs text-brand hover:text-brand/80 transition-colors"
+                  >
+                    <FileText className="h-3.5 w-3.5" /> Descargar plantilla de costos
+                  </button>
+                </div>
+              )}
+
+              {!costsUploading && !costsUploaded && (
+                <>
+                  <div
+                    onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) handleStepFile(f, 3) }}
+                    onDragOver={e => e.preventDefault()}
+                    onClick={() => fileInputSRef.current?.click()}
+                    className="cursor-pointer rounded-xl border-2 border-dashed border-surface-600 bg-surface-800/30 px-6 py-6 text-center hover:border-brand/40 hover:bg-surface-800/50 transition-colors"
+                  >
+                    <Upload className="mx-auto h-6 w-6 text-slate-600 mb-2" />
+                    <p className="text-xs text-slate-500">
+                      {step1File ? 'Subí otra planilla si tenés los costos en un archivo separado' : 'Arrastrá una planilla Excel / CSV'}
+                    </p>
+                  </div>
+                  <input
+                    ref={fileInputSRef}
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleStepFile(f, 3); e.target.value = '' }}
+                  />
+                </>
+              )}
+
+              <p className="text-xs text-slate-600 text-center">
+                💡 Podés saltear este paso y completar los costos más tarde desde la sección Inventario.
+              </p>
+            </>
+          )}
+
+          {/* ──── PASO 4: Disponibilidad ──── */}
+          {step === 4 && (
+            <>
+              {availUploading && (
+                <div className="flex flex-col items-center justify-center py-20 space-y-5">
+                  <Loader2 className="h-12 w-12 text-brand animate-spin" />
+                  <div className="text-center space-y-1">
+                    <p className="text-sm font-semibold text-white">
+                      {availPreview.length === 0 ? 'Analizando disponibilidad con IA…' : 'Guardando disponibilidad…'}
+                    </p>
+                    <p className="text-xs text-slate-500">No cerrés esta ventana</p>
+                  </div>
+                </div>
+              )}
+
+              {availUploaded && (
+                <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-10 text-center space-y-3">
+                  <CheckCircle className="mx-auto h-12 w-12 text-emerald-400" />
+                  <h3 className="text-lg font-semibold text-white">¡Disponibilidad actualizada!</h3>
+                  <p className="text-sm text-slate-400">El estado de ocupación ya está guardado.</p>
+                </div>
+              )}
+
+              {availError && (
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-400 flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  {availError}
+                </div>
+              )}
+
+              {!availUploading && !availUploaded && availPreview.length > 0 && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-white">
+                      {availPreview.length} cartel{availPreview.length !== 1 ? 'es' : ''} con datos de disponibilidad
+                    </h3>
+                    <span className="flex items-center gap-1.5 text-xs text-brand">
+                      <Sparkles className="h-3 w-3" /> Detectado con IA
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto rounded-xl border border-surface-700">
+                    <table className="w-full min-w-[400px] text-xs">
+                      <thead>
+                        <tr className="border-b border-surface-700 bg-surface-800">
+                          <th className="px-3 py-2 text-left font-medium text-slate-500">Código</th>
+                          <th className="px-3 py-2 text-center font-medium text-slate-500">Estado</th>
+                          <th className="px-3 py-2 text-left font-medium text-slate-500">Disponible hasta</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {availPreview.map((r, i) => (
+                          <tr key={i} className={`border-b border-surface-700/40 ${i % 2 === 0 ? 'bg-surface-900' : 'bg-surface-800/20'}`}>
+                            <td className="px-3 py-1.5 font-mono text-slate-300">{r.code}</td>
+                            <td className="px-3 py-1.5 text-center">
+                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                r.is_available
+                                  ? 'bg-emerald-500/15 text-emerald-400'
+                                  : 'bg-red-500/15 text-red-400'
+                              }`}>
+                                {r.is_available ? 'Disponible' : 'Ocupado'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-1.5 text-slate-400">{r.available_until ?? '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {!availUploading && !availUploaded && availPreview.length === 0 && !availError && (
+                <div>
+                  <h3 className="text-sm font-semibold text-white mb-1">Disponibilidad u ocupación</h3>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    {step1File
+                      ? 'No se detectaron datos de disponibilidad en tu archivo. Podés subir una planilla específica.'
+                      : 'Subí una planilla con el estado de ocupación de tus carteles.'}
+                  </p>
+                </div>
+              )}
+
+              {!availUploading && !availUploaded && (
+                <>
+                  <div
+                    onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) handleStepFile(f, 4) }}
+                    onDragOver={e => e.preventDefault()}
+                    onClick={() => fileInputSRef.current?.click()}
+                    className="cursor-pointer rounded-xl border-2 border-dashed border-surface-600 bg-surface-800/30 px-6 py-6 text-center hover:border-brand/40 hover:bg-surface-800/50 transition-colors"
+                  >
+                    <Upload className="mx-auto h-6 w-6 text-slate-600 mb-2" />
+                    <p className="text-xs text-slate-500">
+                      {step1File ? 'Subí otra planilla con el estado de ocupación' : 'Arrastrá una planilla Excel / CSV'}
+                    </p>
+                  </div>
+                  <input
+                    ref={fileInputSRef}
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleStepFile(f, 4); e.target.value = '' }}
+                  />
+                </>
+              )}
+
+              <p className="text-xs text-slate-600 text-center">
+                💡 Podés saltear este paso y actualizar la disponibilidad más tarde desde la sección Inventario.
+              </p>
+            </>
+          )}
+
+          {/* ──── PASO 5: Audiencias ──── */}
+          {step === 5 && (
+            <>
+              {audienceUploading && (
+                <div className="flex flex-col items-center justify-center py-20 space-y-5">
+                  <Loader2 className="h-12 w-12 text-brand animate-spin" />
+                  <div className="text-center space-y-1">
+                    <p className="text-sm font-semibold text-white">
+                      {audiencePreview.length === 0 ? 'Analizando audiencias con IA…' : 'Guardando datos de audiencia…'}
+                    </p>
+                    <p className="text-xs text-slate-500">No cerrés esta ventana</p>
+                  </div>
+                </div>
+              )}
+
+              {audienceUploaded && (
+                <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-10 text-center space-y-3">
+                  <CheckCircle className="mx-auto h-12 w-12 text-emerald-400" />
+                  <h3 className="text-lg font-semibold text-white">¡Audiencias actualizadas!</h3>
+                  <p className="text-sm text-slate-400">Los datos de tráfico ya están guardados en tu inventario.</p>
+                </div>
+              )}
+
+              {audienceError && (
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5 text-sm text-red-400 flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0" />
+                  {audienceError}
+                </div>
+              )}
+
+              {!audienceUploading && !audienceUploaded && audiencePreview.length > 0 && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-white">
+                      {audiencePreview.length} cartel{audiencePreview.length !== 1 ? 'es' : ''} con datos de audiencia
+                    </h3>
+                    <span className="flex items-center gap-1.5 text-xs text-brand">
+                      <Sparkles className="h-3 w-3" /> Detectado con IA
+                    </span>
+                  </div>
+                  <div className="overflow-x-auto rounded-xl border border-surface-700">
+                    <table className="w-full min-w-[480px] text-xs">
+                      <thead>
+                        <tr className="border-b border-surface-700 bg-surface-800">
+                          <th className="px-3 py-2 text-left font-medium text-slate-500">Código</th>
+                          <th className="px-3 py-2 text-right font-medium text-slate-500">Tráfico diario</th>
+                          <th className="px-3 py-2 text-left font-medium text-slate-500">Segmento</th>
+                          <th className="px-3 py-2 text-left font-medium text-slate-500">Fuente</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {audiencePreview.map((r, i) => (
+                          <tr key={i} className={`border-b border-surface-700/40 ${i % 2 === 0 ? 'bg-surface-900' : 'bg-surface-800/20'}`}>
+                            <td className="px-3 py-1.5 font-mono text-slate-300">{r.code}</td>
+                            <td className="px-3 py-1.5 text-right text-slate-300">{fmtNum(r.daily_traffic)}</td>
+                            <td className="px-3 py-1.5 text-slate-400">{r.cluster_audiencia ?? '—'}</td>
+                            <td className="px-3 py-1.5 text-slate-500">{r.audience_source ?? 'propio'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {!audienceUploading && !audienceUploaded && audiencePreview.length === 0 && !audienceError && (
+                <div>
+                  <h3 className="text-sm font-semibold text-white mb-1">Tráfico e impactos</h3>
+                  <p className="text-xs text-slate-500 leading-relaxed">
+                    {step1File
+                      ? 'No se detectaron datos de audiencia en tu archivo. Podés subir una planilla específica.'
+                      : 'Subí una planilla con el tráfico o impactos de tus carteles.'}
+                  </p>
+                </div>
+              )}
+
+              {!audienceUploading && !audienceUploaded && (
+                <>
+                  <div
+                    onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) handleStepFile(f, 5) }}
+                    onDragOver={e => e.preventDefault()}
+                    onClick={() => fileInputSRef.current?.click()}
+                    className="cursor-pointer rounded-xl border-2 border-dashed border-surface-600 bg-surface-800/30 px-6 py-6 text-center hover:border-brand/40 hover:bg-surface-800/50 transition-colors"
+                  >
+                    <Upload className="mx-auto h-6 w-6 text-slate-600 mb-2" />
+                    <p className="text-xs text-slate-500">
+                      {step1File ? 'Subí otra planilla con datos de tráfico o audiencia' : 'Arrastrá una planilla Excel / CSV'}
+                    </p>
+                  </div>
+                  <input
+                    ref={fileInputSRef}
+                    type="file"
+                    accept=".xlsx,.xls,.csv"
+                    className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleStepFile(f, 5); e.target.value = '' }}
+                  />
+                </>
+              )}
+
+              <p className="text-xs text-slate-600 text-center">
+                💡 Podés saltear este paso y cargar los datos de audiencia más tarde desde la sección Inventario.
+              </p>
+            </>
           )}
 
           {/* ──── PASO 6: Resumen ──── */}
@@ -1183,11 +1790,11 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
 
           <button
             onClick={handleNext}
-            disabled={importing}
+            disabled={importing || costsUploading || availUploading || audienceUploading}
             className="flex items-center gap-1.5 rounded-lg bg-brand px-5 py-2 text-sm font-medium text-white hover:bg-brand/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
-            {importing
-              ? <><Loader2 className="h-4 w-4 animate-spin" /> Importando…</>
+            {(importing || costsUploading || availUploading || audienceUploading)
+              ? <><Loader2 className="h-4 w-4 animate-spin" /> Procesando…</>
               : <>{nextLabel}{step < STEPS.length && <ChevronRight className="h-4 w-4" />}</>
             }
           </button>
