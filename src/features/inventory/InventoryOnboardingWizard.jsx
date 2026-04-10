@@ -471,7 +471,11 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
       if (valid.length === 0) throw new Error('No hay carteles con código y nombre completos para importar')
 
       const rows = valid.map(item => toDbPayload(item, orgId))
-      const { error } = await supabase.from('inventory').insert(rows)
+      const { error } = await supabase.from('inventory')
+        .upsert(rows, {
+          onConflict:       'org_id,code',
+          ignoreDuplicates: false,
+        })
       if (error) throw new Error(error.message)
 
       setImportedCount(valid.length)
