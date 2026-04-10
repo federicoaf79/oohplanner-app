@@ -368,8 +368,9 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
   const [photosPreviews,   setPhotosPreviews]   = useState([])
   const [photosExtracting, setPhotosExtracting] = useState(false)
   const [photosUploading,  setPhotosUploading]  = useState(false)
-  const [photosUploaded,   setPhotosUploaded]   = useState(false)
-  const [photosError,      setPhotosError]      = useState('')
+  const [photosUploaded,    setPhotosUploaded]    = useState(false)
+  const [photosError,       setPhotosError]       = useState('')
+  const [photosFailedCount, setPhotosFailedCount] = useState(0)
 
   const fileInputRef = useRef(null)
   const isDirty      = items.length > 0 && importedCount === null
@@ -556,6 +557,7 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
     if (selected.length === 0) return
     setPhotosUploading(true)
     setPhotosError('')
+    let failed = 0
     try {
       for (const preview of selected) {
         // Convertir base64 a Blob
@@ -567,7 +569,7 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
         const { error: uploadErr } = await supabase.storage
           .from('inventory-photos')
           .upload(path, blob, { upsert: true, contentType: 'image/jpeg' })
-        if (uploadErr) { console.error('Upload error:', uploadErr); continue }
+        if (uploadErr) { console.error('Upload error:', uploadErr); failed++; continue }
 
         // Obtener URL pública
         const { data: { publicUrl } } = supabase.storage
@@ -587,6 +589,7 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
           .eq('code', preview.matchedCode)
           .eq('org_id', orgId)
       }
+      setPhotosFailedCount(failed)
       setPhotosUploaded(true)
       await markStepSaved(2)
     } catch (err) {
@@ -1098,8 +1101,8 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
             </>
           )}
 
-          {/* ──── PASOS 3–6: Placeholder ──── */}
-          {step > 2 && (
+          {/* ──── PASOS 3–5: Placeholder ──── */}
+          {step > 2 && step < 6 && (
             <div className="rounded-2xl border border-surface-700 bg-surface-800/50 p-14 text-center space-y-4">
               <Clock className="mx-auto h-12 w-12 text-slate-700" />
               <div>
@@ -1110,6 +1113,54 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
               <span className="inline-block rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs text-amber-400">
                 Próximamente
               </span>
+            </div>
+          )}
+
+          {/* ──── PASO 6: Resumen ──── */}
+          {step === 6 && (
+            <div className="space-y-4">
+              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-6 text-center space-y-2">
+                <CheckCircle className="h-10 w-10 text-emerald-400 mx-auto" />
+                <p className="text-base font-semibold text-white">¡Inventario cargado!</p>
+                <p className="text-sm text-slate-400">Tu inventario base está listo para usar el planificador.</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-xl border border-surface-700 bg-surface-800/50 p-4 text-center">
+                  <p className="text-2xl font-bold text-white">{importedCount ?? 0}</p>
+                  <p className="text-xs text-slate-500 mt-1">Carteles importados</p>
+                </div>
+                <div className="rounded-xl border border-surface-700 bg-surface-800/50 p-4 text-center">
+                  <p className="text-2xl font-bold text-white">
+                    {photosPreviews.filter(p => p.selected && p.matchedCode).length - photosFailedCount}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">Fotos asociadas</p>
+                </div>
+              </div>
+
+              {photosFailedCount > 0 && (
+                <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 flex gap-3">
+                  <span className="text-amber-400 text-lg shrink-0">⚠️</span>
+                  <div className="text-xs text-slate-400 leading-relaxed">
+                    <span className="font-semibold text-amber-400">{photosFailedCount} foto{photosFailedCount !== 1 ? 's' : ''} no pudieron asociarse.</span>
+                    {' '}Podés cargarlas manualmente desde el{' '}
+                    <span className="text-brand font-medium">Editor de Zonas</span>
+                    {' '}— también vas a poder marcar la superficie del cartel para generar mockups.
+                  </div>
+                </div>
+              )}
+
+              <div className="rounded-xl border border-surface-700 bg-surface-800/50 px-4 py-3 flex gap-3">
+                <span className="text-brand text-lg shrink-0">💡</span>
+                <div className="text-xs text-slate-400 leading-relaxed">
+                  <span className="font-semibold text-slate-300">Próximos pasos recomendados:</span>
+                  <ul className="mt-1.5 space-y-1 list-disc list-inside text-slate-500">
+                    <li>Completar costos desde la sección Inventario</li>
+                    <li>Marcar zonas de anuncio en el Editor de Zonas</li>
+                    <li>Crear tu primera propuesta con el Planificador IA</li>
+                  </ul>
+                </div>
+              </div>
             </div>
           )}
 
