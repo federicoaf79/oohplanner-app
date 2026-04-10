@@ -189,7 +189,8 @@ async function fileToBase64(file) {
   })
 }
 
-async function callClaudeWithFile(file) {
+// Procesa una imagen (no PDF) con Claude
+async function callClaudeWithImage(file) {
   const base64 = await fileToBase64(file)
 
   // Base64 es ~33% más grande que el binario; 33M chars ≈ 25 MB originales
@@ -197,17 +198,9 @@ async function callClaudeWithFile(file) {
     throw new Error('El archivo supera los 25 MB. Dividilo en partes más pequeñas e importalas por separado.')
   }
 
-  const isPdf   = file.type === 'application/pdf'
-
-  const contentBlock = isPdf
-    ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } }
-    : { type: 'image',    source: { type: 'base64', media_type: file.type, data: base64 } }
-
   const res = await fetch('/api/claude', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       model:      'claude-haiku-4-5-20251001',
       max_tokens: 4096,
@@ -215,8 +208,8 @@ async function callClaudeWithFile(file) {
       messages: [{
         role: 'user',
         content: [
-          contentBlock,
-          { type: 'text', text: 'Extraé todos los carteles/ubicaciones y devolvé el array JSON.' },
+          { type: 'image', source: { type: 'base64', media_type: file.type, data: base64 } },
+          { type: 'text',  text: 'Extraé todos los carteles/ubicaciones y devolvé el array JSON.' },
         ],
       }],
     }),
@@ -232,6 +225,91 @@ async function callClaudeWithFile(file) {
   const match = text.match(/\[[\s\S]*\]/)
   if (!match) throw new Error('No se pudo extraer JSON de la respuesta de IA')
   return JSON.parse(match[0])
+}
+
+// Procesa un PDF página por página con pdfjs-dist y manda batches de 3 a Claude
+async function processPdfWithAI(file, systemPrompt, onProgress) {
+  // 1. Cargar pdfjs
+  const pdfjsLib = await import('pdfjs-dist')
+  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+    'pdfjs-dist/build/pdf.worker.min.mjs',
+    import.meta.url
+  ).toString()
+
+  // 2. Leer el archivo como ArrayBuffer
+  const arrayBuffer = await file.arrayBuffer()
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+  const totalPages = pdf.numPages
+
+  // 3. Renderizar cada página como JPEG comprimido (~200-400KB por página)
+  const pageImages = []
+  for (let i = 1; i <= totalPages; i++) {
+    onProgress?.(`Procesando página ${i} de ${totalPages}…`)
+    const page     = await pdf.getPage(i)
+    const viewport = page.getViewport({ scale: 1.2 })
+    const canvas   = document.createElement('canvas')
+    canvas.width   = viewport.width
+    canvas.height  = viewport.height
+    const ctx      = canvas.getContext('2d')
+    await page.render({ canvasContext: ctx, viewport }).promise
+    const base64 = canvas.toDataURL('image/jpeg', 0.7).split(',')[1]
+    pageImages.push(base64)
+  }
+
+  // 4. Procesar en batches de 3 páginas
+  const BATCH_SIZE = 3
+  let allItems = []
+
+  for (let b = 0; b < pageImages.length; b += BATCH_SIZE) {
+    const batch       = pageImages.slice(b, b + BATCH_SIZE)
+    const batchNum    = Math.floor(b / BATCH_SIZE) + 1
+    const totalBatches = Math.ceil(pageImages.length / BATCH_SIZE)
+    onProgress?.(`Analizando con IA — batch ${batchNum} de ${totalBatches}…`)
+
+    const content = [
+      ...batch.map(b64 => ({
+        type:   'image',
+        source: { type: 'base64', media_type: 'image/jpeg', data: b64 },
+      })),
+      {
+        type: 'text',
+        text: 'Extraé todos los carteles publicitarios de estas imágenes y devolvé ÚNICAMENTE el array JSON, sin texto adicional.',
+      },
+    ]
+
+    const response = await fetch('/api/claude', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model:      'claude-haiku-4-5-20251001',
+        max_tokens: 4000,
+        system:     systemPrompt,
+        messages:   [{ role: 'user', content }],
+      }),
+    })
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}))
+      throw new Error(`Error en batch ${batchNum}: ${err.error || response.status}`)
+    }
+
+    const data = await response.json()
+    const text = data.content?.[0]?.text ?? ''
+
+    try {
+      const clean = text.replace(/```json|```/g, '').trim()
+      const match = clean.match(/\[[\s\S]*\]/)
+      if (match) {
+        const parsed = JSON.parse(match[0])
+        allItems = [...allItems, ...parsed]
+      }
+    } catch {
+      // Si un batch no devuelve JSON válido, continuamos con el siguiente
+      console.warn(`Batch ${batchNum} no devolvió JSON válido:`, text.slice(0, 100))
+    }
+  }
+
+  return allItems
 }
 
 // ── Parseo local de Excel / CSV ───────────────────────────────────────────────
@@ -273,12 +351,13 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
   const [savedSteps, setSavedSteps] = useState(new Set())
 
   // Step 1 state
-  const [file,         setFile]         = useState(null)
-  const [parsing,      setParsing]      = useState(false)
-  const [parseError,   setParseError]   = useState('')
-  const [items,        setItems]        = useState([])
-  const [importing,    setImporting]    = useState(false)
-  const [importedCount,setImportedCount]= useState(null)
+  const [file,          setFile]          = useState(null)
+  const [parsing,       setParsing]       = useState(false)
+  const [parseProgress, setParseProgress] = useState('')
+  const [parseError,    setParseError]    = useState('')
+  const [items,         setItems]         = useState([])
+  const [importing,     setImporting]     = useState(false)
+  const [importedCount, setImportedCount] = useState(null)
 
   const fileInputRef = useRef(null)
   const isDirty      = items.length > 0 && importedCount === null
@@ -313,6 +392,7 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
     if (!f) return
     setFile(f)
     setParsing(true)
+    setParseProgress('')
     setParseError('')
     setItems([])
     setImportedCount(null)
@@ -325,9 +405,13 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
         parsed = await parseSpreadsheet(f)
       } else if (ext === 'csv') {
         parsed = await parseCsv(f)
+      } else if (ext === 'pdf' || f.type === 'application/pdf') {
+        // PDF → renderizar páginas con pdfjs + batches a Claude
+        const raw = await processPdfWithAI(f, CLAUDE_SYSTEM_PROMPT, setParseProgress)
+        parsed = Array.isArray(raw) ? raw.map(r => normalizeRow(r)) : []
       } else {
-        // PDF o imagen → Claude
-        const raw = await callClaudeWithFile(f)
+        // Imagen → Claude directo
+        const raw = await callClaudeWithImage(f)
         parsed = Array.isArray(raw) ? raw.map(r => normalizeRow(r)) : []
       }
 
@@ -338,6 +422,7 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
       setFile(null)
     } finally {
       setParsing(false)
+      setParseProgress('')
     }
   }
 
@@ -691,8 +776,10 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
                     {parsing ? (
                       <div className="space-y-3">
                         <Loader2 className="mx-auto h-10 w-10 text-brand animate-spin" />
-                        <p className="text-sm text-slate-400">Procesando archivo…</p>
-                        {(file?.type === 'application/pdf' || file?.type?.startsWith('image/')) && (
+                        <p className="text-sm text-slate-400">
+                          {parseProgress || 'Procesando archivo…'}
+                        </p>
+                        {parseProgress && (
                           <p className="flex items-center justify-center gap-1 text-xs text-slate-600">
                             <Sparkles className="h-3 w-3" /> Analizando con IA
                           </p>
