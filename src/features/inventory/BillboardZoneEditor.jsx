@@ -45,13 +45,7 @@ function compressImage(file) {
       canvas.height = height
 
       const ctx = canvas.getContext('2d')
-
-      // Auto-crop if extreme landscape (ratio > 2.5) — take 60% from left
-      let srcX = 0, srcY = 0, srcW = img.width, srcH = img.height
-      if (img.width / img.height > 2.5) {
-        srcW = Math.round(img.width * 0.6)
-      }
-      ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, canvas.width, canvas.height)
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
 
       // Iteratively compress until under 700 KB
       const tryCompress = (q) => {
@@ -84,6 +78,7 @@ export default function BillboardZoneEditor({ item, caraIndex: initialCaraIndex 
   const [photoUploading, setPhotoUploading] = useState(false)
   const [photoError,     setPhotoError]     = useState('')
   const [imgSize,        setImgSize]        = useState({ w: 0, h: 0 })
+  const [zoom,           setZoom]           = useState(1)
 
   const svgRef       = useRef(null)
   const imgRef       = useRef(null)
@@ -291,69 +286,115 @@ export default function BillboardZoneEditor({ item, caraIndex: initialCaraIndex 
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
 
         {/* Image + SVG overlay */}
-        <div className="flex-1 flex items-center justify-center bg-black/40 overflow-hidden p-4">
+        <div className="flex-1 flex items-center justify-center bg-black/40 p-4 relative"
+          style={{ overflow: zoom > 1 ? 'auto' : 'hidden' }}>
           {photoUrl ? (
-            <div className="relative max-w-full max-h-full">
-              <img
-                ref={imgRef}
-                src={photoUrl}
-                alt={item.name}
-                className="block max-w-full max-h-[70vh] lg:max-h-[80vh] object-contain select-none rounded-lg"
-                draggable={false}
-                onLoad={e => setImgSize({ w: e.target.clientWidth, h: e.target.clientHeight })}
-              />
-              {/* SVG overlay — pixel-based viewBox matches rendered image dimensions */}
-              {imgSize.w > 0 && (
-                <svg
-                  ref={svgRef}
-                  className="absolute inset-0 w-full h-full"
-                  viewBox={`0 0 ${W} ${H}`}
-                  preserveAspectRatio="none"
-                  onTouchMove={handleTouchMove}
-                  onTouchEnd={handleTouchEnd}
+            <>
+              {/* Zoom controls */}
+              <div className="absolute top-4 right-4 flex items-center gap-1 z-10">
+                {zoom > 1 && (
+                  <button
+                    onClick={() => setZoom(1)}
+                    className="rounded px-2 py-1 text-xs bg-black/60 text-white hover:bg-black/80"
+                  >
+                    Reset
+                  </button>
+                )}
+                <button
+                  onClick={() => setZoom(z => Math.min(3, z + 0.5))}
+                  className="rounded w-7 h-7 text-sm bg-black/60 text-white hover:bg-black/80 font-bold"
                 >
-                  {/* Polygon: yellow stroke, translucent gray fill — drawn under points */}
-                  <polygon
-                    points={polygonPoints}
-                    fill="rgba(100,100,100,0.45)"
-                    stroke="#FACC15"
-                    strokeWidth="2"
-                    vectorEffect="non-scaling-stroke"
-                  />
+                  +
+                </button>
+                <span className="text-xs text-white bg-black/60 rounded px-1.5 py-1">{zoom}x</span>
+                <button
+                  onClick={() => setZoom(z => Math.max(1, z - 0.5))}
+                  className="rounded w-7 h-7 text-sm bg-black/60 text-white hover:bg-black/80 font-bold"
+                >
+                  −
+                </button>
+              </div>
 
-                  {/* Draggable corner points */}
-                  {POINT_KEYS.map(key => {
-                    const pt = zone[key]
-                    const cx = px(pt)
-                    const cy = py(pt)
-                    return (
-                      <g
-                        key={key}
-                        style={{ cursor: 'crosshair' }}
-                        onMouseDown={e => handleMouseDown(key, e)}
-                        onTouchStart={e => handleTouchStart(key, e)}
-                      >
-                        {/* White border ring */}
-                        <circle cx={cx} cy={cy} r={POINT_RADIUS} fill="white" vectorEffect="non-scaling-stroke" />
-                        {/* Brand fill */}
-                        <circle cx={cx} cy={cy} r={POINT_RADIUS - 2} fill="#6366f1" vectorEffect="non-scaling-stroke" />
-                        <text
-                          x={cx} y={cy}
-                          textAnchor="middle"
-                          dominantBaseline="central"
-                          fontSize="8"
-                          fontWeight="bold"
-                          fill="white"
-                          style={{ pointerEvents: 'none', userSelect: 'none' }}
+              {/* Scaled image + SVG container */}
+              <div
+                className="relative"
+                style={{
+                  transform: `scale(${zoom})`,
+                  transformOrigin: 'top left',
+                  ...(zoom > 1 ? {} : { maxWidth: '100%', maxHeight: '100%' }),
+                }}
+              >
+                <img
+                  ref={imgRef}
+                  src={photoUrl}
+                  alt={item.name}
+                  className="block max-w-full max-h-[70vh] lg:max-h-[80vh] object-contain select-none rounded-lg"
+                  draggable={false}
+                  onLoad={e => setImgSize({ w: e.target.clientWidth, h: e.target.clientHeight })}
+                />
+                {/* SVG overlay — pixel-based viewBox matches rendered image dimensions */}
+                {imgSize.w > 0 && (
+                  <svg
+                    ref={svgRef}
+                    className="absolute inset-0 w-full h-full"
+                    viewBox={`0 0 ${W} ${H}`}
+                    preserveAspectRatio="none"
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                  >
+                    {/* Polygon: yellow stroke, translucent gray fill — drawn under points */}
+                    <polygon
+                      points={polygonPoints}
+                      fill="rgba(100,100,100,0.45)"
+                      stroke="#FACC15"
+                      strokeWidth="2"
+                      vectorEffect="non-scaling-stroke"
+                    />
+
+                    {/* Draggable corner points */}
+                    {POINT_KEYS.map(key => {
+                      const pt = zone[key]
+                      const cx = px(pt)
+                      const cy = py(pt)
+                      return (
+                        <g
+                          key={key}
+                          style={{ cursor: 'crosshair' }}
+                          onMouseDown={e => handleMouseDown(key, e)}
+                          onTouchStart={e => handleTouchStart(key, e)}
                         >
-                          {POINT_LABELS[key]}
-                        </text>
-                      </g>
-                    )
-                  })}
-                </svg>
-              )}
-            </div>
+                          {/* Transparent circle with white border */}
+                          <circle
+                            cx={cx} cy={cy} r={POINT_RADIUS}
+                            fill="transparent"
+                            stroke="#ffffff"
+                            strokeWidth="2"
+                            vectorEffect="non-scaling-stroke"
+                          />
+                          {/* Center dot */}
+                          <circle
+                            cx={cx} cy={cy} r={2}
+                            fill="#FACC15"
+                            vectorEffect="non-scaling-stroke"
+                          />
+                          <text
+                            x={cx} y={cy - POINT_RADIUS - 4}
+                            textAnchor="middle"
+                            dominantBaseline="auto"
+                            fontSize="9"
+                            fontWeight="bold"
+                            fill="white"
+                            style={{ pointerEvents: 'none', userSelect: 'none' }}
+                          >
+                            {POINT_LABELS[key]}
+                          </text>
+                        </g>
+                      )
+                    })}
+                  </svg>
+                )}
+              </div>
+            </>
           ) : (
             /* No-photo placeholder — accepts drop + click */
             <div
