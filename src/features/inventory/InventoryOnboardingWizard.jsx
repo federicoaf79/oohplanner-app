@@ -347,7 +347,8 @@ function rowStatus(item) {
 // ── Componente principal ──────────────────────────────────────────────────────
 
 export default function InventoryOnboardingWizard({ onClose, onComplete }) {
-  const { orgId } = useAuth()
+  const { profile } = useAuth()
+  const orgId = profile?.org_id ?? null
   const [step,       setStep]       = useState(1)
   const [savedSteps, setSavedSteps] = useState(new Set())
 
