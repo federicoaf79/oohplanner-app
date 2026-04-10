@@ -9,7 +9,7 @@
 import { useState, useRef, useEffect } from 'react'
 import {
   X, Upload, CheckCircle, ChevronLeft, ChevronRight,
-  Loader2, Sparkles, FileText, Image, AlertCircle,
+  Loader2, Sparkles, FileText, Image, AlertCircle, Download,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
@@ -854,6 +854,76 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
     finally { setAudienceUploading(false) }
   }
 
+  async function downloadMasterTemplate() {
+    const XLSXmod = await import('xlsx')
+    const XLSX = XLSXmod.default ?? XLSXmod
+
+    const wb = XLSX.utils.book_new()
+
+    // Hoja 1: inventario_carteles
+    const inventarioHeaders = [
+      'id_cartel *','nombre_ubicacion *','formato *','tipo_propiedad *',
+      'direccion *','ciudad *','provincia *','latitud *','longitud *',
+      'zona_barrio','ancho_m','alto_m','iluminado','es_digital','es_movil',
+      'frecuencia_seg','trafico_diario','cluster_audiencia','fuente_audiencia',
+      'activo','disponible_desde','dueno_espacio','precio_mensual_ars *',
+      'precio_quincenal_ars','banda_neg_habilitada','banda_neg_precio_ars',
+      'banda_neg_meses_min','costo_alquiler_anual','costo_impuestos_anual',
+      'costo_derechos_anual','costo_luz_mensual','costo_mant_mensual',
+      'costo_imponderable_mensual','costo_dueno_mensual','costo_impresion_m2',
+      'costo_instalacion','costo_diseno','comision_vendedor_pct',
+      'comision_agencia_pct','comision_dueno_pct','inflacion_ajuste_pct','notas',
+    ]
+    const wsInventario = XLSX.utils.aoa_to_sheet([inventarioHeaders])
+    XLSX.utils.book_append_sheet(wb, wsInventario, 'inventario_carteles')
+
+    // Hoja 2: costos_carteles
+    const costosHeaders = [
+      'id_cartel *','alquiler_anual_ars','impuestos_anual_ars',
+      'derechos_anual_ars','luz_mensual_ars','mant_mensual_ars',
+      'imponderable_mensual_ars','dueno_mensual_ars','impresion_por_m2_ars',
+      'instalacion_ars','diseno_ars','comision_vendedor_pct',
+      'comision_agencia_pct','comision_dueno_pct','inflacion_ajuste_pct',
+      'banda_neg_precio_ars','banda_neg_meses_min','notas',
+    ]
+    const wsCostos = XLSX.utils.aoa_to_sheet([costosHeaders])
+    XLSX.utils.book_append_sheet(wb, wsCostos, 'costos_carteles')
+
+    // Hoja 3: clientes
+    const clientesHeaders = [
+      'razon_social *','cuit','rubro','direccion','ciudad','provincia',
+      'contacto_nombre *','contacto_cargo','telefono *','email *',
+      'contacto2_nombre','contacto2_telefono','contacto2_email',
+      'vendedor_asignado','origen','notas',
+    ]
+    const wsClientes = XLSX.utils.aoa_to_sheet([clientesHeaders])
+    XLSX.utils.book_append_sheet(wb, wsClientes, 'clientes')
+
+    // Hoja 4: formatos_referencia
+    const formatosData = [
+      ['formato','descripcion','es_digital','es_movil','iluminado_default','ancho_tipico_m','alto_tipico_m','frecuencia_tipica_seg','notas'],
+      ['billboard','Espectacular / Columna iluminada','no','no','si',14,8,'',''],
+      ['ambient','Top Wall / Medianera','no','no','si',8,12,'',''],
+      ['digital','Pantalla LED / DOOH','si','no','si',6,4,8,''],
+      ['poster','Afiche / Gigantografía','no','no','no',4,3,'',''],
+      ['urban_furniture','Mobiliario Urbano / Parada','no','no','si',1.2,1.8,'',''],
+      ['urban_furniture_digital','Mobiliario Urbano Digital','si','no','si',1.2,1.8,8,''],
+      ['mobile_screen','Pantalla Móvil / Camión LED','si','si','si',3,2,8,''],
+    ]
+    const wsFormatos = XLSX.utils.aoa_to_sheet(formatosData)
+    XLSX.utils.book_append_sheet(wb, wsFormatos, 'formatos_referencia')
+
+    // Hoja 5: clusters_audiencia
+    const clustersHeaders = [
+      'nombre_cluster','edad_min','edad_max','genero','nse',
+      'intereses','zona_principal','fuente','activo',
+    ]
+    const wsClusters = XLSX.utils.aoa_to_sheet([clustersHeaders])
+    XLSX.utils.book_append_sheet(wb, wsClusters, 'clusters_audiencia')
+
+    XLSX.writeFile(wb, 'OOH_Planner_Plantilla_Inventario.xlsx')
+  }
+
   async function downloadCostsTemplate() {
     const XLSXmod = await import('xlsx')
     const XLSX = XLSXmod.default ?? XLSXmod
@@ -1180,6 +1250,35 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
                       Aceptamos Excel (.xlsx), CSV, PDF o imagen. Si tu planilla tiene encabezados en español o inglés
                       los mapeamos automáticamente. Para PDF e imágenes usamos IA para extraer la información.
                     </p>
+                  </div>
+
+                  {/* Plantilla maestra */}
+                  <div className="rounded-xl border border-surface-700 bg-surface-800/50 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-white">¿No tenés tu data lista?</p>
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Descargá nuestra plantilla Excel completa, completala con tus carteles y subila acá.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={downloadMasterTemplate}
+                        className="flex items-center gap-2 rounded-lg border border-brand/40 bg-brand/10 px-3 py-2 text-xs font-medium text-brand hover:bg-brand/20 transition-colors shrink-0"
+                      >
+                        <Download className="h-3.5 w-3.5" />
+                        Descargar plantilla
+                      </button>
+                    </div>
+                    <div className="flex flex-wrap gap-2 text-xs text-slate-600">
+                      <span className="flex items-center gap-1">📋 Ubicaciones</span>
+                      <span>·</span>
+                      <span className="flex items-center gap-1">💰 Costos</span>
+                      <span>·</span>
+                      <span className="flex items-center gap-1">👥 Clientes</span>
+                      <span>·</span>
+                      <span className="flex items-center gap-1">📊 Audiencias</span>
+                    </div>
                   </div>
 
                   {parseError && (
