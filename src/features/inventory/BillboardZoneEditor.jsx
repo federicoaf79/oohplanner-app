@@ -290,30 +290,41 @@ export default function BillboardZoneEditor({ item, caraIndex: initialCaraIndex 
           style={{ overflow: zoom > 1 ? 'auto' : 'hidden' }}>
           {photoUrl ? (
             <>
-              {/* Zoom controls */}
-              <div className="absolute top-4 right-4 flex items-center gap-1 z-10">
-                {zoom > 1 && (
-                  <button
-                    onClick={() => setZoom(1)}
-                    className="rounded px-2 py-1 text-xs bg-black/60 text-white hover:bg-black/80"
-                  >
-                    Reset
-                  </button>
-                )}
+              {/* Zoom controls — vertical, Google Maps style */}
+              <div className="absolute bottom-4 right-4 flex flex-col items-center z-10
+                              rounded-lg overflow-hidden shadow-lg border border-white/10">
                 <button
                   onClick={() => setZoom(z => Math.min(3, z + 0.5))}
-                  className="rounded w-7 h-7 text-sm bg-black/60 text-white hover:bg-black/80 font-bold"
+                  className="w-9 h-9 flex items-center justify-center text-lg font-bold
+                             bg-surface-800 text-white hover:bg-surface-700 transition-colors
+                             border-b border-white/10"
                 >
                   +
                 </button>
-                <span className="text-xs text-white bg-black/60 rounded px-1.5 py-1">{zoom}x</span>
+                <div className="w-9 h-8 flex items-center justify-center
+                                bg-surface-800 text-white text-xs font-bold
+                                border-b border-white/10 select-none">
+                  {zoom}x
+                </div>
                 <button
                   onClick={() => setZoom(z => Math.max(1, z - 0.5))}
-                  className="rounded w-7 h-7 text-sm bg-black/60 text-white hover:bg-black/80 font-bold"
+                  className="w-9 h-9 flex items-center justify-center text-lg font-bold
+                             bg-surface-800 text-white hover:bg-surface-700 transition-colors"
                 >
                   −
                 </button>
               </div>
+
+              {zoom > 1 && (
+                <button
+                  onClick={() => setZoom(1)}
+                  className="absolute bottom-4 right-16 z-10 px-2 py-1 rounded-lg text-xs
+                             font-bold bg-surface-800 text-white hover:bg-surface-700
+                             border border-white/10 shadow-lg transition-colors"
+                >
+                  Reset
+                </button>
+              )}
 
               {/* Scaled image + SVG container */}
               <div
