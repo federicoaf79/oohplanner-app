@@ -191,6 +191,12 @@ async function fileToBase64(file) {
 
 async function callClaudeWithFile(file) {
   const base64 = await fileToBase64(file)
+
+  // Base64 es ~33% más grande que el binario; 33M chars ≈ 25 MB originales
+  if (base64.length > 33_000_000) {
+    throw new Error('El archivo supera los 25 MB. Dividilo en partes más pequeñas e importalas por separado.')
+  }
+
   const isPdf   = file.type === 'application/pdf'
 
   const contentBlock = isPdf
