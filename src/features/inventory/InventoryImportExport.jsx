@@ -3,6 +3,7 @@ import { X, Download, CheckCircle, AlertTriangle, FileText, RotateCcw } from 'lu
 import { supabase } from '../../lib/supabase'
 import Button from '../../components/ui/Button'
 import Spinner from '../../components/ui/Spinner'
+import * as XLSX from 'xlsx'
 
 const ROLLBACK_TTL_MS = 120 * 60 * 1000 // 2 horas
 
@@ -89,22 +90,22 @@ function minutesLeft(timestamp) {
 
 function buildFilename(exportAll, selectedFormats) {
   const date = new Date().toISOString().slice(0, 10)
-  if (exportAll || selectedFormats.size === 0) return `inventario_completo_${date}.csv`
+  if (exportAll || selectedFormats.size === 0) return `inventario_completo_${date}.xlsx`
   const label = FORMAT_OPTIONS
     .filter(f => selectedFormats.has(f.id))
     .map(f => f.fileLabel)
     .join('_')
-  return `inventario_${label}_${date}.csv`
+  return `inventario_${label}_${date}.xlsx`
 }
 
-function escapeCSV(v) {
+function DISABLED_escapeCSV(v) {
   const s = String(v ?? '')
   return (s.includes(',') || s.includes('"') || s.includes('\n'))
     ? `"${s.replace(/"/g, '""')}"`
     : s
 }
 
-function buildCSV(items) {
+function DISABLED_buildCSV(items) {
   const toRow = (item) => [
     item.code ?? '',
     item.name ?? '',
@@ -138,6 +139,46 @@ function buildCSV(items) {
   const header = CSV_COLS_ES.join(',')
   const rows   = items.map(item => toRow(item).map(escapeCSV).join(','))
   return '\uFEFF' + [header, ...rows].join('\n') // BOM for Excel
+}
+
+// ── Export XLSX ───────────────────────────────────────────────
+
+function buildXLSX(items) {
+  const toRow = (item) => [
+    item.code ?? '',
+    item.name ?? '',
+    item.address ?? '',
+    item.city ?? '',
+    item.format ?? '',
+    item.width_ft ?? '',
+    item.height_ft ?? '',
+    item.owner_type ?? 'owned',
+    item.illuminated ? 'SI' : 'NO',
+    item.latitude ?? '',
+    item.longitude ?? '',
+    item.base_rate ?? '',
+    item.biweekly_rate ?? '',
+    item.banda_negativa_enabled ? 'SI' : 'NO',
+    item.banda_negativa_rate ?? '',
+    item.banda_negativa_min_months ?? '',
+    item.cost_rent ?? '',
+    item.cost_electricity ?? '',
+    item.cost_taxes ?? '',
+    item.cost_maintenance ?? '',
+    item.cost_imponderables ?? '',
+    item.cost_owner_commission ?? '',
+    item.cost_print_per_m2 ?? '',
+    item.cost_installation ?? '',
+    item.cost_design ?? '',
+    item.cost_seller_commission_pct ?? '',
+    item.cost_agency_commission_pct ?? '',
+    item.cost_owner_commission_pct ?? '',
+  ]
+  const ws = XLSX.utils.aoa_to_sheet([CSV_COLS_ES, ...items.map(toRow)])
+  ws['!cols'] = CSV_COLS_ES.map(h => ({ wch: Math.max(h.length + 4, 16) }))
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'Inventario')
+  return XLSX.write(wb, { bookType: 'xlsx', type: 'array' })
 }
 
 // ── Import helpers ────────────────────────────────────────────
@@ -322,9 +363,9 @@ export default function InventoryImportExport({ items, orgName, orgId, onImporte
     const toExport = exportAll || selectedFormats.size === 0
       ? items
       : items.filter(i => selectedFormats.has(i.format))
-    const csv      = buildCSV(toExport)
     const filename = buildFilename(exportAll, selectedFormats, orgName)
-    const blob     = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const xlsxData = buildXLSX(toExport)
+    const blob     = new Blob([xlsxData], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     const url      = URL.createObjectURL(blob)
     const a        = document.createElement('a')
     a.href = url; a.download = filename; a.click()
@@ -569,7 +610,7 @@ export default function InventoryImportExport({ items, orgName, orgId, onImporte
         {/* Tabs */}
         <div className="flex border-b border-surface-700 px-5 sticky top-[57px] bg-surface-900 z-10">
           {[
-            { id: 'export', label: 'Exportar CSV' },
+            { id: 'export', label: 'Exportar Excel' },
             { id: 'import', label: 'Importar CSV / Excel' },
           ].map(t => (
             <button key={t.id}
@@ -588,7 +629,7 @@ export default function InventoryImportExport({ items, orgName, orgId, onImporte
           {tab === 'export' && !showCategorySelector && (
             <>
               <p className="text-sm text-slate-400">
-                Descargá un CSV con los carteles de tu inventario, incluyendo costos y configuración.
+                Descargá un Excel con los carteles de tu inventario, incluyendo costos y configuración.
                 Podés editarlo y reimportarlo.
               </p>
               <div className="rounded-xl border border-surface-700 bg-surface-800/50 p-4 text-xs text-slate-500 space-y-1">
@@ -597,7 +638,7 @@ export default function InventoryImportExport({ items, orgName, orgId, onImporte
               </div>
               <Button className="w-full" onClick={() => setShowCategorySelector(true)}>
                 <Download className="h-4 w-4" />
-                Descargar CSV ({items.length} carteles)
+                Descargar Excel ({items.length} carteles)
               </Button>
               <a
                 href="/plantilla_inventario_oohplanner.xlsx"
