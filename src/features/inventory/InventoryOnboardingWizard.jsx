@@ -989,9 +989,20 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
                     <h3 className="text-sm font-semibold text-white">
                       {photosPreviews.length} página{photosPreviews.length !== 1 ? 's' : ''} extraída{photosPreviews.length !== 1 ? 's' : ''} del PDF
                     </h3>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Seleccioná las páginas que son fotos de carteles y subílas al inventario.
-                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-brand/20 bg-brand/5 px-4 py-3 flex gap-3">
+                    <span className="text-brand text-lg shrink-0">💡</span>
+                    <div className="text-xs text-slate-400 leading-relaxed">
+                      <span className="font-semibold text-slate-300">
+                        Estas imágenes son capturas de tu PDF — ideales para identificar cada cartel.
+                      </span>
+                      {' '}Más adelante, desde el <span className="text-brand font-medium">Editor de Zonas</span> vas a poder:
+                      <ul className="mt-1.5 space-y-0.5 list-disc list-inside text-slate-500">
+                        <li>Reemplazar cada imagen por una foto original de mayor calidad</li>
+                        <li>Marcar la superficie del cartel (4 puntos) para generar mockups en las propuestas</li>
+                      </ul>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
