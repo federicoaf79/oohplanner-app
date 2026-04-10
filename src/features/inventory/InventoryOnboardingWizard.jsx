@@ -602,16 +602,23 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
   // ── Footer: lógica del botón Siguiente ─────────────────────────────────────
 
   const pendingImport = step === 1 && items.length > 0 && importedCount === null
+  const pendingPhotos = step === 2 && photosPreviews.length > 0 && !photosUploaded
+
   const nextLabel = step === STEPS.length
     ? 'Finalizar'
     : pendingImport
-    ? 'Importar y continuar'
-    : 'Siguiente'
+      ? 'Importar y continuar'
+      : pendingPhotos
+        ? 'Subir fotos y continuar'
+        : 'Siguiente'
 
   async function handleNext() {
     if (pendingImport) {
       const count = await handleImport()
       if (count !== null) setStep(s => s + 1)
+    } else if (pendingPhotos) {
+      await uploadPhotos()
+      setStep(s => s + 1)
     } else if (step === STEPS.length) {
       onComplete?.()
     } else {
@@ -1042,16 +1049,6 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
                     ))}
                   </div>
 
-                  <button
-                    onClick={uploadPhotos}
-                    disabled={photosUploading || photosPreviews.filter(p => p.selected && p.matchedCode).length === 0}
-                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-brand py-3 text-sm font-semibold text-white hover:bg-brand/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {photosUploading
-                      ? <><Loader2 className="h-4 w-4 animate-spin" /> Subiendo…</>
-                      : <><Image className="h-4 w-4" /> Subir {photosPreviews.filter(p => p.selected && p.matchedCode).length} foto{photosPreviews.filter(p => p.selected && p.matchedCode).length !== 1 ? 's' : ''} al inventario</>
-                    }
-                  </button>
                 </div>
               )}
 
