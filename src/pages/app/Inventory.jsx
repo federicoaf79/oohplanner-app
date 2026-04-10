@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Search, MapPin, List, LayoutGrid, ChevronDown, ChevronUp, Save, Pencil, RefreshCw, Download, Image } from 'lucide-react'
+import { Search, MapPin, List, LayoutGrid, ChevronDown, ChevronUp, Save, Pencil, RefreshCw, Download, Image, Sparkles } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { formatCurrency, formatDate } from '../../lib/utils'
@@ -8,6 +8,7 @@ import { FORMAT_MAP } from '../../lib/constants'
 import EditInventoryModal from '../../features/inventory/EditInventoryModal'
 import InventoryImportExport, { RollbackBanner } from '../../features/inventory/InventoryImportExport'
 import InventoryPhotosUpload from '../../features/inventory/InventoryPhotosUpload'
+import InventoryOnboardingWizard from '../../features/inventory/InventoryOnboardingWizard'
 import CorridorsManager from '../../features/inventory/CorridorsManager'
 
 const FETCH_TIMEOUT_MS = 10_000
@@ -388,6 +389,7 @@ export default function Inventory() {
   const [editingItem, setEditingItem]           = useState(null)
   const [showImportExport, setShowImportExport] = useState(false)
   const [showPhotosUpload, setShowPhotosUpload] = useState(false)
+  const [showOnboarding,  setShowOnboarding]   = useState(false)
   const [activeTab, setActiveTab]               = useState('items') // 'items' | 'corridors'
 
   function toggleView(mode) {
@@ -452,6 +454,14 @@ export default function Inventory() {
         {/* Acciones owner/manager */}
         {canAdmin && (
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowOnboarding(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-surface-700 bg-surface-800 px-3 py-2 text-xs font-medium text-slate-300 hover:border-brand/40 hover:text-white transition-colors"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-brand" />
+              Cargar inventario
+            </button>
             <button type="button" onClick={() => setShowPhotosUpload(true)}
               className="flex items-center gap-1.5 rounded-lg border border-surface-700 bg-surface-800 px-3 py-1.5 text-xs font-medium text-slate-400 hover:border-brand/50 hover:text-slate-200 transition-colors">
               <Image className="h-3.5 w-3.5" />
@@ -575,6 +585,16 @@ export default function Inventory() {
           orgId={profile?.org_id}
           onImported={() => loadItems()}
           onClose={() => setShowImportExport(false)}
+        />
+      )}
+
+      {showOnboarding && (
+        <InventoryOnboardingWizard
+          onClose={() => setShowOnboarding(false)}
+          onComplete={() => {
+            setShowOnboarding(false)
+            loadItems()
+          }}
         />
       )}
 

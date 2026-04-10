@@ -131,20 +131,25 @@ function normalizeRow(raw) {
 // Construye el payload para insertar en inventory (solo columnas existentes en DB)
 function toDbPayload(item, orgId) {
   return {
-    org_id:      orgId,
-    code:        item.code || null,
-    name:        item.name || null,
-    address:     item.address || null,
-    city:        item.city || null,
-    format:      item.format,
-    width_ft:    item.width_m,   // DB column is width_ft but stores the value as-is
-    height_ft:   item.height_m,  // same
-    owner_type:  item.owner_type,
-    illuminated: item.illuminated,
-    is_available: item.is_available,
-    latitude:    item.latitude,
-    longitude:   item.longitude,
-    base_rate:   item.base_rate,
+    org_id:            orgId,
+    code:              item.code || null,
+    name:              item.name || null,
+    address:           item.address || null,
+    city:              item.city || null,
+    format:            item.format,
+    width_m:           item.width_m,
+    height_m:          item.height_m,
+    width_ft:          item.width_m ? Math.round(item.width_m / 0.3048 * 100) / 100 : null,
+    height_ft:         item.height_m ? Math.round(item.height_m / 0.3048 * 100) / 100 : null,
+    owner_type:        item.owner_type,
+    illuminated:       item.illuminated,
+    is_available:      item.is_available,
+    latitude:          item.latitude,
+    longitude:         item.longitude,
+    base_rate:         item.base_rate,
+    sale_price:        item.sale_price,
+    faces_count:       item.faces_count ?? 1,
+    traffic_direction: item.traffic_direction || null,
   }
 }
 
@@ -170,6 +175,8 @@ Campos por cartel (usa null cuando no disponible):
 - faces_count (number, default 1)
 - traffic_direction (string|null)
 - is_available (boolean, default true)
+
+IMPORTANTE: Los precios son en pesos argentinos (ARS), no en dólares.
 
 Ejemplo de respuesta: [{"code":"BC001","name":"Espectacular Corrientes","address":"Av. Corrientes 1234","city":"Buenos Aires","format":"billboard","width_m":12,"height_m":4,"owner_type":"owned","illuminated":true,"latitude":-34.6037,"longitude":-58.3816,"base_rate":800,"sale_price":null,"faces_count":1,"traffic_direction":"Norte","is_available":true}]`
 
@@ -624,7 +631,7 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
                                 <input
                                   type="number"
                                   min="0"
-                                  placeholder="USD"
+                                  placeholder="ARS"
                                   className="w-full rounded bg-transparent px-1 py-0.5 text-slate-300 placeholder-slate-700 outline-none focus:bg-surface-700 focus:ring-1 focus:ring-brand/40"
                                   value={item.base_rate ?? ''}
                                   onChange={e => updateItem(idx, 'base_rate', e.target.value === '' ? null : Number(e.target.value))}

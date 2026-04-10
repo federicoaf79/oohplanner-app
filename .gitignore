@@ -16,6 +16,10 @@ dist-ssr
 .env
 .env.local
 .env.*.local
+.env.txt
+
+# Supabase CLI temp files
+supabase/.temp/
 
 # Claude Code local memory
 .claude/

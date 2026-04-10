@@ -369,7 +369,7 @@ async function renderOption(doc, { option, label, formData, orgName, mapBase64 }
   }
 }
 
-export async function generateProposalPDF({ results, formData, profile, org }) {
+export async function generateProposalPDF({ results, formData, profile, org, mapA = null, mapB = null }) {
   const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true })
 
@@ -387,11 +387,7 @@ export async function generateProposalPDF({ results, formData, profile, org }) {
     day: '2-digit', month: 'long', year: 'numeric',
   })
 
-  const [logoBase64, mapA, mapB] = await Promise.all([
-    fetchLogoBase64(org?.logo_url),
-    fetchStaticMap(results?.optionA?.sites),
-    fetchStaticMap(results?.optionB?.sites),
-  ])
+  const logoBase64 = await fetchLogoBase64(org?.logo_url)
 
   renderCoverPage(doc, { formData, profile, org, logoBase64, generatedAt, validUntil })
 
