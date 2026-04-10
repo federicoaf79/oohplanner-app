@@ -467,8 +467,12 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
     setImporting(true)
     setParseError('')
     try {
-      const valid = items.filter(i => i.code && i.name)
-      if (valid.length === 0) throw new Error('No hay carteles con código y nombre completos para importar')
+      const validRaw = items.filter(i => i.code && i.name)
+      if (validRaw.length === 0) throw new Error('No hay carteles con código y nombre completos para importar')
+      // Deduplicar por código — si el PDF generó duplicados, quedarse con el último
+      const seen = new Map()
+      validRaw.forEach(item => seen.set(item.code, item))
+      const valid = Array.from(seen.values())
 
       const rows = valid.map(item => toDbPayload(item, orgId))
       const { error } = await supabase.from('inventory')
