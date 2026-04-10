@@ -24,6 +24,7 @@ import Team         from './pages/app/Team'
 import Settings     from './pages/app/Settings'
 import Support      from './pages/app/Support'
 import Billing      from './pages/app/Billing'
+import ZoneEditor   from './pages/app/ZoneEditor'
 
 // Pages — admin panel
 import AdminLayout          from './pages/admin/AdminLayout'
@@ -68,8 +69,9 @@ const router = createBrowserRouter([
           {
             element: <RoleGuard roles={['owner', 'manager']} />,
             children: [
-              { path: '/app/inventory', element: <Inventory /> },
-              { path: '/app/reports',   element: <Reports /> },
+              { path: '/app/inventory',    element: <Inventory /> },
+              { path: '/app/reports',      element: <Reports /> },
+              { path: '/app/zone-editor',  element: <ZoneEditor /> },
             ],
           },
 
