@@ -66,8 +66,8 @@ const DATE_OPTS = [
   { id: 'custom',         label: 'Personalizado' },
 ]
 
-const REV_STATUSES    = new Set(['sent', 'won', 'active'])
-const ACTIVE_STATUSES = new Set(['active', 'won'])
+const REV_STATUSES    = new Set(['sent', 'accepted'])
+const ACTIVE_STATUSES = new Set(['accepted'])
 
 // ─── tiny sub-components ─────────────────────────────────────────────────────
 function KPICard({ icon: Icon, label, value, sub, color = 'text-brand' }) {
@@ -268,7 +268,7 @@ export default function Reports() {
       .reduce((s, pi) => s + (pi.rate ?? 0) * (pi.duration ?? 1), 0)
 
     const activeCount = filteredProposals.filter(p => ACTIVE_STATUSES.has(p.status)).length
-    const wonCount    = filteredProposals.filter(p => p.status === 'won').length
+    const wonCount    = filteredProposals.filter(p => p.status === 'accepted').length
     const closureRate = filteredProposals.length > 0 ? wonCount / filteredProposals.length * 100 : 0
 
     const occupiedSites = new Set(
@@ -335,7 +335,7 @@ export default function Reports() {
         }
       }
       map[sid].proposals++
-      if (p.status === 'won') map[sid].won++
+      if (p.status === 'accepted') map[sid].won++
       if (REV_STATUSES.has(p.status)) {
         map[sid].revenue += filteredItems
           .filter(pi => pi.proposal_id === p.id)
