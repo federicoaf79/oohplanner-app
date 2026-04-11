@@ -8,6 +8,7 @@ import {
   ChevronDown, ChevronRight, BarChart2,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { FORMAT_MAP } from '../../lib/constants'
 import { useAuth } from '../../context/AuthContext'
 import Spinner from '../../components/ui/Spinner'
 
@@ -131,7 +132,7 @@ export default function Reports() {
   const [error,     setError]     = useState('')
 
   // filters
-  const [dateRange,   setDateRange]   = useState('current_month')
+  const [dateRange,   setDateRange]   = useState('last_6_months')
   const [customStart, setCustomStart] = useState('')
   const [customEnd,   setCustomEnd]   = useState('')
 
@@ -267,9 +268,11 @@ export default function Reports() {
       .filter(pi => revIds.has(pi.proposal_id))
       .reduce((s, pi) => s + (pi.rate ?? 0) * (pi.duration ?? 1), 0)
 
-    const activeCount = filteredProposals.filter(p => ACTIVE_STATUSES.has(p.status)).length
-    const wonCount    = filteredProposals.filter(p => p.status === 'accepted').length
-    const closureRate = filteredProposals.length > 0 ? wonCount / filteredProposals.length * 100 : 0
+    // Propuestas activas y tasa de cierre: métricas globales, sin filtro de fecha
+    const totalAccepted  = proposals.filter(p => p.status === 'accepted').length
+    const totalNonDraft  = proposals.filter(p => p.status !== 'draft').length
+    const activeCount    = totalAccepted
+    const closureRate    = totalNonDraft > 0 ? totalAccepted / totalNonDraft * 100 : 0
 
     const occupiedSites = new Set(
       filteredItems.filter(pi => activeIds.has(pi.proposal_id)).map(pi => pi.site_id)
@@ -277,7 +280,7 @@ export default function Reports() {
     const occupancyPct = inventory.length > 0 ? occupiedSites.size / inventory.length * 100 : 0
 
     return { revenue, activeCount, closureRate, occupancyPct }
-  }, [filteredProposals, filteredItems, inventory])
+  }, [proposals, filteredProposals, filteredItems, inventory])
 
   // ── trend chart (always last 6 months) ───────────────────────────────────
   const trendData = useMemo(() => {
@@ -729,7 +732,7 @@ export default function Reports() {
                 <tbody className="divide-y divide-surface-700/50">
                   {formatPerf.map(f => (
                     <tr key={f.format ?? '__none__'} className="hover:bg-surface-800/50 transition-colors">
-                      <td className="py-3 font-medium text-white capitalize">{f.format ?? '—'}</td>
+                      <td className="py-3 font-medium text-white">{FORMAT_MAP[f.format]?.label ?? f.format ?? '—'}</td>
                       <td className="py-3 text-right text-slate-300">{f.total}</td>
                       <td className="py-3 text-right text-slate-300">{f.occupiedCount}</td>
                       <td className="py-3 text-right">
@@ -796,7 +799,7 @@ export default function Reports() {
                           <p className="text-xs text-slate-500 font-mono">{site.code}</p>
                         </td>
                         <td className="py-3 text-slate-400 capitalize hidden sm:table-cell">
-                          {site.format ?? '—'}
+                          {FORMAT_MAP[site.format]?.label ?? site.format ?? '—'}
                         </td>
                         <td className="py-3 text-right font-medium text-white">
                           {fmtARS(site.revenue)}
