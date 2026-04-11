@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Search, MapPin, List, LayoutGrid, ChevronDown, ChevronUp, Save, Pencil, RefreshCw, Download, Image, Sparkles } from 'lucide-react'
+import { Search, MapPin, List, LayoutGrid, ChevronDown, ChevronUp, Save, Pencil, RefreshCw, Download, Image, Sparkles, X } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { formatCurrency, formatDate } from '../../lib/utils'
@@ -29,6 +29,19 @@ const OWNER_TYPE_LABEL = {
 }
 
 // ── Helpers ───────────────────────────────────────────────────
+
+function getItemPhotoUrl(item) {
+  try {
+    if (item.caras) {
+      const arr = Array.isArray(item.caras)
+        ? item.caras
+        : JSON.parse(item.caras)
+      const cara = arr.find(c => c?.photo_url)
+      if (cara?.photo_url) return cara.photo_url
+    }
+  } catch (_) {}
+  return item.photo_url || item.image_url || null
+}
 
 function AvailabilityBadge({ item }) {
   return (
@@ -69,19 +82,57 @@ function FormatBadges({ item }) {
 function InventoryRow({ item, onEdit }) {
   const { isOwner, isManager } = useAuth()
   const canEdit = isOwner || isManager
-  const fmt  = FORMAT_MAP[item.format] ?? { label: item.format, color: '#64748b' }
-  const icon = FORMAT_ICON[item.format] ?? '📍'
+  const fmt      = FORMAT_MAP[item.format] ?? { label: item.format, color: '#64748b' }
+  const icon     = FORMAT_ICON[item.format] ?? '📍'
+  const photoUrl = getItemPhotoUrl(item)
   const impactsPerMonth = item.daily_traffic ? item.daily_traffic * 3 : null
+  const [lightbox, setLightbox] = useState(false)
 
   return (
     <div className="card px-3 py-2 hover:border-brand/30 transition-colors">
       <div className="flex items-center gap-3">
 
-        {/* Ícono del formato */}
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-base"
-          style={{ background: `${fmt.color}18` }}>
-          {icon}
-        </div>
+        {/* Foto thumbnail o ícono de formato */}
+        {photoUrl ? (
+          <>
+            <div
+              onClick={e => { e.stopPropagation(); setLightbox(true) }}
+              className="flex h-10 w-14 shrink-0 cursor-pointer overflow-hidden rounded-lg border border-surface-700 hover:border-brand/40 transition-colors"
+              title="Ver foto"
+            >
+              <img src={photoUrl} alt={item.name} className="h-full w-full object-cover" />
+            </div>
+            {lightbox && (
+              <div
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+                onClick={() => setLightbox(false)}
+              >
+                <img
+                  src={photoUrl}
+                  alt={item.name}
+                  className="max-h-[90vh] max-w-[90vw] rounded-xl shadow-2xl object-contain"
+                  onClick={e => e.stopPropagation()}
+                />
+                <button
+                  onClick={() => setLightbox(false)}
+                  className="absolute top-4 right-4 rounded-full bg-black/50 p-2 text-white hover:bg-black/80 transition-colors"
+                >
+                  <X className="h-6 w-6" />
+                </button>
+                <p className="absolute bottom-4 left-1/2 -translate-x-1/2 text-sm text-white/70 font-medium">
+                  {item.name}
+                </p>
+              </div>
+            )}
+          </>
+        ) : (
+          <div
+            className="flex h-10 w-14 shrink-0 items-center justify-center rounded-lg text-xl border border-surface-700"
+            style={{ background: `${fmt.color}18` }}
+          >
+            {icon}
+          </div>
+        )}
 
         {/* Nombre + dirección + badges */}
         <div className="min-w-0 flex-1">
@@ -237,6 +288,7 @@ function InventoryCard({ item, onEdit }) {
   const fmt  = FORMAT_MAP[item.format] ?? { label: item.format, color: '#64748b' }
   const icon = FORMAT_ICON[item.format] ?? '📍'
   const impactsPerMonth = item.daily_traffic ? item.daily_traffic * 3 : null
+  const photoUrl = getItemPhotoUrl(item)
 
   // Costos fijos (columnas migration_v3)
   const totalCosts = (item.cost_rent ?? 0)
@@ -250,8 +302,8 @@ function InventoryCard({ item, onEdit }) {
     <div className="card overflow-hidden hover:border-brand/30 transition-colors">
 
       {/* Foto o placeholder */}
-      {item.photo_url ? (
-        <img src={item.photo_url} alt={item.name}
+      {photoUrl ? (
+        <img src={photoUrl} alt={item.name}
           className="h-28 w-full object-cover" />
       ) : (
         <div className="flex h-28 items-center justify-center text-5xl"
