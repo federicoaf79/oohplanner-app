@@ -309,32 +309,51 @@ export default function Reports() {
   // ── trend chart (always last 6 months) ───────────────────────────────────
   const trendData = useMemo(() => {
     const now = new Date()
+    const DIGITAL_FORMATS = new Set(['digital', 'urban_furniture_digital'])
+
     const totalFixedCosts = inventory.reduce((s, inv) =>
       s + (inv.cost_rent ?? 0) + (inv.cost_electricity ?? 0) +
       (inv.cost_taxes ?? 0) + (inv.cost_maintenance ?? 0) +
       (inv.cost_imponderables ?? 0), 0)
 
-    return Array.from({ length: 6 }, (_, i) => {
-      const d    = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
-      const from = new Date(d.getFullYear(), d.getMonth(), 1)
-      const to   = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59)
+    const invMap = {}
+    inventory.forEach(inv => { invMap[inv.id] = inv })
 
+    const propStatusMap = {}
+    proposals.forEach(p => { propStatusMap[p.id] = p.status })
+
+    const physicalTotal = inventory.filter(inv => !DIGITAL_FORMATS.has(inv.format)).length
+
+    return Array.from({ length: 6 }, (_, i) => {
+      const d         = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
+      const monthStart = new Date(d.getFullYear(), d.getMonth(), 1)
+      const monthEnd   = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59)
+
+      // Revenue: propuestas creadas en el mes con status rev
       const monthProps = proposals.filter(p => {
         const dt = new Date(p.created_at)
-        return dt >= from && dt <= to
+        return dt >= monthStart && dt <= monthEnd
       })
-      const revIds    = new Set(monthProps.filter(p => REV_STATUSES.has(p.status)).map(p => p.id))
-      const activeIds = new Set(monthProps.filter(p => ACTIVE_STATUSES.has(p.status)).map(p => p.id))
-
+      const revIds = new Set(monthProps.filter(p => REV_STATUSES.has(p.status)).map(p => p.id))
       const revenue = propItems
         .filter(pi => revIds.has(pi.proposal_id))
         .reduce((s, pi) => s + (pi.rate ?? 0) * (pi.duration ?? 1), 0)
 
-      const occupied = new Set(
-        propItems.filter(pi => activeIds.has(pi.proposal_id)).map(pi => pi.site_id)
-      ).size
-      const occupancy = inventory.length > 0 ? occupied / inventory.length * 100 : 0
-      const margin    = revenue > 0 ? (revenue - totalFixedCosts) / revenue * 100 : 0
+      // Ocupación: solapamiento real de campaña con el mes (solo físicos)
+      const occupiedInMonth = new Set(
+        propItems.filter(pi => {
+          if (!pi.start_date || !pi.end_date) return false
+          const site = invMap[pi.site_id]
+          if (!site || DIGITAL_FORMATS.has(site.format)) return false
+          if (propStatusMap[pi.proposal_id] !== 'accepted') return false
+          return new Date(pi.start_date) <= monthEnd && new Date(pi.end_date) >= monthStart
+        }).map(pi => pi.site_id)
+      )
+      const occupancy = physicalTotal > 0
+        ? Math.round(occupiedInMonth.size / physicalTotal * 100)
+        : 0
+
+      const margin = revenue > 0 ? (revenue - totalFixedCosts) / revenue * 100 : 0
 
       return { name: MONTH_LABELS[d.getMonth()], revenue, costs: totalFixedCosts, occupancy, margin }
     })
