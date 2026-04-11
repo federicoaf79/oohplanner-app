@@ -268,11 +268,13 @@ export default function Reports() {
       .filter(pi => revIds.has(pi.proposal_id))
       .reduce((s, pi) => s + (pi.rate ?? 0) * (pi.duration ?? 1), 0)
 
-    // Propuestas activas y tasa de cierre: métricas globales, sin filtro de fecha
-    const totalAccepted  = proposals.filter(p => p.status === 'accepted').length
-    const totalNonDraft  = proposals.filter(p => p.status !== 'draft').length
-    const activeCount    = totalAccepted
-    const closureRate    = totalNonDraft > 0 ? totalAccepted / totalNonDraft * 100 : 0
+    // Propuestas activas: filtradas por período
+    const activeCount = filteredProposals.filter(p => p.status === 'accepted').length
+
+    // Tasa de cierre: métrica global histórica, sin filtro de fecha
+    const totalAccepted = proposals.filter(p => p.status === 'accepted').length
+    const totalNonDraft = proposals.filter(p => p.status !== 'draft').length
+    const closureRate   = totalNonDraft > 0 ? totalAccepted / totalNonDraft * 100 : 0
 
     const occupiedSites = new Set(
       filteredItems.filter(pi => activeIds.has(pi.proposal_id)).map(pi => pi.site_id)
@@ -519,14 +521,14 @@ export default function Reports() {
           icon={FileText}
           label="Propuestas activas"
           value={fmtNum(kpis.activeCount)}
-          sub="Ganadas + en curso"
+          sub="Aceptadas en el período"
           color="text-emerald-400"
         />
         <KPICard
           icon={Target}
           label="Tasa de cierre"
           value={fmtPct(kpis.closureRate)}
-          sub="Propuestas ganadas / total"
+          sub="Propuestas ganadas / total histórico"
           color="text-amber-400"
         />
         <KPICard
