@@ -180,7 +180,9 @@ function OwnerDashboard() {
       supabase.from('proposals').select('id, status, total_value, created_by, created_at').eq('org_id', profile.org_id).gte('created_at', start).lte('created_at', end),
       supabase.from('profiles').select('id, full_name, role, monthly_target_ars').eq('org_id', profile.org_id),
       supabase.from('proposals').select('id, total_value, created_by, created_at, status').eq('org_id', profile.org_id).gte('created_at', sixMonthsAgo()),
-      supabase.from('proposal_items').select('site_id, inventory(format)').eq('org_id', profile.org_id),
+      supabase.from('proposal_items')
+        .select('site_id, proposal_id, start_date, end_date, rate, duration, inventory(format, cost_rent, cost_electricity, cost_taxes, cost_maintenance, cost_imponderables)')
+        .eq('org_id', profile.org_id),
     ])
 
     // ── KPIs ──
@@ -191,18 +193,54 @@ function OwnerDashboard() {
     const items   = itemsRes.data ?? []
 
     const totalInv    = inv.length
-    const occupiedInv = inv.filter(i => !i.is_available).length
-    const accepted    = props.filter(p => p.status === 'accepted')
-    const revenue     = accepted.reduce((s, p) => s + (p.total_value ?? 0), 0)
+    const periodStart = new Date(start)
+    const periodEnd   = new Date(end)
 
-    // Costos totales del mes (suma de todos los carteles ocupados)
-    const occupied = inv.filter(i => !i.is_available)
+    // Lookup combinado de estado de propuesta (período actual + últimos 6 meses)
+    const propLookup = {}
+    ;[...(propRes.data ?? []), ...(monthlyRes.data ?? [])].forEach(p => { propLookup[p.id] = p })
+
+    // Carteles únicos ocupados por solapamiento real con el período
+    const occupiedSiteIds = new Set(
+      items.filter(pi => {
+        if (!pi.start_date || !pi.end_date) return false
+        const prop = propLookup[pi.proposal_id]
+        if (prop?.status !== 'accepted') return false
+        return new Date(pi.start_date) <= periodEnd && new Date(pi.end_date) >= periodStart
+      }).map(pi => pi.site_id)
+    )
+    const occupiedInv = occupiedSiteIds.size
+
+    // Revenue = suma de rate * duration de items solapados con el período
+    const revenue = items
+      .filter(pi => {
+        if (!pi.start_date || !pi.end_date) return false
+        const prop = propLookup[pi.proposal_id]
+        if (!prop || prop.status !== 'accepted') return false
+        return new Date(pi.start_date) <= periodEnd && new Date(pi.end_date) >= periodStart
+      })
+      .reduce((s, pi) => s + ((pi.rate ?? 0) * (pi.duration ?? 1)), 0)
+
+    const acceptedCount = new Set(
+      items
+        .filter(pi => {
+          if (!pi.start_date || !pi.end_date) return false
+          const prop = propLookup[pi.proposal_id]
+          return prop?.status === 'accepted' &&
+            new Date(pi.start_date) <= periodEnd &&
+            new Date(pi.end_date) >= periodStart
+        })
+        .map(pi => pi.proposal_id)
+    ).size
+
+    // Costos de carteles ocupados en el período
+    const occupiedInventory = inv.filter(i => occupiedSiteIds.has(i.id))
     const costItems = [
-      { label: 'Alquiler / canon',  value: occupied.reduce((s,i) => s+(i.cost_rent||0), 0) },
-      { label: 'Electricidad',      value: occupied.reduce((s,i) => s+(i.cost_electricity||0), 0) },
-      { label: 'Impuestos',         value: occupied.reduce((s,i) => s+(i.cost_taxes||0), 0) },
-      { label: 'Mantenimiento',     value: occupied.reduce((s,i) => s+(i.cost_maintenance||0), 0) },
-      { label: 'Imponderables',     value: occupied.reduce((s,i) => s+(i.cost_imponderables||0), 0) },
+      { label: 'Alquiler / canon', value: occupiedInventory.reduce((s,i) => s+(i.cost_rent||0), 0) },
+      { label: 'Electricidad',     value: occupiedInventory.reduce((s,i) => s+(i.cost_electricity||0), 0) },
+      { label: 'Impuestos',        value: occupiedInventory.reduce((s,i) => s+(i.cost_taxes||0), 0) },
+      { label: 'Mantenimiento',    value: occupiedInventory.reduce((s,i) => s+(i.cost_maintenance||0), 0) },
+      { label: 'Imponderables',    value: occupiedInventory.reduce((s,i) => s+(i.cost_imponderables||0), 0) },
     ].filter(c => c.value > 0)
     const totalCosts = costItems.reduce((s,c) => s+c.value, 0)
     const margin     = revenue > 0 ? Math.round(((revenue - totalCosts) / revenue) * 100) : null
@@ -210,7 +248,7 @@ function OwnerDashboard() {
     setKpis({
       occupied: occupiedInv,
       total: totalInv,
-      acceptedCount: accepted.length,
+      acceptedCount,
       revenue,
       margin,
     })
@@ -218,9 +256,12 @@ function OwnerDashboard() {
 
     // ── Gráfico línea: ingresos por mes (últimos 6 meses) ──
     const monthMap = {}
-    allProp.filter(p => p.status === 'accepted').forEach(p => {
-      const key = getMonthKey(p.created_at)
-      monthMap[key] = (monthMap[key] ?? 0) + (p.total_value ?? 0)
+    items.forEach(pi => {
+      if (!pi.start_date || !pi.end_date) return
+      const prop = propLookup[pi.proposal_id]
+      if (prop?.status !== 'accepted') return
+      const key = getMonthKey(pi.start_date)
+      monthMap[key] = (monthMap[key] ?? 0) + ((pi.rate ?? 0) * (pi.duration ?? 1))
     })
     // Generar los 6 meses ordenados
     const months = []
