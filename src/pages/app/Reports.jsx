@@ -157,7 +157,7 @@ export default function Reports() {
         { data: invData,  error: e4 },
       ] = await Promise.all([
         supabase.from('proposals')
-          .select('id, status, created_at, seller_id')
+          .select('id, status, created_at, seller_id, title, client_name')
           .eq('org_id', orgId)
           .order('created_at', { ascending: false }),
 
@@ -844,13 +844,34 @@ export default function Reports() {
                           )}
                         </td>
                         <td className="py-3 text-right hidden lg:table-cell">
-                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
-                            site.is_available
-                              ? 'bg-emerald-500/15 text-emerald-400'
-                              : 'bg-amber-500/15 text-amber-400'
-                          }`}>
-                            {site.is_available ? 'Disponible' : 'Ocupado'}
-                          </span>
+                          {(() => {
+                            const { from, to } = getDateBounds(dateRange, customStart, customEnd)
+                            if (!from || !to) {
+                              return <span className="text-xs text-emerald-400 font-medium">Disponible</span>
+                            }
+                            const activeCampaigns = propItems.filter(pi => {
+                              if (pi.site_id !== site.id) return false
+                              if (!pi.start_date || !pi.end_date) return false
+                              const piStart = new Date(pi.start_date)
+                              const piEnd   = new Date(pi.end_date)
+                              const pStatus = proposals.find(p => p.id === pi.proposal_id)?.status
+                              return piStart <= to && piEnd >= from && pStatus === 'accepted'
+                            })
+                            if (activeCampaigns.length === 0) {
+                              return <span className="text-xs text-emerald-400 font-medium">Disponible</span>
+                            }
+                            const earliest = activeCampaigns.reduce((a, b) =>
+                              new Date(a.start_date) < new Date(b.start_date) ? a : b)
+                            const latest = activeCampaigns.reduce((a, b) =>
+                              new Date(a.end_date) > new Date(b.end_date) ? a : b)
+                            const fmt = d => new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+                            return (
+                              <div className="text-right">
+                                <span className="text-xs text-amber-400 font-medium block">Ocupado</span>
+                                <span className="text-[10px] text-slate-500">{fmt(earliest.start_date)} → {fmt(latest.end_date)}</span>
+                              </div>
+                            )
+                          })()}
                         </td>
                       </tr>
 
@@ -858,6 +879,7 @@ export default function Reports() {
                       {isOpen && (
                         <tr>
                           <td colSpan={7} className="px-2 py-4 bg-surface-900/60 border-b border-surface-700/40">
+                            <div className="space-y-3">
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
 
                               {/* Ingresos */}
@@ -971,6 +993,102 @@ export default function Reports() {
                                   </div>
                                 )}
                               </div>
+
+                            </div>
+
+                            {/* Historial de ocupación */}
+                            {(() => {
+                              const { from, to } = getDateBounds(dateRange, customStart, customEnd)
+                              const filterFrom = from ?? new Date(0)
+                              const filterTo   = to   ?? new Date()
+
+                              const propStatusLookup = {}
+                              const propTitleLookup  = {}
+                              const propClientLookup = {}
+                              proposals.forEach(p => {
+                                propStatusLookup[p.id] = p.status
+                                propTitleLookup[p.id]  = p.title ?? 'Sin nombre'
+                                propClientLookup[p.id] = p.client_name ?? ''
+                              })
+
+                              const campaigns = propItems
+                                .filter(pi => {
+                                  if (pi.site_id !== site.id) return false
+                                  if (!pi.start_date || !pi.end_date) return false
+                                  const piStart = new Date(pi.start_date)
+                                  const piEnd   = new Date(pi.end_date)
+                                  return piStart <= filterTo && piEnd >= filterFrom &&
+                                    propStatusLookup[pi.proposal_id] === 'accepted'
+                                })
+                                .map(pi => ({
+                                  ...pi,
+                                  proposalTitle: propTitleLookup[pi.proposal_id],
+                                  clientName:    propClientLookup[pi.proposal_id],
+                                }))
+
+                              // Meses del período
+                              const months = []
+                              const cursor = new Date(filterFrom.getFullYear(), filterFrom.getMonth(), 1)
+                              const endCursor = new Date(filterTo.getFullYear(), filterTo.getMonth(), 1)
+                              while (cursor <= endCursor) {
+                                const mStart = new Date(cursor)
+                                const mEnd   = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0)
+                                const isOccupied = campaigns.some(pi => {
+                                  const s = new Date(pi.start_date)
+                                  const e = new Date(pi.end_date)
+                                  return s <= mEnd && e >= mStart
+                                })
+                                months.push({
+                                  label: cursor.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' }),
+                                  occupied: isOccupied,
+                                })
+                                cursor.setMonth(cursor.getMonth() + 1)
+                              }
+
+                              const occupiedMonths = months.filter(m => m.occupied).length
+                              const occupancyPct   = months.length > 0
+                                ? Math.round(occupiedMonths / months.length * 100)
+                                : 0
+                              const fmtDate = d => new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+
+                              return (
+                                <div className="rounded-xl border border-surface-700 bg-surface-800/50 p-4">
+                                  <p className="text-xs font-semibold text-slate-300 mb-3">
+                                    Historial de ocupación — {occupiedMonths}/{months.length} meses ({occupancyPct}%)
+                                  </p>
+
+                                  <div className="flex flex-wrap gap-1.5 mb-3">
+                                    {months.map((m, i) => (
+                                      <span key={i} className={`rounded-full px-2 py-0.5 text-[10px] font-medium border ${
+                                        m.occupied
+                                          ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                                          : 'bg-surface-700 text-slate-600 border-surface-600'
+                                      }`}>
+                                        {m.label}
+                                      </span>
+                                    ))}
+                                  </div>
+
+                                  {campaigns.length > 0 ? (
+                                    <div className="space-y-1.5 border-t border-surface-700 pt-3">
+                                      <p className="text-[10px] text-slate-500 font-medium mb-1">Campañas en el período:</p>
+                                      {campaigns.map((c, i) => (
+                                        <div key={i} className="flex items-center justify-between text-[10px]">
+                                          <span className="text-slate-400 truncate max-w-[60%]">
+                                            {c.proposalTitle}{c.clientName ? ` — ${c.clientName}` : ''}
+                                          </span>
+                                          <span className="text-slate-500 shrink-0 ml-2">
+                                            {fmtDate(c.start_date)} → {fmtDate(c.end_date)}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="text-xs text-slate-600">Sin campañas en este período</p>
+                                  )}
+                                </div>
+                              )
+                            })()}
 
                             </div>
                           </td>
