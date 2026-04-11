@@ -1,36 +1,963 @@
-import { BarChart2 } from 'lucide-react'
-import Card, { CardHeader } from '../../components/ui/Card'
+import React, { useState, useEffect, useMemo } from 'react'
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer,
+} from 'recharts'
+import {
+  TrendingUp, FileText, Target, LayoutGrid,
+  ChevronDown, ChevronRight, BarChart2,
+} from 'lucide-react'
+import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../context/AuthContext'
+import Spinner from '../../components/ui/Spinner'
 
-export default function Reports() {
+// ─── format helpers ──────────────────────────────────────────────────────────
+function fmtARS(v) {
+  if (!v && v !== 0) return '—'
+  return '$' + Math.round(Number(v)).toLocaleString('es-AR')
+}
+function fmtPct(v) {
+  if (!v && v !== 0) return '—'
+  return Number(v).toFixed(1) + '%'
+}
+function fmtNum(v) {
+  if (!v && v !== 0) return '—'
+  return Math.round(Number(v)).toLocaleString('es-AR')
+}
+
+// ─── date helpers ─────────────────────────────────────────────────────────────
+function getDateBounds(dateRange, customStart, customEnd) {
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = now.getMonth()
+  if (dateRange === 'current_month')
+    return { from: new Date(y, m, 1), to: new Date(y, m + 1, 0, 23, 59, 59) }
+  if (dateRange === 'last_month')
+    return { from: new Date(y, m - 1, 1), to: new Date(y, m, 0, 23, 59, 59) }
+  if (dateRange === 'last_3_months')
+    return { from: new Date(y, m - 2, 1), to: new Date(y, m + 1, 0, 23, 59, 59) }
+  if (dateRange === 'last_6_months')
+    return { from: new Date(y, m - 5, 1), to: new Date(y, m + 1, 0, 23, 59, 59) }
+  if (dateRange === 'custom')
+    return {
+      from: customStart ? new Date(customStart) : null,
+      to:   customEnd   ? new Date(customEnd + 'T23:59:59') : null,
+    }
+  return { from: null, to: null }
+}
+
+function applyDateFilter(list, dateRange, customStart, customEnd) {
+  const { from, to } = getDateBounds(dateRange, customStart, customEnd)
+  return list.filter(item => {
+    const d = new Date(item.created_at)
+    if (from && d < from) return false
+    if (to   && d > to)   return false
+    return true
+  })
+}
+
+const MONTH_LABELS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
+
+const DATE_OPTS = [
+  { id: 'current_month',  label: 'Mes actual' },
+  { id: 'last_month',     label: 'Mes anterior' },
+  { id: 'last_3_months',  label: 'Últimos 3 meses' },
+  { id: 'last_6_months',  label: 'Últimos 6 meses' },
+  { id: 'custom',         label: 'Personalizado' },
+]
+
+const REV_STATUSES    = new Set(['sent', 'won', 'active'])
+const ACTIVE_STATUSES = new Set(['active', 'won'])
+
+// ─── tiny sub-components ─────────────────────────────────────────────────────
+function KPICard({ icon: Icon, label, value, sub, color = 'text-brand' }) {
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="card p-5 flex flex-col gap-3">
+      <div className="flex items-center gap-2">
+        <div className={`flex h-8 w-8 items-center justify-center rounded-lg bg-surface-700 ${color}`}>
+          <Icon className="h-4 w-4" />
+        </div>
+        <span className="text-xs text-slate-500 font-medium">{label}</span>
+      </div>
+      <p className="text-2xl font-bold text-white tracking-tight">{value}</p>
+      {sub && <p className="text-xs text-slate-500">{sub}</p>}
+    </div>
+  )
+}
+
+function EmptyState({ message = 'Sin datos para el período seleccionado', hint = 'Probá con un rango de fechas más amplio.' }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-12 text-center">
+      <BarChart2 className="h-10 w-10 text-slate-600 mb-3" />
+      <p className="text-sm font-medium text-slate-400">{message}</p>
+      <p className="text-xs text-slate-600 mt-1">{hint}</p>
+    </div>
+  )
+}
+
+function Section({ title, description, children }) {
+  return (
+    <div className="card overflow-hidden">
+      <div className="px-5 pt-5 pb-4 border-b border-surface-700">
+        <h3 className="font-bold text-white">{title}</h3>
+        {description && <p className="text-xs text-slate-500 mt-0.5">{description}</p>}
+      </div>
+      <div className="p-5">{children}</div>
+    </div>
+  )
+}
+
+// ─── demo data for empty chart ────────────────────────────────────────────────
+const DEMO_TREND = [
+  { name: 'Nov', revenue: 280000, costs: 190000, occupancy: 42, margin: 32 },
+  { name: 'Dic', revenue: 350000, costs: 200000, occupancy: 55, margin: 43 },
+  { name: 'Ene', revenue: 420000, costs: 210000, occupancy: 61, margin: 50 },
+  { name: 'Feb', revenue: 380000, costs: 205000, occupancy: 57, margin: 46 },
+  { name: 'Mar', revenue: 510000, costs: 215000, occupancy: 72, margin: 58 },
+  { name: 'Abr', revenue: 470000, costs: 220000, occupancy: 68, margin: 53 },
+]
+
+// ─── main component ──────────────────────────────────────────────────────────
+export default function Reports() {
+  const { profile } = useAuth()
+  const orgId = profile?.org_id ?? null
+
+  // raw data
+  const [proposals, setProposals] = useState([])
+  const [propItems, setPropItems] = useState([])
+  const [profiles,  setProfiles]  = useState([])
+  const [inventory, setInventory] = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [error,     setError]     = useState('')
+
+  // filters
+  const [dateRange,   setDateRange]   = useState('current_month')
+  const [customStart, setCustomStart] = useState('')
+  const [customEnd,   setCustomEnd]   = useState('')
+
+  // UI state
+  const [chartMetric, setChartMetric] = useState('revenue')
+  const [perfTab,     setPerfTab]     = useState('seller')
+  const [expanded,    setExpanded]    = useState(new Set())
+
+  useEffect(() => {
+    if (!orgId) return
+    loadAll()
+  }, [orgId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function loadAll() {
+    setLoading(true)
+    setError('')
+    try {
+      const [
+        { data: propData, error: e1 },
+        { data: itemData, error: e2 },
+        { data: profData, error: e3 },
+        { data: invData,  error: e4 },
+      ] = await Promise.all([
+        supabase.from('proposals')
+          .select('id, status, created_at, seller_id')
+          .eq('org_id', orgId)
+          .order('created_at', { ascending: false }),
+
+        supabase.from('proposal_items')
+          .select('id, proposal_id, site_id, rate, duration')
+          .eq('org_id', orgId),
+
+        supabase.from('profiles')
+          .select('id, full_name, role, commission_pct, override_pct, commission_scope, monthly_target_ars')
+          .eq('org_id', orgId)
+          .eq('is_active', true),
+
+        supabase.from('inventory')
+          .select(`
+            id, code, name, format, base_rate, is_available,
+            cost_rent, cost_electricity, cost_taxes,
+            cost_maintenance, cost_imponderables, cost_print_per_m2,
+            cost_seller_commission_pct, cost_agency_commission_pct,
+            asociado_nombre, asociado_comision_pct,
+            width_m, height_m
+          `)
+          .eq('org_id', orgId),
+      ])
+
+      if (e1) throw new Error(e1.message)
+      if (e2) throw new Error(e2.message)
+      if (e3) throw new Error(e3.message)
+      if (e4) throw new Error(e4.message)
+
+      // Build maps for JS-side joins
+      const profMap = {}
+      ;(profData ?? []).forEach(p => { profMap[p.id] = p })
+
+      const invMap = {}
+      ;(invData ?? []).forEach(inv => { invMap[inv.id] = inv })
+
+      // Enrich proposals with seller name/pct
+      const flatProposals = (propData ?? []).map(p => ({
+        ...p,
+        seller_name: profMap[p.seller_id]?.full_name ?? null,
+        seller_commission_pct: profMap[p.seller_id]?.commission_pct ?? 0,
+      }))
+
+      // Enrich proposal_items with inventory fields
+      const flatItems = (itemData ?? []).map(pi => {
+        const inv = invMap[pi.site_id] ?? {}
+        return {
+          ...pi,
+          site_name: inv.name ?? null,
+          site_code: inv.code ?? null,
+          format:    inv.format ?? null,
+          base_rate: inv.base_rate ?? null,
+          cost_rent:                  inv.cost_rent ?? 0,
+          cost_electricity:           inv.cost_electricity ?? 0,
+          cost_taxes:                 inv.cost_taxes ?? 0,
+          cost_maintenance:           inv.cost_maintenance ?? 0,
+          cost_imponderables:         inv.cost_imponderables ?? 0,
+          cost_print_per_m2:          inv.cost_print_per_m2 ?? 0,
+          cost_seller_commission_pct: inv.cost_seller_commission_pct ?? 0,
+          cost_agency_commission_pct: inv.cost_agency_commission_pct ?? 0,
+          asociado_nombre:            inv.asociado_nombre ?? null,
+          asociado_comision_pct:      inv.asociado_comision_pct ?? 0,
+          width_m:  inv.width_m ?? 0,
+          height_m: inv.height_m ?? 0,
+        }
+      })
+
+      setProposals(flatProposals)
+      setPropItems(flatItems)
+      setProfiles(profData ?? [])
+      setInventory(invData ?? [])
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ── filtered proposals & items ───────────────────────────────────────────
+  const filteredProposals = useMemo(
+    () => applyDateFilter(proposals, dateRange, customStart, customEnd),
+    [proposals, dateRange, customStart, customEnd]
+  )
+
+  const filteredProposalIds = useMemo(
+    () => new Set(filteredProposals.map(p => p.id)),
+    [filteredProposals]
+  )
+
+  const filteredItems = useMemo(
+    () => propItems.filter(pi => filteredProposalIds.has(pi.proposal_id)),
+    [propItems, filteredProposalIds]
+  )
+
+  // status lookup for filtered proposals
+  const filteredStatusMap = useMemo(() => {
+    const map = {}
+    filteredProposals.forEach(p => { map[p.id] = p.status })
+    return map
+  }, [filteredProposals])
+
+  // ── KPIs ─────────────────────────────────────────────────────────────────
+  const kpis = useMemo(() => {
+    const revIds    = new Set(filteredProposals.filter(p => REV_STATUSES.has(p.status)).map(p => p.id))
+    const activeIds = new Set(filteredProposals.filter(p => ACTIVE_STATUSES.has(p.status)).map(p => p.id))
+
+    const revenue = filteredItems
+      .filter(pi => revIds.has(pi.proposal_id))
+      .reduce((s, pi) => s + (pi.rate ?? 0) * (pi.duration ?? 1), 0)
+
+    const activeCount = filteredProposals.filter(p => ACTIVE_STATUSES.has(p.status)).length
+    const wonCount    = filteredProposals.filter(p => p.status === 'won').length
+    const closureRate = filteredProposals.length > 0 ? wonCount / filteredProposals.length * 100 : 0
+
+    const occupiedSites = new Set(
+      filteredItems.filter(pi => activeIds.has(pi.proposal_id)).map(pi => pi.site_id)
+    )
+    const occupancyPct = inventory.length > 0 ? occupiedSites.size / inventory.length * 100 : 0
+
+    return { revenue, activeCount, closureRate, occupancyPct }
+  }, [filteredProposals, filteredItems, inventory])
+
+  // ── trend chart (always last 6 months) ───────────────────────────────────
+  const trendData = useMemo(() => {
+    const now = new Date()
+    const totalFixedCosts = inventory.reduce((s, inv) =>
+      s + (inv.cost_rent ?? 0) + (inv.cost_electricity ?? 0) +
+      (inv.cost_taxes ?? 0) + (inv.cost_maintenance ?? 0) +
+      (inv.cost_imponderables ?? 0), 0)
+
+    return Array.from({ length: 6 }, (_, i) => {
+      const d    = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
+      const from = new Date(d.getFullYear(), d.getMonth(), 1)
+      const to   = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59)
+
+      const monthProps = proposals.filter(p => {
+        const dt = new Date(p.created_at)
+        return dt >= from && dt <= to
+      })
+      const revIds    = new Set(monthProps.filter(p => REV_STATUSES.has(p.status)).map(p => p.id))
+      const activeIds = new Set(monthProps.filter(p => ACTIVE_STATUSES.has(p.status)).map(p => p.id))
+
+      const revenue = propItems
+        .filter(pi => revIds.has(pi.proposal_id))
+        .reduce((s, pi) => s + (pi.rate ?? 0) * (pi.duration ?? 1), 0)
+
+      const occupied = new Set(
+        propItems.filter(pi => activeIds.has(pi.proposal_id)).map(pi => pi.site_id)
+      ).size
+      const occupancy = inventory.length > 0 ? occupied / inventory.length * 100 : 0
+      const margin    = revenue > 0 ? (revenue - totalFixedCosts) / revenue * 100 : 0
+
+      return { name: MONTH_LABELS[d.getMonth()], revenue, costs: totalFixedCosts, occupancy, margin }
+    })
+  }, [proposals, propItems, inventory])
+
+  const hasRealTrend = trendData.some(d => d.revenue > 0 || d.occupancy > 0)
+  const chartData    = hasRealTrend ? trendData : DEMO_TREND
+
+  // ── seller performance ────────────────────────────────────────────────────
+  const sellerPerf = useMemo(() => {
+    const map = {}
+
+    filteredProposals.forEach(p => {
+      const sid = p.seller_id ?? '__none__'
+      if (!map[sid]) {
+        const prof = profiles.find(pr => pr.id === sid)
+        map[sid] = {
+          sellerId: sid,
+          name:     p.seller_name ?? 'Sin asignar',
+          commPct:  p.seller_commission_pct ?? 0,
+          target:   prof?.monthly_target_ars ?? null,
+          proposals: 0,
+          won:       0,
+          revenue:   0,
+        }
+      }
+      map[sid].proposals++
+      if (p.status === 'won') map[sid].won++
+      if (REV_STATUSES.has(p.status)) {
+        map[sid].revenue += filteredItems
+          .filter(pi => pi.proposal_id === p.id)
+          .reduce((s, pi) => s + (pi.rate ?? 0) * (pi.duration ?? 1), 0)
+      }
+    })
+
+    return Object.values(map).sort((a, b) => b.revenue - a.revenue)
+  }, [filteredProposals, filteredItems, profiles])
+
+  // ── format performance ────────────────────────────────────────────────────
+  const formatPerf = useMemo(() => {
+    const map = {}
+    inventory.forEach(inv => {
+      const fmt = inv.format ?? '__none__'
+      if (!map[fmt]) map[fmt] = { format: inv.format, total: 0, occupied: new Set(), revenue: 0 }
+      map[fmt].total++
+    })
+
+    filteredProposals.forEach(p => {
+      filteredItems.filter(pi => pi.proposal_id === p.id).forEach(pi => {
+        const fmt = pi.format ?? '__none__'
+        if (!map[fmt]) return
+        if (ACTIVE_STATUSES.has(p.status)) map[fmt].occupied.add(pi.site_id)
+        if (REV_STATUSES.has(p.status))    map[fmt].revenue += (pi.rate ?? 0) * (pi.duration ?? 1)
+      })
+    })
+
+    return Object.values(map)
+      .map(d => ({
+        format:        d.format,
+        total:         d.total,
+        occupiedCount: d.occupied.size,
+        occupancyPct:  d.total > 0 ? d.occupied.size / d.total * 100 : 0,
+        revenue:       d.revenue,
+        avgRevenue:    d.occupied.size > 0 ? d.revenue / d.occupied.size : 0,
+      }))
+      .sort((a, b) => b.revenue - a.revenue)
+  }, [inventory, filteredProposals, filteredItems])
+
+  // ── profitability per site ────────────────────────────────────────────────
+  const siteProfit = useMemo(() => {
+    return inventory.map(inv => {
+      const siteItems = filteredItems.filter(pi => pi.site_id === inv.id)
+      const revItems  = siteItems.filter(pi => REV_STATUSES.has(filteredStatusMap[pi.proposal_id]))
+      const isOccupied = siteItems.some(pi => ACTIVE_STATUSES.has(filteredStatusMap[pi.proposal_id]))
+
+      const revenue = revItems.reduce((s, pi) => s + (pi.rate ?? 0) * (pi.duration ?? 1), 0)
+
+      // Fixed monthly costs
+      const fixedCosts = (inv.cost_rent ?? 0) + (inv.cost_electricity ?? 0) +
+        (inv.cost_taxes ?? 0) + (inv.cost_maintenance ?? 0) +
+        (inv.cost_imponderables ?? 0)
+      const area      = (inv.width_m ?? 0) * (inv.height_m ?? 0)
+      const printCost = (inv.cost_print_per_m2 ?? 0) * area
+      const totalCosts = fixedCosts + printCost
+
+      // Commissions (per-item, then summed)
+      const sellerComm = revItems.reduce((s, pi) =>
+        s + (pi.rate ?? 0) * (pi.duration ?? 1) * (pi.cost_seller_commission_pct ?? 0) / 100, 0)
+      const agencyComm = revItems.reduce((s, pi) =>
+        s + (pi.rate ?? 0) * (pi.duration ?? 1) * (pi.cost_agency_commission_pct ?? 0) / 100, 0)
+      const asociPct   = inv.asociado_comision_pct ?? 0
+      const asociComm  = revenue * asociPct / 100
+      const totalComm  = sellerComm + agencyComm + asociComm
+
+      // For display pcts use first item's values
+      const fi = revItems[0]
+      const sellerPct = fi?.cost_seller_commission_pct ?? 0
+      const agencyPct = fi?.cost_agency_commission_pct ?? 0
+
+      const netProfit = revenue - totalCosts - totalComm
+      const roi       = totalCosts > 0 ? netProfit / totalCosts * 100 : null
+      const margin    = revenue > 0 ? netProfit / revenue * 100 : null
+
+      return {
+        ...inv,
+        revenue, fixedCosts, printCost, totalCosts,
+        sellerPct, agencyPct, asociPct,
+        asociName: inv.asociado_nombre ?? null,
+        sellerComm, agencyComm, asociComm, totalComm,
+        netProfit, roi, margin, isOccupied,
+      }
+    }).sort((a, b) => b.revenue - a.revenue)
+  }, [inventory, filteredItems, filteredStatusMap])
+
+  // ── chart formatters ──────────────────────────────────────────────────────
+  function axisFormatter(value) {
+    if (chartMetric === 'occupancy' || chartMetric === 'margin') return `${Math.round(value)}%`
+    if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`
+    if (value >= 1_000)     return `$${(value / 1_000).toFixed(0)}K`
+    return fmtARS(value)
+  }
+  function tooltipFormatter(value) {
+    if (chartMetric === 'occupancy' || chartMetric === 'margin') return fmtPct(value)
+    return fmtARS(value)
+  }
+
+  function toggleExpanded(id) {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  // ── render ────────────────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="flex justify-center py-32">
+        <Spinner size="lg" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+        {error}
+      </div>
+    )
+  }
+
+  const hasData = filteredProposals.length > 0
+
+  return (
+    <div className="space-y-6 pb-10">
+
+      {/* ── Header + date filter ─────────────────────────────────────────── */}
       <div>
         <h2 className="text-lg font-bold text-white">Reportes</h2>
-        <p className="text-sm text-slate-500">Analytics y métricas de tu operación</p>
-      </div>
+        <p className="text-sm text-slate-500">Business intelligence de tu operación OOH</p>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        {[
-          { label: 'Revenue total', value: '—' },
-          { label: 'Campañas completadas', value: '—' },
-          { label: 'Tasa de cierre', value: '—' },
-        ].map(({ label, value }) => (
-          <div key={label} className="card p-5">
-            <p className="text-xs text-slate-500">{label}</p>
-            <p className="mt-2 text-3xl font-bold text-white">{value}</p>
-          </div>
-        ))}
-      </div>
-
-      <Card>
-        <CardHeader title="Revenue mensual" />
-        <div className="flex h-48 items-center justify-center">
-          <div className="text-center">
-            <BarChart2 className="mx-auto mb-2 h-10 w-10 text-slate-600" />
-            <p className="text-sm text-slate-500">Gráfica disponible con datos reales</p>
-          </div>
+        <div className="flex flex-wrap items-center gap-2 mt-4">
+          {DATE_OPTS.map(opt => (
+            <button
+              key={opt.id}
+              onClick={() => setDateRange(opt.id)}
+              className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors ${
+                dateRange === opt.id
+                  ? 'bg-brand text-white'
+                  : 'bg-surface-700 text-slate-400 hover:text-white hover:bg-surface-600'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
-      </Card>
+
+        {dateRange === 'custom' && (
+          <div className="flex items-center gap-3 mt-3">
+            <input
+              type="date"
+              value={customStart}
+              onChange={e => setCustomStart(e.target.value)}
+              className="input-field text-xs py-1.5 w-36"
+            />
+            <span className="text-slate-500 text-xs">a</span>
+            <input
+              type="date"
+              value={customEnd}
+              onChange={e => setCustomEnd(e.target.value)}
+              className="input-field text-xs py-1.5 w-36"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* ── KPIs ─────────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <KPICard
+          icon={TrendingUp}
+          label="Revenue total"
+          value={fmtARS(kpis.revenue)}
+          sub="Propuestas enviadas / activas"
+        />
+        <KPICard
+          icon={FileText}
+          label="Propuestas activas"
+          value={fmtNum(kpis.activeCount)}
+          sub="Ganadas + en curso"
+          color="text-emerald-400"
+        />
+        <KPICard
+          icon={Target}
+          label="Tasa de cierre"
+          value={fmtPct(kpis.closureRate)}
+          sub="Propuestas ganadas / total"
+          color="text-amber-400"
+        />
+        <KPICard
+          icon={LayoutGrid}
+          label="Carteles ocupados"
+          value={fmtPct(kpis.occupancyPct)}
+          sub={`${inventory.length} carteles totales`}
+          color="text-cyan-400"
+        />
+      </div>
+
+      {/* ── Block 1 — Trend chart ─────────────────────────────────────────── */}
+      <Section
+        title="Evolución de tendencia"
+        description="Últimos 6 meses"
+      >
+        {/* metric pills */}
+        <div className="flex items-center gap-2 flex-wrap mb-5">
+          {[
+            { id: 'revenue',   label: 'Revenue' },
+            { id: 'costs',     label: 'Costos' },
+            { id: 'occupancy', label: 'Ocupación' },
+            { id: 'margin',    label: 'Margen' },
+          ].map(opt => (
+            <button
+              key={opt.id}
+              onClick={() => setChartMetric(opt.id)}
+              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                chartMetric === opt.id
+                  ? 'bg-brand text-white'
+                  : 'bg-surface-700 text-slate-400 hover:text-white'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+          {!hasRealTrend && (
+            <span className="ml-auto text-xs text-slate-600 border border-surface-600 rounded px-2 py-0.5">
+              Demo
+            </span>
+          )}
+        </div>
+
+        <div className="relative">
+          {!hasRealTrend && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none">
+              <span className="text-[80px] font-black text-white/[0.035] select-none uppercase tracking-widest">
+                Demo
+              </span>
+            </div>
+          )}
+          <ResponsiveContainer width="100%" height={220}>
+            <AreaChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="brandGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%"  stopColor="#6366f1" stopOpacity={0.2} />
+                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+              <XAxis
+                dataKey="name"
+                tick={{ fill: '#64748b', fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis
+                tick={{ fill: '#64748b', fontSize: 11 }}
+                axisLine={false}
+                tickLine={false}
+                tickFormatter={axisFormatter}
+                width={68}
+              />
+              <Tooltip
+                contentStyle={{
+                  background: '#0f172a',
+                  border: '1px solid #334155',
+                  borderRadius: 8,
+                  color: '#f1f5f9',
+                  fontSize: 12,
+                }}
+                formatter={v => [tooltipFormatter(v), '']}
+              />
+              <Area
+                type="monotone"
+                dataKey={chartMetric}
+                stroke="#6366f1"
+                strokeWidth={2}
+                fill="url(#brandGrad)"
+                dot={false}
+                activeDot={{ r: 4, fill: '#6366f1' }}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      </Section>
+
+      {/* ── Block 2 — Commercial performance ─────────────────────────────── */}
+      <Section
+        title="Performance comercial"
+        description="Desglose por vendedor y formato de cartel"
+      >
+        {/* tabs */}
+        <div className="flex gap-1 mb-5 border-b border-surface-700">
+          {[
+            { id: 'seller', label: 'Por vendedor' },
+            { id: 'format', label: 'Por formato' },
+          ].map(t => (
+            <button
+              key={t.id}
+              onClick={() => setPerfTab(t.id)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+                perfTab === t.id
+                  ? 'border-brand text-white'
+                  : 'border-transparent text-slate-500 hover:text-slate-300'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {!hasData && <EmptyState />}
+
+        {/* Tab: por vendedor */}
+        {hasData && perfTab === 'seller' && (
+          sellerPerf.length === 0 ? <EmptyState /> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[600px]">
+                <thead>
+                  <tr className="text-xs text-slate-500 uppercase tracking-wide border-b border-surface-700">
+                    <th className="text-left pb-3 font-medium">Vendedor</th>
+                    <th className="text-right pb-3 font-medium">Propuestas</th>
+                    <th className="text-right pb-3 font-medium">Revenue</th>
+                    <th className="text-left pb-3 font-medium px-4">vs Target</th>
+                    <th className="text-right pb-3 font-medium">Comisión est.</th>
+                    <th className="text-right pb-3 font-medium">Tasa cierre</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-700/50">
+                  {sellerPerf.map(s => {
+                    const closure    = s.proposals > 0 ? s.won / s.proposals * 100 : 0
+                    const commission = s.revenue * s.commPct / 100
+                    const targetPct  = s.target > 0 ? Math.min(s.revenue / s.target * 100, 100) : null
+                    return (
+                      <tr key={s.sellerId} className="hover:bg-surface-800/50 transition-colors">
+                        <td className="py-3 font-medium text-white">{s.name}</td>
+                        <td className="py-3 text-right text-slate-300">{s.proposals}</td>
+                        <td className="py-3 text-right text-white font-medium">{fmtARS(s.revenue)}</td>
+                        <td className="py-3 px-4 min-w-[120px]">
+                          {targetPct !== null ? (
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 h-1.5 bg-surface-700 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full transition-all ${
+                                    targetPct >= 100 ? 'bg-emerald-500' :
+                                    targetPct >= 60  ? 'bg-amber-400' : 'bg-red-400'
+                                  }`}
+                                  style={{ width: `${targetPct}%` }}
+                                />
+                              </div>
+                              <span className="text-xs text-slate-400 shrink-0 w-8 text-right">
+                                {Math.round(targetPct)}%
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-600">Sin target</span>
+                          )}
+                        </td>
+                        <td className="py-3 text-right text-slate-300">{fmtARS(commission)}</td>
+                        <td className="py-3 text-right">
+                          <span className={`font-medium ${
+                            closure >= 50 ? 'text-emerald-400' :
+                            closure >= 25 ? 'text-amber-400' : 'text-red-400'
+                          }`}>
+                            {fmtPct(closure)}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
+
+        {/* Tab: por formato */}
+        {hasData && perfTab === 'format' && (
+          formatPerf.length === 0 ? <EmptyState /> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm min-w-[560px]">
+                <thead>
+                  <tr className="text-xs text-slate-500 uppercase tracking-wide border-b border-surface-700">
+                    <th className="text-left pb-3 font-medium">Formato</th>
+                    <th className="text-right pb-3 font-medium">Carteles</th>
+                    <th className="text-right pb-3 font-medium">Ocupados</th>
+                    <th className="text-right pb-3 font-medium">% Ocupación</th>
+                    <th className="text-right pb-3 font-medium">Revenue</th>
+                    <th className="text-right pb-3 font-medium">Revenue prom.</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-700/50">
+                  {formatPerf.map(f => (
+                    <tr key={f.format ?? '__none__'} className="hover:bg-surface-800/50 transition-colors">
+                      <td className="py-3 font-medium text-white capitalize">{f.format ?? '—'}</td>
+                      <td className="py-3 text-right text-slate-300">{f.total}</td>
+                      <td className="py-3 text-right text-slate-300">{f.occupiedCount}</td>
+                      <td className="py-3 text-right">
+                        <span className={`font-medium ${
+                          f.occupancyPct >= 70 ? 'text-emerald-400' :
+                          f.occupancyPct >= 40 ? 'text-amber-400' : 'text-slate-400'
+                        }`}>
+                          {fmtPct(f.occupancyPct)}
+                        </span>
+                      </td>
+                      <td className="py-3 text-right text-white font-medium">{fmtARS(f.revenue)}</td>
+                      <td className="py-3 text-right text-slate-300">{fmtARS(f.avgRevenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        )}
+      </Section>
+
+      {/* ── Block 3 — Profitability per site ─────────────────────────────── */}
+      <Section
+        title="Rentabilidad por cartel"
+        description="Hacé clic en una fila para ver el desglose de ingresos, costos y comisiones"
+      >
+        {inventory.length === 0 ? (
+          <EmptyState
+            message="No hay carteles en el inventario."
+            hint="Agregá carteles desde la sección Inventario."
+          />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm min-w-[600px]">
+              <thead>
+                <tr className="text-xs text-slate-500 uppercase tracking-wide border-b border-surface-700">
+                  <th className="w-6 pb-3" />
+                  <th className="text-left pb-3 font-medium">Cartel</th>
+                  <th className="text-left pb-3 font-medium hidden sm:table-cell">Formato</th>
+                  <th className="text-right pb-3 font-medium">Revenue período</th>
+                  <th className="text-right pb-3 font-medium hidden md:table-cell">Costos/mes</th>
+                  <th className="text-right pb-3 font-medium">Margen</th>
+                  <th className="text-right pb-3 font-medium hidden lg:table-cell">Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {siteProfit.map(site => {
+                  const isOpen = expanded.has(site.id)
+                  return (
+                    <React.Fragment key={site.id}>
+                      {/* main row */}
+                      <tr
+                        onClick={() => toggleExpanded(site.id)}
+                        className="border-b border-surface-700/40 hover:bg-surface-800/40 cursor-pointer transition-colors"
+                      >
+                        <td className="py-3 pr-2 pl-1">
+                          {isOpen
+                            ? <ChevronDown  className="h-3.5 w-3.5 text-slate-500" />
+                            : <ChevronRight className="h-3.5 w-3.5 text-slate-500" />
+                          }
+                        </td>
+                        <td className="py-3">
+                          <p className="font-medium text-white text-sm">{site.name}</p>
+                          <p className="text-xs text-slate-500 font-mono">{site.code}</p>
+                        </td>
+                        <td className="py-3 text-slate-400 capitalize hidden sm:table-cell">
+                          {site.format ?? '—'}
+                        </td>
+                        <td className="py-3 text-right font-medium text-white">
+                          {fmtARS(site.revenue)}
+                        </td>
+                        <td className="py-3 text-right text-slate-400 hidden md:table-cell">
+                          {fmtARS(site.totalCosts)}
+                        </td>
+                        <td className="py-3 text-right">
+                          {site.margin !== null ? (
+                            <span className={`font-medium ${
+                              site.margin >= 50 ? 'text-emerald-400' :
+                              site.margin >= 20 ? 'text-amber-400' : 'text-red-400'
+                            }`}>
+                              {fmtPct(site.margin)}
+                            </span>
+                          ) : (
+                            <span className="text-slate-600">—</span>
+                          )}
+                        </td>
+                        <td className="py-3 text-right hidden lg:table-cell">
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                            site.is_available
+                              ? 'bg-emerald-500/15 text-emerald-400'
+                              : 'bg-amber-500/15 text-amber-400'
+                          }`}>
+                            {site.is_available ? 'Disponible' : 'Ocupado'}
+                          </span>
+                        </td>
+                      </tr>
+
+                      {/* expanded detail */}
+                      {isOpen && (
+                        <tr>
+                          <td colSpan={7} className="px-2 py-4 bg-surface-900/60 border-b border-surface-700/40">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+
+                              {/* Ingresos */}
+                              <div className="rounded-xl border border-surface-700 bg-surface-800 p-4 space-y-2">
+                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">
+                                  Ingresos
+                                </p>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-slate-400">Revenue período</span>
+                                  <span className="text-white font-medium">{fmtARS(site.revenue)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-slate-400">Tarifa base mensual</span>
+                                  <span className="text-slate-300">{fmtARS(site.base_rate)}</span>
+                                </div>
+                              </div>
+
+                              {/* Costos fijos */}
+                              <div className="rounded-xl border border-surface-700 bg-surface-800 p-4 space-y-2">
+                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">
+                                  Costos fijos / mes
+                                </p>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-slate-400">Alquiler</span>
+                                  <span className="text-slate-300">{fmtARS(site.cost_rent)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-slate-400">Luz</span>
+                                  <span className="text-slate-300">{fmtARS(site.cost_electricity)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-slate-400">Impuestos</span>
+                                  <span className="text-slate-300">{fmtARS(site.cost_taxes)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-slate-400">Mantenimiento</span>
+                                  <span className="text-slate-300">{fmtARS(site.cost_maintenance)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-slate-400">Imponderables</span>
+                                  <span className="text-slate-300">{fmtARS(site.cost_imponderables)}</span>
+                                </div>
+                                {site.printCost > 0 && (
+                                  <div className="flex justify-between text-sm">
+                                    <span className="text-slate-400">Impresión</span>
+                                    <span className="text-slate-300">{fmtARS(site.printCost)}</span>
+                                  </div>
+                                )}
+                                <div className="flex justify-between text-sm pt-2 border-t border-surface-700 font-medium">
+                                  <span className="text-slate-300">Total costos</span>
+                                  <span className="text-white">{fmtARS(site.totalCosts)}</span>
+                                </div>
+                              </div>
+
+                              {/* Comisiones */}
+                              <div className="rounded-xl border border-surface-700 bg-surface-800 p-4 space-y-2">
+                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">
+                                  Comisiones pagadas
+                                </p>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-slate-400">Vendedor ({fmtPct(site.sellerPct)})</span>
+                                  <span className="text-slate-300">{fmtARS(site.sellerComm)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-slate-400">Agencia ({fmtPct(site.agencyPct)})</span>
+                                  <span className="text-slate-300">{fmtARS(site.agencyComm)}</span>
+                                </div>
+                                {site.asociPct > 0 && (
+                                  <div className="flex justify-between text-sm">
+                                    <span className="text-slate-400">
+                                      {site.asociName ?? 'Asociado'} ({fmtPct(site.asociPct)})
+                                    </span>
+                                    <span className="text-slate-300">{fmtARS(site.asociComm)}</span>
+                                  </div>
+                                )}
+                                <div className="flex justify-between text-sm pt-2 border-t border-surface-700 font-medium">
+                                  <span className="text-slate-300">Total comisiones</span>
+                                  <span className="text-white">{fmtARS(site.totalComm)}</span>
+                                </div>
+                              </div>
+
+                              {/* Resultado */}
+                              <div className="rounded-xl border border-surface-700 bg-surface-800 p-4 space-y-2">
+                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">
+                                  Resultado
+                                </p>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-slate-400">Ingreso bruto</span>
+                                  <span className="text-slate-300">{fmtARS(site.revenue)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-slate-400">Total costos</span>
+                                  <span className="text-slate-300">− {fmtARS(site.totalCosts)}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-slate-400">Total comisiones</span>
+                                  <span className="text-slate-300">− {fmtARS(site.totalComm)}</span>
+                                </div>
+                                <div className={`flex justify-between text-sm pt-2 border-t border-surface-700 font-bold ${
+                                  site.netProfit >= 0 ? 'text-emerald-400' : 'text-red-400'
+                                }`}>
+                                  <span>Utilidad neta</span>
+                                  <span>{fmtARS(site.netProfit)}</span>
+                                </div>
+                                {site.roi !== null && (
+                                  <div className={`flex justify-between text-sm font-medium ${
+                                    site.roi >= 0 ? 'text-emerald-400/80' : 'text-red-400/80'
+                                  }`}>
+                                    <span>ROI</span>
+                                    <span>{fmtPct(site.roi)}</span>
+                                  </div>
+                                )}
+                              </div>
+
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Section>
+
     </div>
   )
 }
