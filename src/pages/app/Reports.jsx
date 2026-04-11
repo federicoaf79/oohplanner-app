@@ -162,7 +162,7 @@ export default function Reports() {
           .order('created_at', { ascending: false }),
 
         supabase.from('proposal_items')
-          .select('id, proposal_id, site_id, rate, duration')
+          .select('id, proposal_id, site_id, rate, duration, start_date, end_date')
           .eq('org_id', orgId),
 
         supabase.from('profiles')
@@ -276,13 +276,35 @@ export default function Reports() {
     const totalNonDraft = proposals.filter(p => p.status !== 'draft').length
     const closureRate   = totalNonDraft > 0 ? totalAccepted / totalNonDraft * 100 : 0
 
-    const occupiedSites = new Set(
-      filteredItems.filter(pi => activeIds.has(pi.proposal_id)).map(pi => pi.site_id)
-    )
-    const occupancyPct = inventory.length > 0 ? occupiedSites.size / inventory.length * 100 : 0
+    // Carteles ocupados: solapamiento real con el período, solo físicos
+    const DIGITAL_FORMATS = new Set(['digital', 'urban_furniture_digital'])
+    const { from, to } = getDateBounds(dateRange, customStart, customEnd)
+    const propStatusMap = {}
+    proposals.forEach(p => { propStatusMap[p.id] = p.status })
+    const invMap = {}
+    inventory.forEach(inv => { invMap[inv.id] = inv })
 
-    return { revenue, activeCount, closureRate, occupancyPct }
-  }, [proposals, filteredProposals, filteredItems, inventory])
+    const physicalInventory = inventory.filter(inv => !DIGITAL_FORMATS.has(inv.format))
+
+    const occupiedSiteIds = new Set(
+      propItems
+        .filter(pi => {
+          if (!pi.start_date || !pi.end_date) return false
+          if (propStatusMap[pi.proposal_id] !== 'accepted') return false
+          const site = invMap[pi.site_id]
+          if (!site || DIGITAL_FORMATS.has(site.format)) return false
+          if (!from || !to) return true
+          return new Date(pi.start_date) <= to && new Date(pi.end_date) >= from
+        })
+        .map(pi => pi.site_id)
+    )
+
+    const occupancyPct = physicalInventory.length > 0
+      ? occupiedSiteIds.size / physicalInventory.length * 100
+      : 0
+
+    return { revenue, activeCount, closureRate, occupancyPct, physicalSiteCount: physicalInventory.length }
+  }, [proposals, filteredProposals, filteredItems, propItems, inventory, dateRange, customStart, customEnd])
 
   // ── trend chart (always last 6 months) ───────────────────────────────────
   const trendData = useMemo(() => {
@@ -535,7 +557,7 @@ export default function Reports() {
           icon={LayoutGrid}
           label="Carteles ocupados"
           value={fmtPct(kpis.occupancyPct)}
-          sub={`${inventory.length} carteles totales`}
+          sub={`${kpis.physicalSiteCount} carteles físicos totales`}
           color="text-cyan-400"
         />
       </div>
