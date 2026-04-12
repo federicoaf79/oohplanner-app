@@ -1,23 +1,38 @@
-import { useState, useEffect, Fragment } from 'react'
-import { Search, Megaphone, Calendar } from 'lucide-react'
+import { useState, useEffect, useMemo, Fragment } from 'react'
+import { Search, Megaphone, Calendar, ChevronRight, X, Filter } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { formatDate, formatCurrency } from '../../lib/utils'
 import Spinner from '../../components/ui/Spinner'
-import { WORKFLOW_STATUSES } from '../../lib/constants'
+import { WORKFLOW_STATUSES, FORMAT_MAP } from '../../lib/constants'
 
 // ── Helpers ───────────────────────────────────────────────────
 
 const STATUS_IDX = Object.fromEntries(WORKFLOW_STATUSES.map((s, i) => [s.id, i]))
+
+const WF_LABELS = {
+  approved:     'Aprobada',
+  printing:     'En impresión',
+  installation: 'En instalación',
+  active:       'Activa',
+  withdraw:     'Retirada',
+  renew:        'Renovada',
+}
 
 function getDaysRemaining(validUntil) {
   if (!validUntil) return null
   return Math.ceil((new Date(validUntil) - new Date()) / 86_400_000)
 }
 
+function getNextStatus(currentId) {
+  const idx = STATUS_IDX[currentId] ?? -1
+  if (idx < 0 || idx >= WORKFLOW_STATUSES.length - 1) return null
+  return WORKFLOW_STATUSES[idx + 1]
+}
+
 // ── Workflow stepper ──────────────────────────────────────────
 
-function WorkflowStepper({ status, onChange }) {
+function WorkflowStepper({ status, onChange, readOnly = false }) {
   const currentIdx = STATUS_IDX[status] ?? -1
 
   return (
@@ -35,10 +50,12 @@ function WorkflowStepper({ status, onChange }) {
             )}
             <button
               type="button"
-              onClick={() => onChange(step.id)}
-              className="flex flex-col items-center gap-1 group"
+              onClick={readOnly ? undefined : () => onChange(step.id)}
+              className={`flex flex-col items-center gap-1 ${
+                readOnly ? 'cursor-default' : 'group'
+              }`}
               style={{ minWidth: 0 }}
-              title={`Mover a: ${step.label}`}
+              title={readOnly ? step.label : `Mover a: ${step.label}`}
             >
               <div
                 className={`h-[18px] w-[18px] shrink-0 rounded-full border-2 transition-all ${
@@ -70,35 +87,144 @@ function WorkflowStepper({ status, onChange }) {
   )
 }
 
-// ── Campaign card ─────────────────────────────────────────────
+// ── Campaign detail modal ─────────────────────────────────────
 
-function CampaignCard({ proposal, onStatusChange }) {
-  const days      = getDaysRemaining(proposal.valid_until)
+function CampaignModal({ campaign, onClose }) {
+  if (!campaign) return null
+  const items    = campaign.proposal_items ?? []
+  const brief    = campaign.brief_data ?? {}
+  const days     = getDaysRemaining(campaign.valid_until)
   const isExpired = days !== null && days < 0
 
   return (
-    <div className="card p-4 hover:border-brand/30 transition-colors">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-lg rounded-2xl bg-surface-900 border border-surface-700 shadow-2xl overflow-hidden">
+
+        {/* Header */}
+        <div className="flex items-start justify-between gap-3 p-5 border-b border-surface-700">
+          <div className="min-w-0">
+            <p className="font-bold text-white truncate">{campaign.client_name ?? '—'}</p>
+            <p className="mt-0.5 text-xs text-slate-500 truncate">{campaign.title}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-lg p-1 text-slate-500 hover:bg-surface-700 hover:text-white transition-colors"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-5 space-y-4 max-h-[65vh] overflow-y-auto">
+
+          {/* Key info grid */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-xl bg-surface-800 p-3">
+              <p className="text-xs text-slate-500 mb-0.5">Inversión</p>
+              <p className="font-bold text-white">{formatCurrency(campaign.total_value)}</p>
+            </div>
+            <div className="rounded-xl bg-surface-800 p-3">
+              <p className="text-xs text-slate-500 mb-0.5">Vendedor</p>
+              <p className="font-semibold text-white truncate">{campaign.creator?.full_name ?? '—'}</p>
+            </div>
+            <div className="rounded-xl bg-surface-800 p-3">
+              <p className="text-xs text-slate-500 mb-0.5">Inicio</p>
+              <p className="font-semibold text-slate-300">{formatDate(brief.startDate) ?? '—'}</p>
+            </div>
+            <div className="rounded-xl bg-surface-800 p-3">
+              <p className="text-xs text-slate-500 mb-0.5">Vencimiento</p>
+              <p className={`font-semibold ${isExpired ? 'text-red-400' : 'text-slate-300'}`}>
+                {formatDate(campaign.valid_until)}
+                {days !== null && !isExpired && (
+                  <span className="ml-1.5 text-xs text-slate-500">({days}d)</span>
+                )}
+                {isExpired && <span className="ml-1.5 text-xs">(vencida)</span>}
+              </p>
+            </div>
+          </div>
+
+          {/* Carteles */}
+          <div>
+            <p className="mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">
+              Carteles incluidos ({items.length})
+            </p>
+            {items.length === 0 ? (
+              <p className="text-xs text-slate-600 py-2">Sin carteles registrados</p>
+            ) : (
+              <div className="space-y-1.5">
+                {items.map((item, i) => {
+                  const inv = item.site ?? item.inventory ?? null
+                  const fmtColor = FORMAT_MAP[inv?.format]?.color
+                  const fmtLabel = FORMAT_MAP[inv?.format]?.label ?? inv?.format ?? '—'
+                  return (
+                    <div
+                      key={item.id ?? i}
+                      className="flex items-center justify-between rounded-lg bg-surface-800 px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-white truncate">
+                          {inv?.name ?? item.site_id ?? '—'}
+                        </p>
+                        {inv?.code && (
+                          <p className="text-xs text-slate-600">{inv.code}</p>
+                        )}
+                      </div>
+                      <span
+                        className="shrink-0 ml-2 text-xs font-medium"
+                        style={{ color: fmtColor ?? '#94a3b8' }}
+                      >
+                        {fmtLabel}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Campaign card ─────────────────────────────────────────────
+
+function CampaignCard({ proposal, canAdvance, canJump, onStatusChange, onAdvance, onOpen, advancing }) {
+  const days      = getDaysRemaining(proposal.valid_until)
+  const isExpired = days !== null && days < 0
+  const next      = getNextStatus(proposal.workflow_status)
+
+  return (
+    <div
+      className="card p-4 hover:border-brand/30 transition-colors cursor-pointer"
+      onClick={onOpen}
+    >
       {/* Header */}
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="font-semibold text-white truncate">{proposal.title}</p>
           <p className="mt-0.5 text-sm text-slate-500">{proposal.client_name}</p>
         </div>
 
-        {/* Days badge */}
-        {isExpired ? (
-          <span className="shrink-0 rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-bold text-red-400">
-            VENCIDA
-          </span>
-        ) : days !== null && days >= 0 ? (
-          <span className="shrink-0 rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-400">
-            {days}d restantes
-          </span>
-        ) : null}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Days badge */}
+          {isExpired ? (
+            <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-bold text-red-400">
+              VENCIDA
+            </span>
+          ) : days !== null && days >= 0 ? (
+            <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-400">
+              {days}d restantes
+            </span>
+          ) : null}
+        </div>
       </div>
 
-      {/* Dates + value */}
-      <div className="mt-2 flex items-center gap-3 text-xs text-slate-600">
+      {/* Meta row */}
+      <div className="mt-1.5 flex items-center gap-3 text-xs text-slate-600">
         {proposal.valid_until && (
           <span className="flex items-center gap-1">
             <Calendar className="h-3 w-3" />
@@ -114,12 +240,37 @@ function CampaignCard({ proposal, onStatusChange }) {
       </div>
 
       {/* Stepper */}
-      <div className="mt-4">
+      <div className="mt-4" onClick={e => e.stopPropagation()}>
         <WorkflowStepper
           status={proposal.workflow_status}
           onChange={(newStatus) => onStatusChange(proposal.id, newStatus)}
+          readOnly={!canJump}
         />
       </div>
+
+      {/* Siguiente paso button */}
+      {canAdvance && next && (
+        <div className="mt-3 flex justify-end" onClick={e => e.stopPropagation()}>
+          <button
+            type="button"
+            onClick={() => onAdvance(proposal)}
+            disabled={advancing === proposal.id}
+            className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50"
+            style={{
+              borderColor: `${next.color}50`,
+              color: next.color,
+              background: `${next.color}10`,
+            }}
+          >
+            {advancing === proposal.id ? (
+              <span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+            {next.label}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
@@ -127,10 +278,14 @@ function CampaignCard({ proposal, onStatusChange }) {
 // ── Main page ─────────────────────────────────────────────────
 
 export default function Campaigns() {
-  const { profile } = useAuth()
-  const [proposals, setProposals] = useState([])
-  const [loading, setLoading]     = useState(false)
-  const [search, setSearch]       = useState('')
+  const { profile, isOwner, isManager, isSalesperson } = useAuth()
+  const [proposals, setProposals]       = useState([])
+  const [loading, setLoading]           = useState(false)
+  const [search, setSearch]             = useState('')
+  const [filterStatus, setFilterStatus] = useState('todos')
+  const [filterVendor, setFilterVendor] = useState('todos')
+  const [selectedCampaign, setSelectedCampaign] = useState(null)
+  const [advancing, setAdvancing]       = useState(null)
 
   useEffect(() => {
     if (!profile?.org_id) return
@@ -138,22 +293,37 @@ export default function Campaigns() {
 
     async function load() {
       try {
-        const { data, error } = await supabase
+        let query = supabase
           .from('proposals')
-          .select('*, creator:profiles!created_by(full_name)')
+          .select(`
+            *,
+            creator:profiles!created_by(id, full_name),
+            proposal_items(
+              id, site_id, rate, start_date, end_date, duration,
+              site:inventory(id, name, code, format)
+            )
+          `)
           .eq('org_id', profile.org_id)
           .neq('workflow_status', 'pending')
           .not('workflow_status', 'is', null)
           .order('created_at', { ascending: false })
 
+        // Salesperson only sees their own campaigns
+        if (isSalesperson) {
+          query = query.eq('created_by', profile.id)
+        }
+
+        const { data, error } = await query
         if (error) console.error('campaigns fetch error:', error.message)
         const rows = data ?? []
 
         // Auto-withdraw: proposals past valid_until still in installation/active
         const today      = new Date()
         const expiredIds = rows
-          .filter(p => ['installation', 'active'].includes(p.workflow_status)
-            && p.valid_until && new Date(p.valid_until) < today)
+          .filter(p =>
+            ['installation', 'active'].includes(p.workflow_status) &&
+            p.valid_until && new Date(p.valid_until) < today
+          )
           .map(p => p.id)
 
         if (expiredIds.length) {
@@ -174,7 +344,27 @@ export default function Campaigns() {
     }
 
     load()
-  }, [profile?.org_id])
+  }, [profile?.org_id, profile?.id, isSalesperson])
+
+  // Unique vendors derived from loaded campaigns (owner/manager only)
+  const vendors = useMemo(() => {
+    if (!isOwner && !isManager) return []
+    const seen = new Set()
+    return proposals
+      .filter(p => p.creator?.id && !seen.has(p.creator.id) && seen.add(p.creator.id))
+      .map(p => ({ id: p.creator.id, name: p.creator.full_name ?? '—' }))
+  }, [proposals, isOwner, isManager])
+
+  // Filtered list
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase()
+    return proposals.filter(p => {
+      if (filterStatus !== 'todos' && p.workflow_status !== filterStatus) return false
+      if ((isOwner || isManager) && filterVendor !== 'todos' && p.created_by !== filterVendor) return false
+      return (p.title ?? '').toLowerCase().includes(q) ||
+             (p.client_name ?? '').toLowerCase().includes(q)
+    })
+  }, [proposals, search, filterStatus, filterVendor, isOwner, isManager])
 
   async function handleStatusChange(proposalId, newStatus) {
     const { error } = await supabase
@@ -189,52 +379,117 @@ export default function Campaigns() {
     setProposals(prev => prev.map(p =>
       p.id === proposalId ? { ...p, workflow_status: newStatus } : p
     ))
+    // Sync selected campaign if open
+    setSelectedCampaign(prev =>
+      prev?.id === proposalId ? { ...prev, workflow_status: newStatus } : prev
+    )
   }
 
-  const filtered = proposals.filter(p =>
-    (p.title ?? '').toLowerCase().includes(search.toLowerCase()) ||
-    (p.client_name ?? '').toLowerCase().includes(search.toLowerCase())
-  )
+  async function handleAdvance(campaign) {
+    const next = getNextStatus(campaign.workflow_status)
+    if (!next) return
+    setAdvancing(campaign.id)
+    await handleStatusChange(campaign.id, next.id)
+    setAdvancing(null)
+  }
+
+  function canAdvance(p) {
+    return isOwner || isManager || p.created_by === profile?.id
+  }
 
   return (
     <div className="space-y-5 animate-fade-in">
-      <div className="flex items-center justify-between gap-4">
+
+      {/* Header */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-lg font-bold text-white">Campañas</h2>
-          <p className="text-sm text-slate-500">{proposals.length} campañas activas</p>
+          <p className="text-sm text-slate-500">{proposals.length} campaña{proposals.length !== 1 ? 's' : ''}</p>
         </div>
       </div>
 
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-        <input
-          className="input-field pl-9"
-          placeholder="Buscar por título o cliente..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-        />
+      {/* Search + filters */}
+      <div className="flex flex-wrap gap-2">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          <input
+            className="input-field pl-9 w-full"
+            placeholder="Buscar por título o cliente..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+
+        {/* Status filter */}
+        <div className="relative flex items-center gap-1.5">
+          <Filter className="absolute left-2.5 h-3.5 w-3.5 text-slate-500 pointer-events-none" />
+          <select
+            value={filterStatus}
+            onChange={e => setFilterStatus(e.target.value)}
+            className="input-field pl-8 pr-8 text-sm appearance-none min-w-[140px]"
+          >
+            <option value="todos">Todos los estados</option>
+            {WORKFLOW_STATUSES.map(s => (
+              <option key={s.id} value={s.id}>{WF_LABELS[s.id] ?? s.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Vendor filter (owner/manager only) */}
+        {(isOwner || isManager) && vendors.length > 1 && (
+          <select
+            value={filterVendor}
+            onChange={e => setFilterVendor(e.target.value)}
+            className="input-field text-sm appearance-none min-w-[140px]"
+          >
+            <option value="todos">Todos los vendedores</option>
+            {vendors.map(v => (
+              <option key={v.id} value={v.id}>{v.name}</option>
+            ))}
+          </select>
+        )}
       </div>
 
+      {/* List */}
       {loading ? (
         <div className="flex justify-center py-16"><Spinner size="lg" /></div>
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-surface-700 py-16 text-center">
           <Megaphone className="mb-3 h-10 w-10 text-slate-600" />
           <p className="font-medium text-slate-400">
-            {search ? 'Sin resultados' : 'Sin campañas activas'}
+            {search || filterStatus !== 'todos' || filterVendor !== 'todos'
+              ? 'Sin resultados'
+              : 'Sin campañas activas'}
           </p>
           <p className="mt-1 text-sm text-slate-600">
-            {search
-              ? 'Probá con otro término'
-              : 'Las propuestas aprobadas aparecerán aquí'}
+            {search || filterStatus !== 'todos' || filterVendor !== 'todos'
+              ? 'Probá con otros filtros'
+              : 'Las propuestas activadas aparecerán aquí'}
           </p>
         </div>
       ) : (
         <div className="space-y-3">
           {filtered.map(p => (
-            <CampaignCard key={p.id} proposal={p} onStatusChange={handleStatusChange} />
+            <CampaignCard
+              key={p.id}
+              proposal={p}
+              canAdvance={canAdvance(p)}
+              canJump={isOwner || isManager}
+              onStatusChange={handleStatusChange}
+              onAdvance={handleAdvance}
+              onOpen={() => setSelectedCampaign(p)}
+              advancing={advancing}
+            />
           ))}
         </div>
+      )}
+
+      {/* Detail modal */}
+      {selectedCampaign && (
+        <CampaignModal
+          campaign={selectedCampaign}
+          onClose={() => setSelectedCampaign(null)}
+        />
       )}
     </div>
   )

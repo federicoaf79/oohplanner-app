@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Search, FileText, Pencil, Download, MessageCircle } from 'lucide-react'
+import { Plus, Search, FileText, Pencil, Download, MessageCircle, Zap } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -17,6 +17,7 @@ export default function Proposals() {
   const [loading, setLoading]         = useState(false)
   const [search, setSearch]           = useState('')
   const [generatingPDF, setGeneratingPDF] = useState(null)
+  const [activating, setActivating]   = useState(null) // proposal id being activated
 
   useEffect(() => {
     if (!profile?.org_id) return
@@ -138,6 +139,31 @@ export default function Proposals() {
     }
   }
 
+  async function handleActivate(p) {
+    setActivating(p.id)
+    // Try with closed_at; fall back without it if column doesn't exist yet
+    let { error } = await supabase
+      .from('proposals')
+      .update({ workflow_status: 'approved', closed_at: new Date().toISOString() })
+      .eq('id', p.id)
+
+    if (error?.message?.includes('closed_at') || error?.message?.includes('column')) {
+      ;({ error } = await supabase
+        .from('proposals')
+        .update({ workflow_status: 'approved' })
+        .eq('id', p.id))
+    }
+
+    if (!error) {
+      setProposals(prev => prev.map(x =>
+        x.id === p.id ? { ...x, workflow_status: 'approved' } : x
+      ))
+    } else {
+      console.error('activate error:', error.message)
+    }
+    setActivating(null)
+  }
+
   function handleWhatsApp(p) {
     const monto = p.total_value ? formatCurrency(p.total_value) : 'a consultar'
     const fecha = formatDate(p.created_at)
@@ -227,6 +253,22 @@ export default function Proposals() {
                     <MessageCircle className="h-3 w-3" />
                     WA
                   </button>
+
+                  {/* Activar campaña */}
+                  {p.status === 'accepted' && (!p.workflow_status || p.workflow_status === 'pending') && (
+                    <button
+                      type="button"
+                      onClick={() => handleActivate(p)}
+                      disabled={activating === p.id}
+                      className="flex items-center gap-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-400 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+                      title="Activar como campaña"
+                    >
+                      {activating === p.id
+                        ? <span className="h-3 w-3 animate-spin rounded-full border border-amber-500/50 border-t-amber-400" />
+                        : <Zap className="h-3 w-3" />}
+                      Activar
+                    </button>
+                  )}
 
                   {/* Editar */}
                   {canEdit(p) && (
