@@ -1,12 +1,11 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  TrendingUp, TrendingDown, FileText, Target, MapPin,
+  TrendingUp, TrendingDown,
   DollarSign, Star, ArrowRight, Activity, CheckCircle,
 } from 'lucide-react'
 import {
-  BarChart, Bar, PieChart, Pie, Cell,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, Legend,
+  PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
 } from 'recharts'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -39,21 +38,18 @@ function periodBounds(offset = 0) {
 
 const DIGITAL = new Set(['digital', 'urban_furniture_digital'])
 
-// ─── Shared UI ────────────────────────────────────────────────
+// Orden de display para el semáforo
+const WF_PILLS = [
+  { key: 'active',       label: 'Activas',        color: '#10b981' },
+  { key: 'installation', label: 'En instalación', color: '#3b82f6' },
+  { key: 'printing',     label: 'En impresión',   color: '#f59e0b' },
+  { key: 'approved',     label: 'Aprobadas',      color: '#22c55e' },
+  { key: 'renew',        label: 'Renovadas',      color: '#a855f7' },
+  { key: 'withdraw',     label: 'Retiradas',      color: '#f97316' },
+  { key: 'pending',      label: 'Sin activar',    color: '#64748b' },
+]
 
-function ChartTooltip({ active, payload, label }) {
-  if (!active || !payload?.length) return null
-  return (
-    <div className="rounded-lg border border-surface-700 bg-surface-800 p-3 text-xs shadow-lg">
-      <p className="mb-1.5 font-semibold text-white">{label}</p>
-      {payload.map(p => (
-        <p key={p.name} style={{ color: p.color ?? '#94a3b8' }}>
-          {p.name}: {p.value}
-        </p>
-      ))}
-    </div>
-  )
-}
+// ─── Shared UI ────────────────────────────────────────────────
 
 function KpiCard({ label, value, sub, icon: Icon, color = 'text-brand', bg = 'bg-brand/10' }) {
   return (
@@ -70,23 +66,48 @@ function KpiCard({ label, value, sub, icon: Icon, color = 'text-brand', bg = 'bg
   )
 }
 
-function SectionTitle({ children }) {
-  return (
-    <h3 className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-500">
-      {children}
-    </h3>
-  )
-}
-
 function EmptyCard({ children }) {
   return (
     <div className="card p-6 text-center text-sm text-slate-600">{children}</div>
   )
 }
 
+// ─── FIX 2 — Semáforo de campañas ────────────────────────────
+
+function WorkflowSemaphore({ counts }) {
+  const pills = WF_PILLS.filter(p => (counts[p.key] ?? 0) > 0)
+  if (pills.length === 0) {
+    return (
+      <div className="flex h-full min-h-[160px] items-center justify-center text-xs text-slate-600">
+        Sin campañas activadas en este período
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-wrap gap-2 pt-1">
+      {pills.map(p => (
+        <div
+          key={p.key}
+          className="flex items-center gap-2 rounded-xl px-3 py-2.5"
+          style={{ background: `${p.color}12`, border: `1px solid ${p.color}35` }}
+        >
+          <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: p.color }} />
+          <span className="text-2xl font-bold leading-none text-white">{counts[p.key]}</span>
+          <span className="text-xs text-slate-400">{p.label}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ─── Derived data computation ─────────────────────────────────
 
-function computeDerived({ inventory, items, proposals, allProposals, userProfile, upcomingCampaigns }, period, userId) {
+function computeDerived(
+  { inventory, items, proposals, allProposals, userProfile, upcomingCampaigns },
+  period,
+  userId,
+  isCompany   // FIX 5: owner/manager ven todas las campañas
+) {
   const offset = period === 'current' ? 0 : -1
   const { start: pS, end: pE } = periodBounds(offset)
   const { start: prS, end: prE } = periodBounds(offset - 1)
@@ -98,7 +119,7 @@ function computeDerived({ inventory, items, proposals, allProposals, userProfile
   const invById = {}
   inventory.forEach(i => { invById[i.id] = i })
 
-  // Items that overlap a date window AND belong to accepted proposals
+  // Items que solapan una ventana de fechas y pertenecen a propuestas aceptadas
   function overlap(start, end) {
     return items.filter(pi => {
       if (!pi.start_date || !pi.end_date) return false
@@ -110,44 +131,35 @@ function computeDerived({ inventory, items, proposals, allProposals, userProfile
   const currItems = overlap(pS, pE)
   const prevItems = overlap(prS, prE)
 
-  // ── Revenue ──
-  const revenue     = currItems.reduce((s, pi) => s + (pi.rate ?? 0) * (pi.duration ?? 1), 0)
-  const prevRevenue = prevItems.reduce((s, pi) => s + (pi.rate ?? 0) * (pi.duration ?? 1), 0)
+  // ── FIX 1: Revenue = SUM(rate) SIN multiplicar por duration ──
+  const revenue     = currItems.reduce((s, pi) => s + (pi.rate ?? 0), 0)
+  const prevRevenue = prevItems.reduce((s, pi) => s + (pi.rate ?? 0), 0)
   const revDelta    = prevRevenue > 0 ? (revenue - prevRevenue) / prevRevenue * 100 : null
 
-  // ── Period proposals (by created_at) — for total count only ──
+  // ── Propuestas del período (por created_at) — para conteo total ──
   const periodProps = proposals.filter(p => {
     const d = new Date(p.created_at)
     return d >= pS && d <= pE
   })
 
-  // ── BUG 2 — Tasa de cierre global (todas las propuestas históricas) ──
+  // ── Tasa de cierre global (todas las propuestas históricas) ──
   const globalNonDraft = allProposals.filter(p => p.status !== 'draft').length
   const closeRate      = globalNonDraft > 0
     ? allProposals.filter(p => p.status === 'accepted').length / globalNonDraft * 100
     : null
 
-  // ── Weekly billboard chart (weeks of selected period's month) ──
-  const yr = pS.getFullYear(), mo = pS.getMonth()
-  const weeks = [
-    { label: 'S1', s: new Date(yr, mo, 1),  e: new Date(yr, mo, 7, 23, 59, 59) },
-    { label: 'S2', s: new Date(yr, mo, 8),  e: new Date(yr, mo, 14, 23, 59, 59) },
-    { label: 'S3', s: new Date(yr, mo, 15), e: new Date(yr, mo, 21, 23, 59, 59) },
-    { label: 'S4', s: new Date(yr, mo, 22), e: new Date(yr, mo + 1, 0, 23, 59, 59) },
-  ]
-  const weeklyData = weeks.map(w => ({
-    semana: w.label,
-    carteles: new Set(
-      items.filter(pi => {
-        if (!pi.start_date || !pi.end_date) return false
-        const p = propById[pi.proposal_id]
-        return p?.status === 'accepted' &&
-          new Date(pi.start_date) <= w.e && new Date(pi.end_date) >= w.s
-      }).map(pi => pi.site_id)
-    ).size,
-  }))
+  // ── FIX 2: Semáforo de campañas por workflow_status ──
+  const workflowCounts = {}
+  periodProps.forEach(p => {
+    // Solo propuestas aceptadas tienen workflow activo
+    if (p.status !== 'accepted') return
+    const key = (!p.workflow_status || p.workflow_status === 'pending')
+      ? 'pending'
+      : p.workflow_status
+    workflowCounts[key] = (workflowCounts[key] ?? 0) + 1
+  })
 
-  // ── Format mix (from current period active items) ──
+  // ── FIX 6: Mix de formatos con % precalculado ──
   const fmtMap = {}
   currItems.forEach(pi => {
     const fmt = invById[pi.site_id]?.format
@@ -155,15 +167,17 @@ function computeDerived({ inventory, items, proposals, allProposals, userProfile
     if (!fmtMap[fmt]) fmtMap[fmt] = new Set()
     fmtMap[fmt].add(pi.site_id)
   })
+  const fmtTotal = Object.values(fmtMap).reduce((s, v) => s + v.size, 0)
   const formatMix = Object.entries(fmtMap)
     .map(([fmt, s]) => ({
       name:  FORMAT_MAP[fmt]?.label ?? fmt,
       value: s.size,
+      pct:   fmtTotal > 0 ? Math.round(s.size / fmtTotal * 100) : 0,
       color: FORMAT_MAP[fmt]?.color ?? '#64748b',
     }))
     .sort((a, b) => b.value - a.value)
 
-  // ── Physical occupancy (excl. digital formats) ──
+  // ── Ocupación física (excl. digitales) ──
   const physInv      = inventory.filter(i => !DIGITAL.has(i.format))
   const physOccSet   = new Set(
     currItems.filter(pi => !DIGITAL.has(invById[pi.site_id]?.format)).map(pi => pi.site_id)
@@ -172,13 +186,13 @@ function computeDerived({ inventory, items, proposals, allProposals, userProfile
   const physOccupied = physOccSet.size
   const physPct      = physTotal > 0 ? Math.round(physOccupied / physTotal * 100) : 0
 
-  // ── My activity ──
+  // ── Mi actividad ──
   const myPeriod = proposals.filter(p =>
     p.created_by === userId && new Date(p.created_at) >= pS && new Date(p.created_at) <= pE
   )
   const commPct = userProfile?.commission_pct ?? 0
 
-  // BUG 1 — Cerradas: propuestas aceptadas con items solapando el período (igual que revenue)
+  // FIX 1+5: Cerradas = propuestas del usuario con items solapando período; comisión = SUM(rate) solo
   const myAcceptedOverlapItems = items.filter(pi => {
     if (!pi.start_date || !pi.end_date) return false
     const p = propById[pi.proposal_id]
@@ -186,10 +200,11 @@ function computeDerived({ inventory, items, proposals, allProposals, userProfile
     return new Date(pi.start_date) <= pE && new Date(pi.end_date) >= pS
   })
   const myClosed     = new Set(myAcceptedOverlapItems.map(pi => pi.proposal_id)).size
+  // FIX 1: comisión sobre rate mensual sin duration
   const myCommission = myAcceptedOverlapItems
-    .reduce((s, pi) => s + (pi.rate ?? 0) * (pi.duration ?? 1) * commPct / 100, 0)
+    .reduce((s, pi) => s + (pi.rate ?? 0) * commPct / 100, 0)
 
-  // Top format: histórico de todas mis propuestas aceptadas
+  // Formato top: histórico de todas mis propuestas aceptadas
   const myFmt = {}
   items.filter(pi => {
     const p = propById[pi.proposal_id]
@@ -201,7 +216,7 @@ function computeDerived({ inventory, items, proposals, allProposals, userProfile
   const topFmtKey = Object.entries(myFmt).sort(([, a], [, b]) => b - a)[0]?.[0]
   const topFormat = topFmtKey ? (FORMAT_MAP[topFmtKey]?.label ?? topFmtKey) : null
 
-  // ── Opportunities: top 5 available physical by margin ──
+  // ── Oportunidades: top 5 físicos disponibles por margen ──
   const opportunities = inventory
     .filter(i => i.is_available && !DIGITAL.has(i.format) && (i.base_rate ?? 0) > 0)
     .map(i => {
@@ -213,7 +228,7 @@ function computeDerived({ inventory, items, proposals, allProposals, userProfile
     .sort((a, b) => b.margin - a.margin)
     .slice(0, 5)
 
-  // ── Active campaigns: accepted proposals expiring in next 60 days ──
+  // ── Campañas próximas a vencer (end_date, FIX 3 + FIX 5) ──
   const sitesPerProp = {}
   items.forEach(pi => {
     if (!sitesPerProp[pi.proposal_id]) sitesPerProp[pi.proposal_id] = new Set()
@@ -221,9 +236,10 @@ function computeDerived({ inventory, items, proposals, allProposals, userProfile
   })
   const today = new Date()
   today.setHours(0, 0, 0, 0)
-  // BUG 3 — usar end_date en lugar de valid_until
   const activeCampaigns = upcomingCampaigns
     .filter(p => p.end_date)
+    // FIX 5: salesperson solo ve sus propias campañas
+    .filter(p => isCompany || p.created_by === userId)
     .map(p => ({
       id:        p.id,
       client:    p.client_name ?? '—',
@@ -240,7 +256,8 @@ function computeDerived({ inventory, items, proposals, allProposals, userProfile
     revenue, prevRevenue, revDelta,
     totalProposals: periodProps.length,
     closeRate,
-    weeklyData, formatMix,
+    workflowCounts,
+    formatMix,
     physTotal, physOccupied, physPct,
     myInCourse: myPeriod.filter(p => ['draft', 'sent'].includes(p.status)).length,
     myClosed,
@@ -281,9 +298,9 @@ export default function Dashboard() {
         .select('site_id, proposal_id, rate, duration, start_date, end_date')
         .eq('org_id', profile.org_id),
 
-      // 3 — Propuestas recientes (últimos 60 días, para KPIs del período)
+      // 3 — Propuestas recientes (últimos 60 días) — incluye workflow_status para semáforo (FIX 2)
       supabase.from('proposals')
-        .select('id, status, total_value, created_by, created_at, client_name, valid_until')
+        .select('id, status, workflow_status, total_value, created_by, created_at, client_name, valid_until')
         .eq('org_id', profile.org_id)
         .gte('created_at', daysAgo60.toISOString()),
 
@@ -293,7 +310,7 @@ export default function Dashboard() {
         .eq('id', profile.id)
         .single(),
 
-      // 5 — Campañas aceptadas con end_date en próximos 60 días (BUG 3)
+      // 5 — Campañas aceptadas con end_date en próximos 60 días
       supabase.from('proposals')
         .select('id, status, client_name, end_date, brief_data, created_at, created_by')
         .eq('org_id', profile.org_id)
@@ -301,7 +318,7 @@ export default function Dashboard() {
         .gte('end_date', todayStr)
         .lte('end_date', in60Str),
 
-      // 6 — Todas las propuestas para tasa de cierre global (BUG 2)
+      // 6 — Todas las propuestas para tasa de cierre global
       supabase.from('proposals')
         .select('id, status')
         .eq('org_id', profile.org_id),
@@ -319,16 +336,16 @@ export default function Dashboard() {
     })
   }, [profile?.org_id, profile?.id])
 
+  const isCompany = isOwner || isManager
+
   const derived = useMemo(() => {
     if (!raw || !profile?.id) return null
-    return computeDerived(raw, period, profile.id)
-  }, [raw, period, profile?.id])
+    return computeDerived(raw, period, profile.id, isCompany)
+  }, [raw, period, profile?.id, isCompany])
 
   if (loading || !derived) {
     return <div className="flex h-64 items-center justify-center"><Spinner size="lg" /></div>
   }
-
-  const isCompany = isOwner || isManager
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -357,10 +374,12 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── SECCIÓN 1 — Métricas empresa ── */}
+      {/* ── FIX 4: SECCIÓN EMPRESA con fondo diferenciado ── */}
       {isCompany && (
-        <div>
-          <SectionTitle>Métricas empresa</SectionTitle>
+        <div className="rounded-2xl border border-slate-700/50 bg-surface-800/60 p-5 space-y-5">
+          <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Empresa</p>
+
+          {/* Métricas empresa — 3 números pequeños */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
 
             {/* Revenue */}
@@ -386,94 +405,87 @@ export default function Dashboard() {
               <p className="mt-1.5 text-xs text-slate-600">Creadas en el mes</p>
             </div>
 
-            {/* Tasa de cierre */}
+            {/* Tasa de cierre global */}
             <div className="card p-4">
               <p className="text-xs text-slate-500 mb-1">Tasa de cierre</p>
               <p className="text-xl font-bold text-white">
                 {derived.closeRate != null ? fmtPct(derived.closeRate) : '—'}
               </p>
-              <p className="mt-1.5 text-xs text-slate-600">Aceptadas / enviadas + rechazadas</p>
+              <p className="mt-1.5 text-xs text-slate-600">Global · aceptadas / no-borradores</p>
             </div>
 
           </div>
-        </div>
-      )}
 
-      {/* ── SECCIÓN 2 — Franja empresa ── */}
-      {isCompany && (
-        <div>
-          <SectionTitle>Actividad del período</SectionTitle>
+          {/* Actividad del período — 3 bloques */}
           <div className="grid gap-4 lg:grid-cols-3">
 
-            {/* A — Carteles por semana */}
+            {/* A — FIX 2: Semáforo de campañas */}
             <div className="card p-4">
-              <p className="mb-3 text-sm font-semibold text-white">Carteles en campaña / semana</p>
-              <ResponsiveContainer width="100%" height={180}>
-                <BarChart data={derived.weeklyData} barSize={30}>
-                  <XAxis
-                    dataKey="semana"
-                    tick={{ fontSize: 11, fill: '#64748b' }}
-                    axisLine={false} tickLine={false}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 11, fill: '#64748b' }}
-                    axisLine={false} tickLine={false}
-                    allowDecimals={false}
-                    width={24}
-                  />
-                  <Tooltip content={<ChartTooltip />} />
-                  <Bar dataKey="carteles" name="Carteles" fill="#2563EB" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              <p className="mb-3 text-sm font-semibold text-white">Estado de campañas</p>
+              <WorkflowSemaphore counts={derived.workflowCounts} />
             </div>
 
-            {/* B — Mix de formatos */}
+            {/* B — FIX 6: Mix de formatos con % */}
             <div className="card p-4">
               <p className="mb-2 text-sm font-semibold text-white">Mix de formatos vendidos</p>
               {derived.formatMix.length === 0 ? (
-                <div className="flex h-[180px] items-center justify-center text-xs text-slate-600">
+                <div className="flex h-[160px] items-center justify-center text-xs text-slate-600">
                   Sin datos en el período
                 </div>
               ) : (
-                <ResponsiveContainer width="100%" height={180}>
-                  <PieChart>
-                    <Pie
-                      data={derived.formatMix}
-                      cx="50%" cy="50%"
-                      innerRadius={48} outerRadius={70}
-                      dataKey="value" nameKey="name"
-                    >
-                      {derived.formatMix.map((entry, i) => (
-                        <Cell key={i} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(v, n) => [v, n]}
-                      contentStyle={{
-                        background: '#1e293b',
-                        border: '1px solid #334155',
-                        borderRadius: 8,
-                        fontSize: 11,
-                      }}
-                    />
-                    <Legend iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-                  </PieChart>
-                </ResponsiveContainer>
+                <>
+                  <ResponsiveContainer width="100%" height={130}>
+                    <PieChart>
+                      <Pie
+                        data={derived.formatMix}
+                        cx="50%" cy="50%"
+                        innerRadius={38} outerRadius={58}
+                        dataKey="value" nameKey="name"
+                      >
+                        {derived.formatMix.map((entry, i) => (
+                          <Cell key={i} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(v, n) => [v, n]}
+                        contentStyle={{
+                          background: '#1e293b',
+                          border: '1px solid #334155',
+                          borderRadius: 8,
+                          fontSize: 11,
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  {/* Leyenda con % y cantidad */}
+                  <div className="mt-2 space-y-1.5">
+                    {derived.formatMix.map((entry, i) => (
+                      <div key={i} className="flex items-center gap-1.5 text-xs">
+                        <span
+                          className="h-2 w-2 shrink-0 rounded-full"
+                          style={{ background: entry.color }}
+                        />
+                        <span className="truncate text-slate-400">{entry.name}</span>
+                        <span className="ml-auto shrink-0 font-medium text-slate-300">
+                          {entry.pct}% ({entry.value})
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
 
-            {/* C — Ocupación física */}
+            {/* C — FIX 3: Ocupación del Inventario (% grande) */}
             <div className="card p-4 flex flex-col">
-              <p className="mb-4 text-sm font-semibold text-white">Ocupación física</p>
+              <p className="mb-4 text-sm font-semibold text-white">Ocupación del Inventario</p>
               <div className="flex-1 flex flex-col items-center justify-center text-center">
-                <p className="text-5xl font-bold text-white leading-none">{derived.physOccupied}</p>
-                <p className="mt-2 text-sm text-slate-500">de {derived.physTotal} carteles físicos</p>
+                <p className="text-5xl font-bold text-white leading-none">{derived.physPct}%</p>
+                <p className="mt-2 text-sm text-slate-500">
+                  {derived.physOccupied} de {derived.physTotal} carteles físicos
+                </p>
               </div>
               <div className="mt-5">
-                <div className="flex justify-between text-xs text-slate-500 mb-1.5">
-                  <span>Ocupación</span>
-                  <span className="font-semibold text-white">{derived.physPct}%</span>
-                </div>
                 <div className="h-2 w-full rounded-full bg-surface-700">
                   <div
                     className="h-2 rounded-full transition-all duration-500"
@@ -493,9 +505,11 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── SECCIÓN 3 — Mi actividad ── */}
+      {/* ── SECCIÓN MI ACTIVIDAD (todos los roles) ── */}
       <div>
-        <SectionTitle>Mi actividad</SectionTitle>
+        <h3 className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-500">
+          Mi actividad
+        </h3>
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <KpiCard
             label="En curso"
@@ -530,9 +544,11 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── SECCIÓN 4 — Oportunidades de venta ── */}
+      {/* ── OPORTUNIDADES DE VENTA (todos los roles) ── */}
       <div>
-        <SectionTitle>Oportunidades de venta</SectionTitle>
+        <h3 className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-500">
+          Oportunidades de venta
+        </h3>
         {derived.opportunities.length === 0 ? (
           <EmptyCard>No hay carteles físicos disponibles con precio de lista configurado.</EmptyCard>
         ) : (
@@ -553,9 +569,9 @@ export default function Dashboard() {
                   {derived.opportunities.map((opp, i) => {
                     const isLast = i === derived.opportunities.length - 1
                     const badge = opp.marginPct > 60
-                      ? { label: 'Alta',   cls: 'bg-emerald-500/15 text-emerald-400' }
+                      ? { label: 'Alta',    cls: 'bg-emerald-500/15 text-emerald-400' }
                       : opp.marginPct >= 40
-                        ? { label: 'Buena', cls: 'bg-amber-500/15 text-amber-400' }
+                        ? { label: 'Buena',  cls: 'bg-amber-500/15 text-amber-400' }
                         : { label: 'Normal', cls: 'bg-slate-500/15 text-slate-400' }
                     return (
                       <tr
@@ -604,9 +620,11 @@ export default function Dashboard() {
         )}
       </div>
 
-      {/* ── SECCIÓN 5 — Campañas próximas a vencer ── */}
+      {/* ── CAMPAÑAS PRÓXIMAS A VENCER (todos los roles) ── */}
       <div>
-        <SectionTitle>Campañas próximas a vencer</SectionTitle>
+        <h3 className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-500">
+          Campañas próximas a vencer
+        </h3>
         {derived.activeCampaigns.length === 0 ? (
           <EmptyCard>No hay campañas con vencimiento en los próximos 60 días.</EmptyCard>
         ) : (
