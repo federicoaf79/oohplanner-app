@@ -86,7 +86,7 @@ function EmptyCard({ children }) {
 
 // ─── Derived data computation ─────────────────────────────────
 
-function computeDerived({ inventory, items, proposals, userProfile, upcomingCampaigns }, period, userId) {
+function computeDerived({ inventory, items, proposals, allProposals, userProfile, upcomingCampaigns }, period, userId) {
   const offset = period === 'current' ? 0 : -1
   const { start: pS, end: pE } = periodBounds(offset)
   const { start: prS, end: prE } = periodBounds(offset - 1)
@@ -115,14 +115,16 @@ function computeDerived({ inventory, items, proposals, userProfile, upcomingCamp
   const prevRevenue = prevItems.reduce((s, pi) => s + (pi.rate ?? 0) * (pi.duration ?? 1), 0)
   const revDelta    = prevRevenue > 0 ? (revenue - prevRevenue) / prevRevenue * 100 : null
 
-  // ── Period proposals (by created_at) ──
+  // ── Period proposals (by created_at) — for total count only ──
   const periodProps = proposals.filter(p => {
     const d = new Date(p.created_at)
     return d >= pS && d <= pE
   })
-  const closeable  = periodProps.filter(p => ['sent', 'accepted', 'rejected'].includes(p.status))
-  const closeRate  = closeable.length > 0
-    ? periodProps.filter(p => p.status === 'accepted').length / closeable.length * 100
+
+  // ── BUG 2 — Tasa de cierre global (todas las propuestas históricas) ──
+  const globalNonDraft = allProposals.filter(p => p.status !== 'draft').length
+  const closeRate      = globalNonDraft > 0
+    ? allProposals.filter(p => p.status === 'accepted').length / globalNonDraft * 100
     : null
 
   // ── Weekly billboard chart (weeks of selected period's month) ──
@@ -174,18 +176,25 @@ function computeDerived({ inventory, items, proposals, userProfile, upcomingCamp
   const myPeriod = proposals.filter(p =>
     p.created_by === userId && new Date(p.created_at) >= pS && new Date(p.created_at) <= pE
   )
-  const myAcceptedIds = new Set(myPeriod.filter(p => p.status === 'accepted').map(p => p.id))
-  const commPct       = userProfile?.commission_pct ?? 0
-  const myCommission  = items
-    .filter(pi =>
-      myAcceptedIds.has(pi.proposal_id) &&
-      pi.start_date && pi.end_date &&
-      new Date(pi.start_date) <= pE && new Date(pi.end_date) >= pS
-    )
+  const commPct = userProfile?.commission_pct ?? 0
+
+  // BUG 1 — Cerradas: propuestas aceptadas con items solapando el período (igual que revenue)
+  const myAcceptedOverlapItems = items.filter(pi => {
+    if (!pi.start_date || !pi.end_date) return false
+    const p = propById[pi.proposal_id]
+    if (p?.status !== 'accepted' || p.created_by !== userId) return false
+    return new Date(pi.start_date) <= pE && new Date(pi.end_date) >= pS
+  })
+  const myClosed     = new Set(myAcceptedOverlapItems.map(pi => pi.proposal_id)).size
+  const myCommission = myAcceptedOverlapItems
     .reduce((s, pi) => s + (pi.rate ?? 0) * (pi.duration ?? 1) * commPct / 100, 0)
 
+  // Top format: histórico de todas mis propuestas aceptadas
   const myFmt = {}
-  items.filter(pi => myAcceptedIds.has(pi.proposal_id)).forEach(pi => {
+  items.filter(pi => {
+    const p = propById[pi.proposal_id]
+    return p?.status === 'accepted' && p.created_by === userId
+  }).forEach(pi => {
     const fmt = invById[pi.site_id]?.format
     if (fmt) myFmt[fmt] = (myFmt[fmt] ?? 0) + 1
   })
@@ -212,15 +221,16 @@ function computeDerived({ inventory, items, proposals, userProfile, upcomingCamp
   })
   const today = new Date()
   today.setHours(0, 0, 0, 0)
+  // BUG 3 — usar end_date en lugar de valid_until
   const activeCampaigns = upcomingCampaigns
-    .filter(p => p.valid_until)
+    .filter(p => p.end_date)
     .map(p => ({
-      id:       p.id,
-      client:   p.client_name ?? '—',
-      carteles: sitesPerProp[p.id]?.size ?? 0,
+      id:        p.id,
+      client:    p.client_name ?? '—',
+      carteles:  sitesPerProp[p.id]?.size ?? 0,
       startDate: p.brief_data?.startDate ?? null,
-      endDate:  p.valid_until,
-      daysLeft: Math.ceil((new Date(p.valid_until) - today) / 86400000),
+      endDate:   p.end_date,
+      daysLeft:  Math.ceil((new Date(p.end_date) - today) / 86400000),
     }))
     .filter(c => c.daysLeft >= 0)
     .sort((a, b) => a.daysLeft - b.daysLeft)
@@ -233,7 +243,7 @@ function computeDerived({ inventory, items, proposals, userProfile, upcomingCamp
     weeklyData, formatMix,
     physTotal, physOccupied, physPct,
     myInCourse: myPeriod.filter(p => ['draft', 'sent'].includes(p.status)).length,
-    myClosed:   myPeriod.filter(p => p.status === 'accepted').length,
+    myClosed,
     myCommission, commPct, topFormat,
     opportunities,
     activeCampaigns,
@@ -283,18 +293,25 @@ export default function Dashboard() {
         .eq('id', profile.id)
         .single(),
 
-      // 5 — Campañas aceptadas con vencimiento en próximos 60 días
+      // 5 — Campañas aceptadas con end_date en próximos 60 días (BUG 3)
       supabase.from('proposals')
-        .select('id, status, client_name, valid_until, brief_data, created_at, created_by')
+        .select('id, status, client_name, end_date, brief_data, created_at, created_by')
         .eq('org_id', profile.org_id)
         .eq('status', 'accepted')
-        .gte('valid_until', todayStr)
-        .lte('valid_until', in60Str),
-    ]).then(([invR, itemsR, propsR, profileR, campaignsR]) => {
+        .gte('end_date', todayStr)
+        .lte('end_date', in60Str),
+
+      // 6 — Todas las propuestas para tasa de cierre global (BUG 2)
+      supabase.from('proposals')
+        .select('id, status')
+        .eq('org_id', profile.org_id),
+
+    ]).then(([invR, itemsR, propsR, profileR, campaignsR, allPropsR]) => {
       setRaw({
         inventory:         invR.data      ?? [],
         items:             itemsR.data    ?? [],
         proposals:         propsR.data    ?? [],
+        allProposals:      allPropsR.data ?? [],
         userProfile:       profileR.error  ? {} : (profileR.data ?? {}),
         upcomingCampaigns: campaignsR.data ?? [],
       })
