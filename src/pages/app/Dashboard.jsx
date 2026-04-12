@@ -148,11 +148,14 @@ function computeDerived(
     ? allProposals.filter(p => p.status === 'accepted').length / globalNonDraft * 100
     : null
 
-  // ── FIX 2: Semáforo de campañas por workflow_status ──
+  // ── FIX 2: Semáforo de campañas por workflow_status (usa items solapando período) ──
   const workflowCounts = {}
-  periodProps.forEach(p => {
-    // Solo propuestas aceptadas tienen workflow activo
-    if (p.status !== 'accepted') return
+  const seenWfProps = new Set()
+  currItems.forEach(pi => {
+    if (seenWfProps.has(pi.proposal_id)) return
+    seenWfProps.add(pi.proposal_id)
+    const p = propById[pi.proposal_id]
+    if (!p || p.status !== 'accepted') return
     const key = (!p.workflow_status || p.workflow_status === 'pending')
       ? 'pending'
       : p.workflow_status
@@ -196,7 +199,8 @@ function computeDerived(
   const myAcceptedOverlapItems = items.filter(pi => {
     if (!pi.start_date || !pi.end_date) return false
     const p = propById[pi.proposal_id]
-    if (p?.status !== 'accepted' || p.created_by !== userId) return false
+    if (p?.status !== 'accepted') return false
+    if (p.created_by && p.created_by !== userId) return false
     return new Date(pi.start_date) <= pE && new Date(pi.end_date) >= pS
   })
   const myClosed     = new Set(myAcceptedOverlapItems.map(pi => pi.proposal_id)).size
@@ -244,7 +248,7 @@ function computeDerived(
       id:        p.id,
       client:    p.client_name ?? '—',
       carteles:  sitesPerProp[p.id]?.size ?? 0,
-      startDate: p.brief_data?.startDate ?? null,
+      startDate: p.start_date ?? p.brief_data?.startDate ?? null,
       endDate:   p.end_date,
       daysLeft:  Math.ceil((new Date(p.end_date) - today) / 86400000),
     }))
@@ -312,7 +316,7 @@ export default function Dashboard() {
 
       // 5 — Campañas aceptadas con end_date en próximos 60 días
       supabase.from('proposals')
-        .select('id, status, client_name, end_date, brief_data, created_at, created_by')
+        .select('id, status, workflow_status, client_name, start_date, end_date, brief_data, created_at, created_by')
         .eq('org_id', profile.org_id)
         .eq('status', 'accepted')
         .gte('end_date', todayStr)
