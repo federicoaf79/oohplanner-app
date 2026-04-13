@@ -570,7 +570,7 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
     setGeneratingPDF(true)
     try {
       // Esperar que el mapa termine de renderizar
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      await new Promise(resolve => setTimeout(resolve, 3000))
 
       let mapBase64 = null
       const mapEl = document.querySelector('.leaflet-container')
@@ -583,11 +583,13 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
           const canvas = await html2canvas(mapEl, {
             useCORS: true,
             allowTaint: true,
-            scale: 1.5,
+            scale: 2,
             backgroundColor: '#1e293b',
             logging: false,
+            imageTimeout: 5000,
+            removeContainer: false,
           })
-          mapBase64 = canvas.toDataURL('image/jpeg', 0.85)
+          mapBase64 = canvas.toDataURL('image/jpeg', 0.90)
           // Restaurar controles de Leaflet
           leafletControls.forEach(el => { el.style.display = '' })
         } catch (err) {

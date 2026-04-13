@@ -423,39 +423,36 @@ async function renderOption(doc, {
     const hasJ = !!site.justification
 
     if (hasMockup) {
-      // ── MOCKUP LAYOUT: imagen proporcional arriba, texto abajo ──
+      // ── MOCKUP LAYOUT: imagen izquierda + info derecha ──
 
-      // Cargar imagen para obtener aspecto real
       let imgData = photoUrl
       if (!photoUrl.startsWith('data:')) {
         imgData = await fetchLogoBase64(photoUrl)
       }
 
-      // Calcular dimensiones proporcionales
-      const MAX_W = 140  // mm - ancho maximo (centrado en card de 182mm)
-      const MAX_H = 55   // mm - alto maximo
-      let imgW = MAX_W
-      let imgH = MAX_H
+      // Calcular dimensiones proporcionales de la imagen
+      const IMG_MAX_W = 65  // mm
+      const IMG_MAX_H = 48  // mm
+      let imgW = IMG_MAX_W
+      let imgH = IMG_MAX_H
 
       if (imgData) {
         const dims = await getImageDims(imgData)
         if (dims && dims.w > 0 && dims.h > 0) {
           const ratio = dims.w / dims.h
-          if (ratio >= MAX_W / MAX_H) {
-            // Imagen mas ancha que el box -> limitar por ancho
-            imgW = MAX_W
-            imgH = MAX_W / ratio
+          if (ratio >= IMG_MAX_W / IMG_MAX_H) {
+            imgW = IMG_MAX_W
+            imgH = IMG_MAX_W / ratio
           } else {
-            // Imagen mas alta que el box -> limitar por alto
-            imgH = MAX_H
-            imgW = MAX_H * ratio
+            imgH = IMG_MAX_H
+            imgW = IMG_MAX_H * ratio
           }
         }
       }
 
-      const TEXT_H = hasJ ? 24 : 18
-      const rowH = imgH + TEXT_H + 6
-      const imgX = 14 + (182 - imgW) / 2  // Centrar horizontalmente
+      // Altura de la card: la mayor entre la imagen y el texto
+      const textBlockH = hasJ ? 42 : 35
+      const rowH = Math.max(imgH + 4, textBlockH)
 
       if (y + rowH > 278) {
         doc.addPage()
@@ -466,53 +463,94 @@ async function renderOption(doc, {
 
       roundRect(doc, 14, y, 182, rowH, 2, SURFACE)
 
-      // Imagen mockup centrada
+      // Imagen mockup a la izquierda
+      const imgY = y + (rowH - imgH) / 2  // centrar verticalmente
       if (imgData) {
         try {
-          doc.addImage(imgData, 'JPEG', imgX, y + 2, imgW, imgH)
+          doc.addImage(imgData, 'JPEG', 16, imgY, imgW, imgH)
         } catch { /* ignorar */ }
       }
 
       // Badge MOCKUP
-      const badgeY = y + imgH - 3
-      roundRect(doc, imgX, badgeY, 18, 6, 1, BRAND)
+      const badgeY = imgY + imgH - 5
+      roundRect(doc, 16, badgeY, 18, 5, 1, BRAND)
       setFont(doc, 'bold')
-      doc.setFontSize(5)
+      doc.setFontSize(4.5)
       setTC(doc, WHITE)
-      doc.text('MOCKUP', imgX + 1.5, badgeY + 4)
+      doc.text('MOCKUP', 17.5, badgeY + 3.5)
 
-      // Texto debajo de la imagen
-      const textY = y + imgH + 5
+      // ── Info a la derecha ──
+      const textX = 16 + imgW + 4  // margen despues de la imagen
+      const rightW = 192 - textX   // ancho disponible para texto
+      let tY = y + 5
 
-      // Linea 1: nombre + formato + precio
-      setFont(doc, 'bold'); doc.setFontSize(8.5); setTC(doc, WHITE)
-      doc.text(truncate(doc, sanitize(site.name ?? '-'), 110), 18, textY)
+      // Linea 1: nombre
+      setFont(doc, 'bold'); doc.setFontSize(9); setTC(doc, WHITE)
+      doc.text(truncate(doc, sanitize(site.name ?? '-'), rightW - 40), textX, tY)
 
+      // Formato (alineado derecha)
       const fmt = FORMAT_MAP[site.format]
       if (fmt) {
         setFont(doc, 'normal'); doc.setFontSize(7); setTC(doc, LIGHT)
-        doc.text(fmt.label, 160, textY)
+        doc.text(fmt.label, 192, tY, { align: 'right' })
       }
-
-      const precioCliente = site.client_price ?? site.list_price ?? 0
-      setFont(doc, 'bold'); doc.setFontSize(8); setTC(doc, GREEN)
-      doc.text(formatCurrency(precioCliente), 192, textY, { align: 'right' })
-
-      // Linea 2: direccion
-      setFont(doc, 'normal'); doc.setFontSize(7.5); setTC(doc, LIGHT)
-      doc.text(truncate(doc, sanitize(site.address ?? ''), 140), 18, textY + 6)
 
       // Badge obligatorio
       if (site.is_mandatory) {
-        roundRect(doc, 150, textY + 1, 26, 6, 1, [80, 50, 10])
-        setFont(doc, 'bold'); doc.setFontSize(6); setTC(doc, AMBER)
-        doc.text('OBLIGATORIO', 151, textY + 5)
+        const mandX = 192 - 26 - (fmt ? 35 : 0)
+        roundRect(doc, mandX, tY - 3, 24, 5, 1, [80, 50, 10])
+        setFont(doc, 'bold'); doc.setFontSize(5); setTC(doc, AMBER)
+        doc.text('OBLIGATORIO', mandX + 1, tY + 0.5)
       }
 
-      // Linea 3: justificacion
+      tY += 5.5
+
+      // Linea 2: direccion
+      setFont(doc, 'normal'); doc.setFontSize(7.5); setTC(doc, LIGHT)
+      doc.text(truncate(doc, sanitize(site.address ?? ''), rightW - 5), textX, tY)
+      tY += 6
+
+      // Separador
+      setDraw(doc, [40, 50, 70])
+      doc.setLineWidth(0.15)
+      doc.line(textX, tY, textX + rightW - 5, tY)
+      tY += 4
+
+      // Metricas: impactos/contactos
+      const isDigital = DIGITAL_FMT.has(site.format)
+      const impacts = site.monthly_impacts ?? 0
+      if (impacts > 0) {
+        setFont(doc, 'normal'); doc.setFontSize(7); setTC(doc, LIGHT)
+        doc.text(isDigital ? 'Impactos/mes:' : 'Contactos/mes:', textX, tY)
+        setFont(doc, 'bold'); setTC(doc, WHITE)
+        doc.text(Math.round(impacts).toLocaleString('es-AR'), textX + 28, tY)
+        tY += 5
+      }
+
+      // Precio de lista y precio cliente
+      const listPrice = site.list_price ?? 0
+      if (listPrice > 0) {
+        setFont(doc, 'normal'); doc.setFontSize(7); setTC(doc, LIGHT)
+        doc.text('Lista:', textX, tY)
+        setFont(doc, 'normal'); setTC(doc, [120, 130, 150])
+        doc.text(formatCurrency(listPrice), textX + 28, tY)
+
+        const precioCliente = site.client_price ?? listPrice
+        setFont(doc, 'bold'); doc.setFontSize(9); setTC(doc, GREEN)
+        doc.text(formatCurrency(precioCliente), 192, tY, { align: 'right' })
+        tY += 6
+      } else {
+        const precioCliente = site.client_price ?? site.list_price ?? 0
+        setFont(doc, 'bold'); doc.setFontSize(9); setTC(doc, GREEN)
+        doc.text(formatCurrency(precioCliente), 192, tY, { align: 'right' })
+        tY += 6
+      }
+
+      // Justificacion
       if (hasJ) {
-        setFont(doc, 'italic'); doc.setFontSize(7); setTC(doc, [100, 116, 139])
-        doc.text(sanitize(`"${truncate(doc, site.justification, 170)}"`), 18, textY + 13)
+        setFont(doc, 'italic'); doc.setFontSize(6.5); setTC(doc, [90, 105, 130])
+        const justLines = doc.splitTextToSize(sanitize(`"${site.justification}"`), rightW - 5)
+        doc.text(justLines.slice(0, 2), textX, tY)
       }
 
       y += rowH + 2
@@ -521,9 +559,10 @@ async function renderOption(doc, {
       // ── LAYOUT NORMAL: foto izquierda o sin foto ──
       const PHOTO_W = hasPhoto ? 32 : 0
       const PHOTO_H = 22
+      const hasImpacts = (site.monthly_impacts ?? 0) > 0
       const rowH = hasPhoto
-        ? Math.max(PHOTO_H + 4, hasJ ? 32 : 26)
-        : (hasJ ? 26 : 19)
+        ? Math.max(PHOTO_H + 4, hasJ ? 35 : (hasImpacts ? 28 : 26))
+        : (hasJ ? 28 : (hasImpacts ? 22 : 19))
 
       if (y + rowH > 278) {
         doc.addPage()
@@ -571,6 +610,17 @@ async function renderOption(doc, {
       setFont(doc, 'bold'); doc.setFontSize(7.5); setTC(doc, GREEN)
       doc.text(formatCurrency(precioCliente), 192, y + 14, { align: 'right' })
 
+      // Impactos/contactos (si existen)
+      const impacts2 = site.monthly_impacts ?? 0
+      if (impacts2 > 0) {
+        const isDigital2 = DIGITAL_FMT.has(site.format)
+        setFont(doc, 'normal'); doc.setFontSize(6.5); setTC(doc, LIGHT)
+        doc.text(
+          `${isDigital2 ? 'Impactos' : 'Contactos'}: ${Math.round(impacts2).toLocaleString('es-AR')}`,
+          textX, y + (hasPhoto ? 19 : 12)
+        )
+      }
+
       if (hasJ) {
         setFont(doc, 'italic'); doc.setFontSize(7); setTC(doc, [100, 116, 139])
         doc.text(sanitize(`"${truncate(doc, site.justification, hasPhoto ? 140 : 170)}"`), textX, y + 21)
@@ -581,19 +631,19 @@ async function renderOption(doc, {
   }
 
   if (occupiedCount > 0) {
-    if (y + 14 > 278) {
+    if (y + 14 > 285) {
       doc.addPage()
       addPageBackground(doc)
       miniHeader(doc, orgName)
       y = 18
     }
-    roundRect(doc, 14, y, 182, 12, 2, [45, 35, 10])
+    roundRect(doc, 14, y, 182, 10, 2, [45, 35, 10])
     setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, AMBER)
     doc.text(
       `(!) ${occupiedCount} cartel${occupiedCount > 1 ? 'es' : ''} adicional${occupiedCount > 1 ? 'es' : ''} excluido${occupiedCount > 1 ? 's' : ''} por estar ocupado${occupiedCount > 1 ? 's' : ''} en las fechas solicitadas.`,
-      18, y + 8
+      23, y + 7
     )
-    y += 16
+    y += 14
   }
 }
 
