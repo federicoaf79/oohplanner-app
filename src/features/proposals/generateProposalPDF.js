@@ -215,7 +215,10 @@ function renderCoverPage(doc, { formData, profile, org, logoBase64, generatedAt,
   doc.text('Esta propuesta tiene una validez de 15 días corridos desde la fecha de emisión.', 18, y + 8)
 }
 
-async function renderOption(doc, { option, label, formData, orgName, mapBase64, occupiedIds = new Set() }) {
+async function renderOption(doc, {
+  option, label, formData, orgName, mapBase64,
+  occupiedIds = new Set(), mockupMap = {}, siteCarasMap = {},
+}) {
   if (!option) return
 
   addPageBackground(doc)
@@ -350,12 +353,19 @@ async function renderOption(doc, { option, label, formData, orgName, mapBase64, 
   y += 6
 
   for (const site of availSites) {
-    const hasPhoto = !!site.photo_url
+    // Determinar si tiene mockup o solo foto
+    const mockupDataUrl = mockupMap[site.id] ?? null
+    const siteData = siteCarasMap[site.id] ?? null
+    const photoUrl = mockupDataUrl ?? siteData?.photoUrl ?? site.photo_url ?? null
+    const hasMockup = !!mockupDataUrl
+    const hasPhoto = !!photoUrl
+
+    // Mockup = imagen más grande; foto sola = thumbnail
+    const PHOTO_W  = hasMockup ? 60 : (hasPhoto ? 32 : 0)
+    const PHOTO_H  = hasMockup ? 40 : 22
     const hasJ     = !!site.justification
-    const PHOTO_W  = hasPhoto ? 32 : 0
-    const PHOTO_H  = 22
     const rowH     = hasPhoto
-      ? Math.max(PHOTO_H + 4, hasJ ? 32 : 26)
+      ? Math.max(PHOTO_H + 6, hasJ ? (hasMockup ? 48 : 32) : (hasMockup ? 46 : 26))
       : (hasJ ? 26 : 19)
 
     if (y + rowH > 278) {
@@ -367,18 +377,30 @@ async function renderOption(doc, { option, label, formData, orgName, mapBase64, 
 
     roundRect(doc, 14, y, 182, rowH, 2, SURFACE)
 
-    // Foto (si existe)
+    // Foto o mockup (si existe)
     if (hasPhoto) {
       try {
-        const photoB64 = await fetchLogoBase64(site.photo_url)
-        if (photoB64) {
-          doc.addImage(photoB64, 'JPEG', 16, y + 2, PHOTO_W, PHOTO_H)
+        let imgData = photoUrl
+        if (!photoUrl.startsWith('data:')) {
+          imgData = await fetchLogoBase64(photoUrl)
+        }
+        if (imgData) {
+          doc.addImage(imgData, 'JPEG', 16, y + 2, PHOTO_W, PHOTO_H)
+        }
+        if (hasMockup) {
+          // Badge "MOCKUP" sobre la imagen
+          const badgeY = y + PHOTO_H - 3
+          roundRect(doc, 16, badgeY, 16, 5, 1, BRAND)
+          setFont(doc, 'bold')
+          doc.setFontSize(4.5)
+          setTC(doc, WHITE)
+          doc.text('MOCKUP', 17, badgeY + 3.5)
         }
       } catch { /* ignorar si falla */ }
     }
 
     const textX    = 18 + PHOTO_W
-    const textMaxW = hasPhoto ? 95 : (site.is_mandatory ? 110 : 130)
+    const textMaxW = hasMockup ? 85 : (hasPhoto ? 95 : (site.is_mandatory ? 110 : 130))
 
     // Nombre
     setFont(doc, 'bold'); doc.setFontSize(8.5); setTC(doc, WHITE)
@@ -433,7 +455,16 @@ async function renderOption(doc, { option, label, formData, orgName, mapBase64, 
   }
 }
 
-export async function generateProposalPDF({ results, formData, profile, org, mapA = null, mapB = null, activeOption = 'A', occupiedSiteIds = new Set() }) {
+export async function generateProposalPDF({
+  results, formData, profile, org,
+  mapA = null, mapB = null,
+  activeOption = 'A',
+  occupiedSiteIds = new Set(),
+  artworkMap = {},
+  formatToArt = {},
+  mockupMap = {},
+  siteCarasMap = {},
+}) {
   const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true })
 
@@ -459,7 +490,17 @@ export async function generateProposalPDF({ results, formData, profile, org, map
   const selectedMap    = activeOption === 'B' ? mapB : mapA
   const selectedLabel  = activeOption === 'B' ? 'B' : 'A'
   doc.addPage()
-  await renderOption(doc, { option: selectedOption, label: selectedLabel, formData, orgName, vendorName, mapBase64: selectedMap, occupiedIds: occupiedSiteIds })
+  await renderOption(doc, {
+    option: selectedOption,
+    label: selectedLabel,
+    formData,
+    orgName,
+    vendorName,
+    mapBase64: selectedMap,
+    occupiedIds: occupiedSiteIds,
+    mockupMap,
+    siteCarasMap,
+  })
 
   const totalPages = doc.getNumberOfPages()
   for (let p = 1; p <= totalPages; p++) {

@@ -11,6 +11,7 @@ import { formatCurrency } from '../../lib/utils'
 import Button from '../../components/ui/Button'
 import { useAuth } from '../../context/AuthContext'
 import { generateProposalPDF, fetchStaticMap } from './generateProposalPDF'
+import { generateMockup } from '../../lib/generateMockup'
 import { supabase } from '../../lib/supabase'
 
 const DIGITAL_FORMATS = new Set(['digital', 'urban_furniture_digital'])
@@ -554,11 +555,63 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
           .map(([id]) => id)
       )
 
+      // Enriquecer sites con photo_url y billboard_zone desde inventory
+      const optSites = activeOption?.sites ?? []
+      const siteIds = optSites.map(s => s.id).filter(Boolean)
+      let siteCarasMap = {}
+
+      if (siteIds.length > 0) {
+        try {
+          const { data: invData } = await supabase
+            .from('inventory')
+            .select('id, caras, photo_url, image_url')
+            .in('id', siteIds)
+
+          if (invData) {
+            for (const inv of invData) {
+              const caras = Array.isArray(inv.caras) ? inv.caras : []
+              const cara = caras[0] ?? null
+              siteCarasMap[inv.id] = {
+                photoUrl: cara?.photo_url ?? inv.photo_url ?? inv.image_url ?? null,
+                zone: cara?.billboard_zone ?? null,
+              }
+            }
+          }
+        } catch (err) {
+          console.warn('Error fetching inventory for mockups:', err)
+        }
+      }
+
       // Construir mapa de artworks para mockups
       const artworkMap = {
         h:  clientArtH?.preview ?? org?.artwork_h_url ?? null,
         v:  clientArtV?.preview ?? org?.artwork_v_url ?? null,
         sq: clientArtSq?.preview ?? org?.artwork_sq_url ?? null,
+      }
+
+      // Generar mockups para sites que tengan zone + artwork
+      const mockupMap = {}  // siteId -> dataURL del mockup
+
+      // Generar mockups en paralelo (máx 5 concurrentes)
+      const mockupTasks = []
+      for (const site of optSites) {
+        const siteData = siteCarasMap[site.id]
+        if (!siteData?.zone || !siteData?.photoUrl) continue
+
+        const artSlot = FORMAT_TO_ART[site.format] ?? 'h'
+        const artUrl = artworkMap[artSlot]
+        if (!artUrl) continue
+
+        mockupTasks.push(
+          generateMockup(siteData.photoUrl, siteData.zone, artUrl, { maxWidth: 800, quality: 0.82 })
+            .then(dataUrl => { mockupMap[site.id] = dataUrl })
+            .catch(err => console.warn(`Mockup failed for ${site.id}:`, err))
+        )
+      }
+
+      // Ejecutar en batches de 5
+      for (let i = 0; i < mockupTasks.length; i += 5) {
+        await Promise.all(mockupTasks.slice(i, i + 5))
       }
 
       await generateProposalPDF({
@@ -572,6 +625,8 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
         occupiedSiteIds,
         artworkMap,
         formatToArt: FORMAT_TO_ART,
+        mockupMap,
+        siteCarasMap,
       })
     } catch (err) {
       console.error('PDF generation error:', err)
