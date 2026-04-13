@@ -294,7 +294,7 @@ export default function ProposalNew() {
         }
       }
 
-      navigate('/app/proposals')
+      // No navegar — WizardStep3Results maneja el estado saved
 
     } catch (err) {
       setError(`Error al guardar: ${err.message}`)

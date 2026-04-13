@@ -67,7 +67,7 @@ function renderFooter(doc, vendorName, orgName, pageNum, totalPages) {
   doc.text(`Pág. ${pageNum} / ${totalPages}`, 196, 289, { align: 'right' })
 }
 
-async function fetchStaticMap(sites) {
+export async function fetchStaticMap(sites) {
   try {
     const validSites = (sites ?? []).filter(s =>
       s.latitude != null && s.longitude != null &&
@@ -319,8 +319,13 @@ async function renderOption(doc, { option, label, formData, orgName, mapBase64 }
   y += 6
 
   for (const site of (option.sites ?? [])) {
-    const hasJ = !!site.justification
-    const rowH = hasJ ? 26 : 19
+    const hasPhoto = !!site.photo_url
+    const hasJ     = !!site.justification
+    const PHOTO_W  = hasPhoto ? 32 : 0
+    const PHOTO_H  = 22
+    const rowH     = hasPhoto
+      ? Math.max(PHOTO_H + 4, hasJ ? 32 : 26)
+      : (hasJ ? 26 : 19)
 
     if (y + rowH > 278) {
       doc.addPage()
@@ -331,10 +336,22 @@ async function renderOption(doc, { option, label, formData, orgName, mapBase64 }
 
     roundRect(doc, 14, y, 182, rowH, 2, SURFACE)
 
+    // Foto (si existe)
+    if (hasPhoto) {
+      try {
+        const photoB64 = await fetchLogoBase64(site.photo_url)
+        if (photoB64) {
+          doc.addImage(photoB64, 'JPEG', 16, y + 2, PHOTO_W, PHOTO_H)
+        }
+      } catch { /* ignorar si falla */ }
+    }
+
+    const textX    = 18 + PHOTO_W
+    const textMaxW = hasPhoto ? 95 : (site.is_mandatory ? 110 : 130)
+
     // Nombre
     setFont(doc, 'bold'); doc.setFontSize(8.5); setTC(doc, WHITE)
-    const nameMaxW = site.is_mandatory ? 110 : 130
-    doc.text(truncate(doc, site.name ?? '—', nameMaxW), 18, y + 7)
+    doc.text(truncate(doc, site.name ?? '—', textMaxW), textX, y + 7)
 
     // Badge obligatorio
     if (site.is_mandatory) {
@@ -350,11 +367,11 @@ async function renderOption(doc, { option, label, formData, orgName, mapBase64 }
       doc.text(fmt.label, 192, y + 7, { align: 'right' })
     }
 
-    // Dirección + precio cliente (solo precio con descuento aplicado)
+    // Dirección
     setFont(doc, 'normal'); doc.setFontSize(7.5); setTC(doc, LIGHT)
-    doc.text(truncate(doc, site.address ?? '', 120), 18, y + 14)
+    doc.text(truncate(doc, site.address ?? '', hasPhoto ? 95 : 120), textX, y + 14)
 
-    // Solo mostrar precio cliente (ya con descuento aplicado)
+    // Precio cliente
     const precioCliente = site.client_price ?? site.list_price ?? 0
     setFont(doc, 'bold'); doc.setFontSize(7.5); setTC(doc, GREEN)
     doc.text(formatCurrency(precioCliente), 192, y + 14, { align: 'right' })
@@ -362,14 +379,14 @@ async function renderOption(doc, { option, label, formData, orgName, mapBase64 }
     // Justificación
     if (hasJ) {
       setFont(doc, 'italic'); doc.setFontSize(7); setTC(doc, [100, 116, 139])
-      doc.text(`"${truncate(doc, site.justification, 170)}"`, 18, y + 21)
+      doc.text(`"${truncate(doc, site.justification, hasPhoto ? 140 : 170)}"`, textX, y + 21)
     }
 
     y += rowH + 2
   }
 }
 
-export async function generateProposalPDF({ results, formData, profile, org, mapA = null, mapB = null }) {
+export async function generateProposalPDF({ results, formData, profile, org, mapA = null, mapB = null, activeOption = 'A' }) {
   const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true })
 
@@ -391,11 +408,11 @@ export async function generateProposalPDF({ results, formData, profile, org, map
 
   renderCoverPage(doc, { formData, profile, org, logoBase64, generatedAt, validUntil })
 
+  const selectedOption = activeOption === 'B' ? results?.optionB : results?.optionA
+  const selectedMap    = activeOption === 'B' ? mapB : mapA
+  const selectedLabel  = activeOption === 'B' ? 'B' : 'A'
   doc.addPage()
-  await renderOption(doc, { option: results?.optionA, label: 'A', formData, orgName, vendorName, mapBase64: mapA })
-
-  doc.addPage()
-  await renderOption(doc, { option: results?.optionB, label: 'B', formData, orgName, vendorName, mapBase64: mapB })
+  await renderOption(doc, { option: selectedOption, label: selectedLabel, formData, orgName, vendorName, mapBase64: selectedMap })
 
   const totalPages = doc.getNumberOfPages()
   for (let p = 1; p <= totalPages; p++) {

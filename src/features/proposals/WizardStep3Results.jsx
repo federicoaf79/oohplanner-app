@@ -10,7 +10,7 @@ import { FORMAT_MAP } from '../../lib/constants'
 import { formatCurrency } from '../../lib/utils'
 import Button from '../../components/ui/Button'
 import { useAuth } from '../../context/AuthContext'
-import { generateProposalPDF } from './generateProposalPDF'
+import { generateProposalPDF, fetchStaticMap } from './generateProposalPDF'
 import { supabase } from '../../lib/supabase'
 
 const DIGITAL_FORMATS = new Set(['digital', 'urban_furniture_digital'])
@@ -392,37 +392,17 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
   async function handlePDF() {
     setGeneratingPDF(true)
     try {
-      // Capturar mapas con html2canvas
-      const html2canvas = (await import('html2canvas')).default
-
-      async function captureMap(ref) {
-        if (!ref.current) return null
-        try {
-          const canvas = await html2canvas(ref.current, {
-            useCORS: true,
-            allowTaint: true,
-            scale: 2,
-            backgroundColor: '#1a2035',
-            logging: false,
-          })
-          return canvas.toDataURL('image/png')
-        } catch {
-          return null
-        }
-      }
-
-      const [mapA, mapB] = await Promise.all([
-        captureMap(mapARef),
-        captureMap(mapBRef),
-      ])
+      const sitesForMap = activeOption?.sites ?? []
+      const mapBase64 = await fetchStaticMap(sitesForMap)
 
       await generateProposalPDF({
         results,
         formData,
         profile: { ...profile, email: user?.email },
         org,
-        mapA,
-        mapB,
+        mapA: activeTab === 'A' ? mapBase64 : null,
+        mapB: activeTab === 'B' ? mapBase64 : null,
+        activeOption: activeTab,
       })
     } catch (err) {
       console.error('PDF generation error:', err)
@@ -463,6 +443,29 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
           </Button>
         </div>
       </div>
+
+      {saved && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle className="h-5 w-5 text-emerald-400 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-emerald-400">¡Propuesta guardada!</p>
+              <p className="text-xs text-emerald-600 mt-0.5">Podés descargar el PDF, compartir por WhatsApp o crear una nueva.</p>
+            </div>
+          </div>
+          <div className="flex gap-2 shrink-0">
+            <a href="/app/proposals" className="rounded-lg border border-emerald-500/30 px-3 py-1.5 text-xs font-medium text-emerald-400 hover:bg-emerald-500/10 transition-colors">
+              Ver propuestas
+            </a>
+            <button
+              onClick={() => { setSaved(false); window.location.href = '/app/proposals/new' }}
+              className="rounded-lg bg-emerald-500/20 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/30 transition-colors"
+            >
+              Nueva propuesta
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-2 rounded-xl border border-surface-700 bg-surface-800 p-1">
