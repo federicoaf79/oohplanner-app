@@ -30,6 +30,18 @@ function getNextStatus(currentId) {
   return WORKFLOW_STATUSES[idx + 1]
 }
 
+function getCampaignEndDate(proposal) {
+  const items = proposal.proposal_items ?? []
+  const ends = items.map(i => i.end_date).filter(Boolean).sort()
+  return ends[ends.length - 1] ?? proposal.valid_until ?? null
+}
+
+function getCampaignStartDate(proposal) {
+  const items = proposal.proposal_items ?? []
+  const starts = items.map(i => i.start_date).filter(Boolean).sort()
+  return starts[0] ?? null
+}
+
 // ── Workflow stepper ──────────────────────────────────────────
 
 function WorkflowStepper({ status, onChange, readOnly = false }) {
@@ -297,6 +309,7 @@ export default function Campaigns() {
   const [filterVendor, setFilterVendor] = useState('todos')
   const [selectedCampaign, setSelectedCampaign] = useState(null)
   const [advancing, setAdvancing]       = useState(null)
+  const [historialOpen, setHistorialOpen] = useState(false)
 
   useEffect(() => {
     if (!profile?.org_id) return
@@ -328,13 +341,14 @@ export default function Campaigns() {
         if (error) console.error('campaigns fetch error:', error.message)
         const rows = data ?? []
 
-        // Auto-withdraw: proposals past valid_until still in installation/active
+        // Auto-withdraw: proposals past real end_date not yet closed
         const today      = new Date()
         const expiredIds = rows
-          .filter(p =>
-            ['installation', 'active'].includes(p.workflow_status) &&
-            p.valid_until && new Date(p.valid_until) < today
-          )
+          .filter(p => {
+            if (['withdraw', 'renew'].includes(p.workflow_status)) return false
+            const endDate = getCampaignEndDate(p)
+            return endDate && new Date(endDate) < today
+          })
           .map(p => p.id)
 
         if (expiredIds.length) {
@@ -366,8 +380,10 @@ export default function Campaigns() {
       .map(p => ({ id: p.creator.id, name: p.creator.full_name ?? '—' }))
   }, [proposals, isOwner, isManager])
 
-  // Filtered list
-  const filtered = useMemo(() => {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  const allFiltered = useMemo(() => {
     const q = search.toLowerCase()
     return proposals.filter(p => {
       if (filterStatus !== 'todos' && p.workflow_status !== filterStatus) return false
@@ -376,6 +392,37 @@ export default function Campaigns() {
              (p.client_name ?? '').toLowerCase().includes(q)
     })
   }, [proposals, search, filterStatus, filterVendor, isOwner, isManager])
+
+  const enCurso = useMemo(() => {
+    return allFiltered
+      .filter(p => {
+        const end = getCampaignEndDate(p)
+        return !end || new Date(end) >= today
+      })
+      .sort((a, b) => {
+        const ea = getCampaignEndDate(a) ?? ''
+        const eb = getCampaignEndDate(b) ?? ''
+        return ea.localeCompare(eb)
+      })
+  }, [allFiltered])
+
+  const historial = useMemo(() => {
+    return allFiltered
+      .filter(p => {
+        const end = getCampaignEndDate(p)
+        return end && new Date(end) < today
+      })
+      .sort((a, b) => {
+        const ea = getCampaignEndDate(a) ?? ''
+        const eb = getCampaignEndDate(b) ?? ''
+        return eb.localeCompare(ea)  // DESC: más reciente primero
+      })
+  }, [allFiltered])
+
+  const pendingWithdraw = useMemo(() =>
+    historial.filter(p => !['withdraw', 'renew'].includes(p.workflow_status)),
+    [historial]
+  )
 
   async function handleStatusChange(proposalId, newStatus) {
     const { error } = await supabase
@@ -406,6 +453,17 @@ export default function Campaigns() {
 
   function canAdvance(p) {
     return isOwner || isManager || p.created_by === profile?.id
+  }
+
+  async function handleWithdrawAll() {
+    const ids = pendingWithdraw.map(p => p.id)
+    if (!ids.length) return
+    await supabase.from('proposals')
+      .update({ workflow_status: 'withdraw' })
+      .in('id', ids)
+    setProposals(prev => prev.map(p =>
+      ids.includes(p.id) ? { ...p, workflow_status: 'withdraw' } : p
+    ))
   }
 
   return (
@@ -461,37 +519,106 @@ export default function Campaigns() {
         )}
       </div>
 
-      {/* List */}
+      {/* Notificación campañas sin cerrar */}
+      {pendingWithdraw.length > 0 && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+          <div className="flex items-center gap-2.5">
+            <span className="text-lg">⚠️</span>
+            <div>
+              <p className="text-sm font-semibold text-amber-400">
+                {pendingWithdraw.length} campaña{pendingWithdraw.length !== 1 ? 's' : ''} vencida{pendingWithdraw.length !== 1 ? 's' : ''} sin cerrar
+              </p>
+              <p className="text-xs text-amber-600 mt-0.5">
+                Superaron su fecha de fin pero siguen marcadas como activas
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleWithdrawAll}
+            className="shrink-0 rounded-lg border border-amber-500/40 bg-amber-500/20 px-3 py-1.5 text-xs font-semibold text-amber-400 hover:bg-amber-500/30 transition-colors"
+          >
+            Cerrar todas
+          </button>
+        </div>
+      )}
+
+      {/* Lista principal */}
       {loading ? (
         <div className="flex justify-center py-16"><Spinner size="lg" /></div>
-      ) : filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-surface-700 py-16 text-center">
-          <Megaphone className="mb-3 h-10 w-10 text-slate-600" />
-          <p className="font-medium text-slate-400">
-            {search || filterStatus !== 'todos' || filterVendor !== 'todos'
-              ? 'Sin resultados'
-              : 'Sin campañas activas'}
-          </p>
-          <p className="mt-1 text-sm text-slate-600">
-            {search || filterStatus !== 'todos' || filterVendor !== 'todos'
-              ? 'Probá con otros filtros'
-              : 'Las propuestas activadas aparecerán aquí'}
-          </p>
-        </div>
       ) : (
-        <div className="space-y-3">
-          {filtered.map(p => (
-            <CampaignCard
-              key={p.id}
-              proposal={p}
-              canAdvance={canAdvance(p)}
-              canJump={isOwner || isManager}
-              onStatusChange={handleStatusChange}
-              onAdvance={handleAdvance}
-              onOpen={() => setSelectedCampaign(p)}
-              advancing={advancing}
-            />
-          ))}
+        <div className="space-y-6">
+
+          {/* En curso */}
+          {enCurso.length === 0 && historial.length === 0 ? (
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-surface-700 py-16 text-center">
+              <Megaphone className="mb-3 h-10 w-10 text-slate-600" />
+              <p className="font-medium text-slate-400">
+                {search || filterStatus !== 'todos' || filterVendor !== 'todos'
+                  ? 'Sin resultados' : 'Sin campañas activas'}
+              </p>
+              <p className="mt-1 text-sm text-slate-600">
+                {search || filterStatus !== 'todos' || filterVendor !== 'todos'
+                  ? 'Probá con otros filtros' : 'Las propuestas activadas aparecerán aquí'}
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Campañas en curso */}
+              {enCurso.length > 0 && (
+                <div className="space-y-3">
+                  {enCurso.map(p => (
+                    <CampaignCard
+                      key={p.id}
+                      proposal={p}
+                      canAdvance={canAdvance(p)}
+                      canJump={isOwner || isManager}
+                      onStatusChange={handleStatusChange}
+                      onAdvance={handleAdvance}
+                      onOpen={() => setSelectedCampaign(p)}
+                      advancing={advancing}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* Historial */}
+              {historial.length > 0 && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setHistorialOpen(v => !v)}
+                    className="flex w-full items-center justify-between rounded-xl border border-surface-700 bg-surface-800/50 px-4 py-3 text-sm font-semibold text-slate-400 hover:text-slate-200 transition-colors"
+                  >
+                    <span className="flex items-center gap-2">
+                      <span>📁</span>
+                      Historial — {historial.length} campaña{historial.length !== 1 ? 's' : ''} finalizada{historial.length !== 1 ? 's' : ''}
+                    </span>
+                    <ChevronRight
+                      className={`h-4 w-4 transition-transform ${historialOpen ? 'rotate-90' : ''}`}
+                    />
+                  </button>
+
+                  {historialOpen && (
+                    <div className="mt-3 space-y-3">
+                      {historial.map(p => (
+                        <CampaignCard
+                          key={p.id}
+                          proposal={p}
+                          canAdvance={canAdvance(p)}
+                          canJump={isOwner || isManager}
+                          onStatusChange={handleStatusChange}
+                          onAdvance={handleAdvance}
+                          onOpen={() => setSelectedCampaign(p)}
+                          advancing={advancing}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 
