@@ -58,85 +58,93 @@ function ScoreBar({ score }) {
 }
 
 function BillboardCard({ site, availabilityInfo }) {
+  const isDigital = DIGITAL_FORMATS.has(site.format)
+  const isOccupied = availabilityInfo?.available === false
+
   return (
-    <div className={`card p-4 flex flex-col gap-3 hover:border-brand/30 transition-colors ${
-      availabilityInfo?.available === false ? 'border-amber-500/50 bg-amber-500/5' : ''
+    <div className={`card p-3 hover:border-brand/30 transition-colors ${
+      isOccupied ? 'border-amber-500/40 bg-amber-500/5' : ''
     }`}>
-      <div className="flex gap-4">
-        {/* Photo or placeholder */}
+      {/* Fila 1: foto + nombre + formato + match */}
+      <div className="flex items-center gap-3">
         {site.photo_url ? (
           <img src={site.photo_url} alt={site.name}
-            className="shrink-0 h-16 w-20 rounded-lg object-cover" />
+            className="shrink-0 h-10 w-14 rounded object-cover" />
         ) : (
-          <div className="shrink-0 h-16 w-20 rounded-lg overflow-hidden bg-surface-700 flex items-center justify-center">
-            <MapPin className="h-6 w-6 text-slate-600" />
+          <div className="shrink-0 h-10 w-14 rounded bg-surface-700 flex items-center justify-center">
+            <MapPin className="h-4 w-4 text-slate-600" />
           </div>
         )}
 
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-2 flex-wrap">
-            <div className="min-w-0">
-              <p className="text-sm font-semibold text-white leading-tight">
-                {site.name}
-                {site.is_mandatory && (
-                  <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-500/15 px-1.5 py-0.5 text-xs font-medium text-amber-400">
-                    Obligatorio
-                  </span>
-                )}
-              </p>
-            </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-sm font-semibold text-white truncate">
+              {site.name}
+              {site.is_mandatory && (
+                <span className="ml-1.5 text-xs font-medium text-amber-400">★ Obligatorio</span>
+              )}
+            </p>
             <FormatBadge format={site.format} />
-          </div>
-          <p className="mt-0.5 text-xs text-slate-500 truncate">{site.address}</p>
-
-          <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-            <span className="text-slate-500">Impactos/mes</span>
-            <span className="font-medium text-slate-300">
-              {site.monthly_impacts ? `~${(site.monthly_impacts / 1000).toFixed(0)}k` : '—'}
-            </span>
-            <span className="text-slate-500">Precio lista</span>
-            <span className="font-medium text-slate-300">{formatCurrency(site.list_price, 'ARS')}</span>
-            {site.client_price !== site.list_price && (
-              <>
-                <span className="text-slate-500">Precio cliente</span>
-                <span className="font-semibold text-emerald-400">{formatCurrency(site.client_price, 'ARS')}</span>
-              </>
+            {site.audience_score != null && (
+              <span className="ml-auto shrink-0 text-xs font-semibold"
+                style={{ color: site.audience_score >= 80 ? '#22c55e' : site.audience_score >= 60 ? '#f97316' : '#ef4444' }}>
+                {site.audience_score}% match
+              </span>
             )}
           </div>
-
-          {site.audience_score != null && (
-            <div className="mt-2">
-              <p className="text-xs text-slate-500 mb-1">Match audiencia</p>
-              <ScoreBar score={site.audience_score} />
-            </div>
-          )}
-
-          {site.justification && (
-            <p className="mt-2 text-xs text-slate-500 italic">"{site.justification}"</p>
-          )}
+          <p className="text-xs text-slate-500 truncate">{site.address}</p>
         </div>
       </div>
 
-      {availabilityInfo?.available === false && (() => {
+      {/* Fila 2: datos en línea horizontal */}
+      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+        {site.monthly_impacts > 0 && (
+          <span className="text-slate-500">
+            {isDigital ? 'Impactos/mes' : 'Contactos/mes'}:{' '}
+            <span className="font-medium text-slate-300">
+              {Math.round(site.monthly_impacts).toLocaleString('es-AR')}
+            </span>
+          </span>
+        )}
+        {site.list_price > 0 && (
+          <span className="text-slate-500">
+            Lista: <span className="font-medium text-slate-300">{formatCurrency(site.list_price)}</span>
+          </span>
+        )}
+        {site.client_price > 0 && site.client_price !== site.list_price && (
+          <span className="text-slate-500">
+            Cliente: <span className="font-semibold text-emerald-400">{formatCurrency(site.client_price)}</span>
+          </span>
+        )}
+        {site.client_price > 0 && site.client_price === site.list_price && (
+          <span className="text-slate-500">
+            Precio: <span className="font-semibold text-emerald-400">{formatCurrency(site.client_price)}</span>
+          </span>
+        )}
+      </div>
+
+      {/* Fila 3: justificación */}
+      {site.justification && (
+        <p className="mt-1.5 text-xs text-slate-600 italic leading-snug">
+          "{site.justification}"
+        </p>
+      )}
+
+      {/* Aviso ocupado */}
+      {isOccupied && (() => {
         const freeDate = availabilityInfo.occupiedUntil
           ? new Date(availabilityInfo.occupiedUntil).toLocaleDateString('es-AR', {
               day: '2-digit', month: 'short', year: 'numeric'
             })
           : null
         return (
-          <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
-            <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0 mt-0.5" />
-            <div className="text-xs">
-              <p className="font-semibold text-amber-400">
-                ⚠️ Ocupado · {availabilityInfo.occupiedBy}
-              </p>
-              {freeDate && (
-                <p className="text-amber-600 mt-0.5">
-                  Disponible desde: <span className="text-amber-300 font-medium">{freeDate}</span>
-                  {' · '}Podés ajustar fechas, reemplazarlo o continuar igual.
-                </p>
-              )}
-            </div>
+          <div className="mt-2 flex items-start gap-1.5 rounded border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5">
+            <AlertTriangle className="h-3 w-3 text-amber-400 shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-400">
+              <span className="font-semibold">Ocupado · {availabilityInfo.occupiedBy}</span>
+              {freeDate && <span className="text-amber-600"> · Disponible desde: <span className="text-amber-300 font-medium">{freeDate}</span></span>}
+              <span className="text-amber-700"> · Podés ajustar fechas, reemplazarlo o continuar igual.</span>
+            </p>
           </div>
         )
       })()}
