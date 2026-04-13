@@ -1,8 +1,9 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import {
   MapPin, TrendingUp, DollarSign, Target, Users,
   Save, Printer, MessageCircle, Star,
-  Clock, CheckCircle, Tag, Loader2, Info
+  Clock, CheckCircle, Tag, Loader2, Info,
+  AlertTriangle, RefreshCw,
 } from 'lucide-react'
 import ProposalMap from './ProposalMap'
 import { FORMAT_MAP } from '../../lib/constants'
@@ -10,6 +11,9 @@ import { formatCurrency } from '../../lib/utils'
 import Button from '../../components/ui/Button'
 import { useAuth } from '../../context/AuthContext'
 import { generateProposalPDF } from './generateProposalPDF'
+import { supabase } from '../../lib/supabase'
+
+const DIGITAL_FORMATS = new Set(['digital', 'urban_furniture_digital'])
 
 function MetricCard({ icon: Icon, label, value, sub, color = 'text-brand' }) {
   return (
@@ -107,7 +111,29 @@ function BillboardCard({ site }) {
   )
 }
 
-function OptionPanel({ option, formData, audienceNote, mapRef }) {
+function AvailabilityWarning({ info }) {
+  if (!info || info.available !== false) return null
+  const freeDate = info.occupiedUntil
+    ? new Date(info.occupiedUntil).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })
+    : null
+  return (
+    <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
+      <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0 mt-0.5" />
+      <div className="text-xs">
+        <p className="font-semibold text-amber-400">Cartel ocupado en las fechas solicitadas</p>
+        <p className="text-amber-600 mt-0.5">
+          Campaña activa: <span className="text-amber-400">{info.occupiedBy}</span>
+          {freeDate && <span> · Disponible desde: <span className="text-amber-300 font-medium">{freeDate}</span></span>}
+        </p>
+        <p className="text-amber-700 mt-1">
+          Podés ajustar las fechas, reemplazarlo por un cartel similar, o continuar igual y coordinarlo con el cliente.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function OptionPanel({ option, formData, audienceNote, mapRef, availability = {} }) {
   if (!option) return null
   const { sites = [], rationale } = option
 
@@ -138,6 +164,27 @@ function OptionPanel({ option, formData, audienceNote, mapRef }) {
           </div>
         </div>
       )}
+
+      {/* Banner de disponibilidad */}
+      {(() => {
+        const conflicts = (option?.sites ?? []).filter(s =>
+          !DIGITAL_FORMATS.has(s.format) && availability[s.id]?.available === false
+        )
+        if (conflicts.length === 0) return null
+        return (
+          <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+            <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-amber-400">
+                {conflicts.length} cartel{conflicts.length > 1 ? 'es ocupados' : ' ocupado'} en las fechas solicitadas
+              </p>
+              <p className="text-xs text-amber-600 mt-0.5">
+                Revisá los carteles marcados abajo y coordiná con el cliente antes de guardar.
+              </p>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Metrics */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -179,7 +226,10 @@ function OptionPanel({ option, formData, audienceNote, mapRef }) {
         </h3>
         <div className="space-y-3">
           {sites.map((site, i) => (
-            <BillboardCard key={site.id ?? i} site={site} />
+            <div key={site.id ?? i}>
+              <BillboardCard site={site} />
+              <AvailabilityWarning info={availability[site.id]} />
+            </div>
           ))}
         </div>
       </div>
@@ -258,6 +308,49 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
   const [generatingPDF, setGeneratingPDF] = useState(false)
   const mapARef = useRef(null)
   const mapBRef = useRef(null)
+
+  const [availability, setAvailability] = useState({})
+  const [checkingAvailability, setCheckingAvailability] = useState(false)
+
+  useEffect(() => {
+    const allSites = [
+      ...(results?.optionA?.sites ?? []),
+      ...(results?.optionB?.sites ?? []),
+    ]
+    const physicalSites = allSites.filter(s => !DIGITAL_FORMATS.has(s.format))
+    const uniqueIds = [...new Set(physicalSites.map(s => s.id).filter(Boolean))]
+    if (!uniqueIds.length || !formData.startDate || !formData.endDate) return
+
+    setCheckingAvailability(true)
+    supabase
+      .from('proposal_items')
+      .select(`
+        site_id, start_date, end_date,
+        proposal:proposals!proposal_id(id, client_name, status)
+      `)
+      .in('site_id', uniqueIds)
+      .eq('proposal.status', 'accepted')
+      .not('proposal', 'is', null)
+      .then(({ data }) => {
+        const map = {}
+        for (const id of uniqueIds) map[id] = { available: true }
+        for (const item of data ?? []) {
+          if (!item.start_date || !item.end_date) continue
+          const overlaps =
+            new Date(item.start_date) <= new Date(formData.endDate) &&
+            new Date(item.end_date)   >= new Date(formData.startDate)
+          if (overlaps) {
+            map[item.site_id] = {
+              available:     false,
+              occupiedBy:    item.proposal?.client_name ?? 'Otro cliente',
+              occupiedUntil: item.end_date,
+            }
+          }
+        }
+        setAvailability(map)
+        setCheckingAvailability(false)
+      })
+  }, [results, formData.startDate, formData.endDate])
 
   const activeOption = activeTab === 'A' ? results?.optionA : results?.optionB
   const audienceNote = results?.audience_mode === 'geographic_only' ? results?.audience_note : null
@@ -382,11 +475,19 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
         ))}
       </div>
 
+      {/* Verificando disponibilidad */}
+      {checkingAvailability && (
+        <div className="flex items-center gap-2 text-xs text-slate-500 animate-pulse">
+          <RefreshCw className="h-3 w-3 animate-spin" />
+          Verificando disponibilidad de carteles...
+        </div>
+      )}
+
       {/* Price breakdown */}
       <PriceBreakdown formData={formData} option={activeOption} />
 
       {/* Active option content */}
-      <OptionPanel option={activeOption} formData={formData} audienceNote={audienceNote} mapRef={activeTab === 'A' ? mapARef : mapBRef} />
+      <OptionPanel option={activeOption} formData={formData} audienceNote={audienceNote} mapRef={activeTab === 'A' ? mapARef : mapBRef} availability={availability} />
 
       {/* Hidden panels para captura de ambos mapas */}
       <div style={{ position: 'absolute', left: '-9999px', top: 0, width: '600px', height: '300px', pointerEvents: 'none' }}>
