@@ -196,13 +196,19 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
       {/* Metrics */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard icon={Users} label="Impactos/mes" color="text-blue-400"
-          value={option.total_impacts ? `${(option.total_impacts / 1000).toFixed(0)}k` : '—'}
+          value={option.total_impacts
+            ? `${Math.round(option.total_impacts / 1000).toLocaleString('es-AR')}k`
+            : '—'}
           sub="Impresiones brutas" />
         <MetricCard icon={TrendingUp} label="Alcance estimado" color="text-emerald-400"
-          value={option.estimated_reach ? `${(option.estimated_reach / 1000).toFixed(0)}k` : '—'}
+          value={option.estimated_reach
+            ? `${Math.round(option.estimated_reach / 1000).toLocaleString('es-AR')}k`
+            : '—'}
           sub="Personas únicas" />
         <MetricCard icon={DollarSign} label="CPM estimado" color="text-amber-400"
-          value={option.cpm ? `$${option.cpm}` : '—'}
+          value={option.cpm
+            ? `$${Number(option.cpm).toLocaleString('es-AR')}`
+            : '—'}
           sub="Costo por mil impactos" />
         <MetricCard icon={Target} label="Presupuesto usado" color="text-purple-400"
           value={budgetPct != null ? `${budgetPct}%` : '—'}

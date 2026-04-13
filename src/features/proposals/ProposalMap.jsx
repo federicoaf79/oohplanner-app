@@ -1,5 +1,5 @@
-import { useMemo } from 'react'
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
+import { useMemo, useEffect } from 'react'
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { FORMAT_MAP } from '../../lib/constants'
@@ -32,6 +32,20 @@ function createDivIcon(format, isSelected = false) {
 
 const CABA_CENTER = [-34.6037, -58.3816]
 
+function FitBounds({ sites }) {
+  const map = useMap()
+  useEffect(() => {
+    if (sites.length === 0) return
+    if (sites.length === 1) {
+      map.setView([sites[0].latitude, sites[0].longitude], 14)
+      return
+    }
+    const bounds = L.latLngBounds(sites.map(s => [s.latitude, s.longitude]))
+    map.fitBounds(bounds, { padding: [40, 40] })
+  }, [sites, map])
+  return null
+}
+
 export default function ProposalMap({ sites = [], className = '' }) {
   const validSites = sites.filter(s => s.latitude && s.longitude)
 
@@ -54,6 +68,7 @@ export default function ProposalMap({ sites = [], className = '' }) {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
+        <FitBounds sites={validSites} />
         {validSites.map(site => (
           <Marker
             key={site.site_id}
