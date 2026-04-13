@@ -3,7 +3,7 @@ import {
   MapPin, TrendingUp, DollarSign, Target, Users,
   Save, Printer, MessageCircle, Star,
   Clock, CheckCircle, Tag, Loader2, Info,
-  AlertTriangle, RefreshCw,
+  AlertTriangle, RefreshCw, Upload, Image,
 } from 'lucide-react'
 import ProposalMap from './ProposalMap'
 import { FORMAT_MAP } from '../../lib/constants'
@@ -14,6 +14,17 @@ import { generateProposalPDF, fetchStaticMap } from './generateProposalPDF'
 import { supabase } from '../../lib/supabase'
 
 const DIGITAL_FORMATS = new Set(['digital', 'urban_furniture_digital'])
+
+// Mapeo formato → tipo de arte para mockup
+const FORMAT_TO_ART = {
+  billboard: 'h',
+  digital: 'h',
+  ambient: 'v',
+  urban_furniture: 'v',
+  urban_furniture_digital: 'v',
+  poster: 'v',
+  mobile_screen: 'sq',
+}
 
 function fmtNum(n) {
   if (!n && n !== 0) return '—'
@@ -408,6 +419,42 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
   const [availability, setAvailability] = useState({})
   const [checkingAvailability, setCheckingAvailability] = useState(false)
 
+  // ── Artworks del cliente (override) ──
+  const [clientArtH, setClientArtH]   = useState(null) // { file, preview }
+  const [clientArtV, setClientArtV]   = useState(null)
+  const [clientArtSq, setClientArtSq] = useState(null)
+  const [artExpanded, setArtExpanded] = useState(false)
+
+  function handleClientArt(slot, file) {
+    if (!file || !file.type.startsWith('image/')) return
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Máximo 5MB por imagen')
+      return
+    }
+    const preview = URL.createObjectURL(file)
+    const obj = { file, preview }
+    if (slot === 'h') setClientArtH(obj)
+    else if (slot === 'v') setClientArtV(obj)
+    else setClientArtSq(obj)
+  }
+
+  function removeClientArt(slot) {
+    if (slot === 'h') { if (clientArtH?.preview) URL.revokeObjectURL(clientArtH.preview); setClientArtH(null) }
+    else if (slot === 'v') { if (clientArtV?.preview) URL.revokeObjectURL(clientArtV.preview); setClientArtV(null) }
+    else { if (clientArtSq?.preview) URL.revokeObjectURL(clientArtSq.preview); setClientArtSq(null) }
+  }
+
+  // Resolver arte por formato: cliente > org fallback > null
+  function getArtworkForFormat(format) {
+    const slot = FORMAT_TO_ART[format] ?? 'h'
+    if (slot === 'h') return clientArtH?.preview ?? org?.artwork_h_url ?? null
+    if (slot === 'v') return clientArtV?.preview ?? org?.artwork_v_url ?? null
+    return clientArtSq?.preview ?? org?.artwork_sq_url ?? null
+  }
+
+  const hasAnyClientArt = !!(clientArtH || clientArtV || clientArtSq)
+  const hasAnyOrgArt = !!(org?.artwork_h_url || org?.artwork_v_url || org?.artwork_sq_url)
+
   useEffect(() => {
     const allSites = [
       ...(results?.optionA?.sites ?? []),
@@ -507,6 +554,13 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
           .map(([id]) => id)
       )
 
+      // Construir mapa de artworks para mockups
+      const artworkMap = {
+        h:  clientArtH?.preview ?? org?.artwork_h_url ?? null,
+        v:  clientArtV?.preview ?? org?.artwork_v_url ?? null,
+        sq: clientArtSq?.preview ?? org?.artwork_sq_url ?? null,
+      }
+
       await generateProposalPDF({
         results,
         formData,
@@ -516,6 +570,8 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
         mapB: activeTab === 'B' ? mapBase64 : null,
         activeOption: activeTab,
         occupiedSiteIds,
+        artworkMap,
+        formatToArt: FORMAT_TO_ART,
       })
     } catch (err) {
       console.error('PDF generation error:', err)
@@ -579,6 +635,109 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
           </div>
         </div>
       )}
+
+      {/* Panel artwork cliente */}
+      <div className="card overflow-hidden">
+        <button
+          onClick={() => setArtExpanded(!artExpanded)}
+          className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-700/30 transition-colors"
+        >
+          <div className="flex items-center gap-2.5">
+            <Image className="h-4 w-4 text-brand" />
+            <span className="text-sm font-semibold text-white">Artes para mockup</span>
+            {hasAnyClientArt && (
+              <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-400">
+                Arte cliente
+              </span>
+            )}
+            {!hasAnyClientArt && hasAnyOrgArt && (
+              <span className="rounded-full bg-surface-700 px-2 py-0.5 text-xs font-medium text-slate-400">
+                Usando arte empresa
+              </span>
+            )}
+            {!hasAnyClientArt && !hasAnyOrgArt && (
+              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-400">
+                Sin arte
+              </span>
+            )}
+          </div>
+          <span className={`text-slate-500 transition-transform ${artExpanded ? 'rotate-180' : ''}`}>▾</span>
+        </button>
+
+        {artExpanded && (
+          <div className="px-4 pb-4 pt-1 border-t border-surface-700">
+            <p className="text-xs text-slate-500 mb-3">
+              Subí el arte del cliente para generar mockups en el PDF. Si no subís nada, se usan los artes de empresa como fallback.
+            </p>
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { key: 'h',  label: 'Horizontal', aspect: '16:9', state: clientArtH, orgFallback: org?.artwork_h_url, ratio: 'aspect-video' },
+                { key: 'v',  label: 'Vertical',   aspect: '9:16', state: clientArtV, orgFallback: org?.artwork_v_url, ratio: 'aspect-[9/16]' },
+                { key: 'sq', label: 'Cuadrado',   aspect: '1:1',  state: clientArtSq, orgFallback: org?.artwork_sq_url, ratio: 'aspect-square' },
+              ].map(slot => (
+                <div key={slot.key} className="flex flex-col gap-1.5">
+                  <p className="text-xs font-medium text-slate-400 text-center">{slot.label} ({slot.aspect})</p>
+
+                  {slot.state ? (
+                    /* Arte del cliente subido */
+                    <div className="relative rounded-lg overflow-hidden border border-emerald-500/40 bg-surface-700">
+                      <div className={`${slot.ratio} w-full`}>
+                        <img src={slot.state.preview} alt={slot.label}
+                          className="absolute inset-0 w-full h-full object-cover" />
+                      </div>
+                      <button onClick={() => removeClientArt(slot.key)}
+                        className="absolute top-1 right-1 rounded-full bg-slate-900/80 p-0.5 text-slate-400 hover:text-red-400 transition-colors">
+                        <span className="sr-only">Quitar</span>
+                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                      </button>
+                      <div className="absolute bottom-1 left-1 rounded bg-emerald-500/90 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                        Cliente
+                      </div>
+                    </div>
+                  ) : slot.orgFallback ? (
+                    /* Fallback de empresa */
+                    <label className="cursor-pointer">
+                      <div className="relative rounded-lg overflow-hidden border border-surface-600 bg-surface-700 opacity-70 hover:opacity-100 transition-opacity">
+                        <div className={`${slot.ratio} w-full`}>
+                          <img src={slot.orgFallback} alt={slot.label}
+                            className="absolute inset-0 w-full h-full object-cover" />
+                        </div>
+                        <div className="absolute bottom-1 left-1 rounded bg-surface-800/90 px-1.5 py-0.5 text-[10px] font-medium text-slate-400">
+                          Empresa
+                        </div>
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 hover:opacity-100 transition-opacity">
+                          <Upload className="h-5 w-5 text-white" />
+                        </div>
+                      </div>
+                      <input type="file" accept="image/jpeg,image/png" className="hidden"
+                        onChange={e => { handleClientArt(slot.key, e.target.files?.[0]); e.target.value = '' }} />
+                    </label>
+                  ) : (
+                    /* Sin arte */
+                    <label className="cursor-pointer">
+                      <div className={`${slot.ratio} w-full rounded-lg border-2 border-dashed border-surface-600 bg-surface-800/30 flex flex-col items-center justify-center gap-1 hover:border-brand/40 transition-colors`}>
+                        <Upload className="h-4 w-4 text-slate-600" />
+                        <span className="text-[10px] text-slate-600">Subir</span>
+                      </div>
+                      <input type="file" accept="image/jpeg,image/png" className="hidden"
+                        onChange={e => { handleClientArt(slot.key, e.target.files?.[0]); e.target.value = '' }} />
+                    </label>
+                  )}
+
+                  {/* Botón cambiar si hay arte de cliente */}
+                  {slot.state && (
+                    <label className="cursor-pointer text-center">
+                      <span className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors">Cambiar</span>
+                      <input type="file" accept="image/jpeg,image/png" className="hidden"
+                        onChange={e => { handleClientArt(slot.key, e.target.files?.[0]); e.target.value = '' }} />
+                    </label>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Tabs */}
       <div className="flex gap-2 rounded-xl border border-surface-700 bg-surface-800 p-1">

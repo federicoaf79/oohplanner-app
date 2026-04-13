@@ -31,7 +31,8 @@ export function AuthProvider({ children }) {
           trial_ends_at, subscription_status, plan_price_usd,
           office_address, office_phone, office_hours, website,
           billing_cuit, billing_razon_social, billing_contact,
-          billing_phone, billing_address, billing_email, notes
+          billing_phone, billing_address, billing_email, notes,
+          artwork_h_url, artwork_v_url, artwork_sq_url
         )
       `)
       .eq('id', userId)
