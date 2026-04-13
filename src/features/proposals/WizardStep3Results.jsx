@@ -12,6 +12,7 @@ import Button from '../../components/ui/Button'
 import { useAuth } from '../../context/AuthContext'
 import { generateProposalPDF, fetchStaticMap } from './generateProposalPDF'
 import { generateMockup } from '../../lib/generateMockup'
+import { validateArtwork } from '../../lib/validateArtwork'
 import { supabase } from '../../lib/supabase'
 
 const DIGITAL_FORMATS = new Set(['digital', 'urban_furniture_digital'])
@@ -426,13 +427,18 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
   const [clientArtV, setClientArtV]   = useState(null)
   const [clientArtSq, setClientArtSq] = useState(null)
   const [artExpanded, setArtExpanded] = useState(false)
+  const [clientArtError, setClientArtError] = useState(null)
 
-  function handleClientArt(slot, file) {
-    if (!file || !file.type.startsWith('image/')) return
-    if (file.size > 5 * 1024 * 1024) {
-      alert('Máximo 5MB por imagen')
+  async function handleClientArt(slot, file) {
+    if (!file) return
+    setClientArtError(null)
+
+    const result = await validateArtwork(file, slot)
+    if (!result.valid) {
+      setClientArtError({ slot, message: result.error })
       return
     }
+
     const preview = URL.createObjectURL(file)
     const obj = { file, preview }
     if (slot === 'h') setClientArtH(obj)
@@ -441,6 +447,7 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
   }
 
   function removeClientArt(slot) {
+    setClientArtError(null)
     if (slot === 'h') { if (clientArtH?.preview) URL.revokeObjectURL(clientArtH.preview); setClientArtH(null) }
     else if (slot === 'v') { if (clientArtV?.preview) URL.revokeObjectURL(clientArtV.preview); setClientArtV(null) }
     else { if (clientArtSq?.preview) URL.revokeObjectURL(clientArtSq.preview); setClientArtSq(null) }
@@ -766,6 +773,14 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
             <p className="text-xs text-slate-500 mb-3">
               Subí el arte del cliente para generar mockups en el PDF. Si no subís nada, se usan los artes de empresa como fallback.
             </p>
+            {clientArtError && (
+              <div className="mb-3 flex items-start gap-2.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5">
+                <svg className="h-4 w-4 text-red-400 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <p className="text-xs text-red-300 leading-relaxed">{clientArtError.message}</p>
+              </div>
+            )}
             <div className="grid grid-cols-3 gap-3">
               {[
                 { key: 'h',  label: 'Horizontal', aspect: '16:9', state: clientArtH, orgFallback: org?.artwork_h_url, ratio: 'aspect-video' },

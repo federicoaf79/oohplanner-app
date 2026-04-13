@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { validateArtwork } from '../../lib/validateArtwork'
 import { Shield, Lock, Eye, Building2, Upload, X, Loader2 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
@@ -58,6 +59,7 @@ export default function Settings() {
   const [artV, setArtV]   = useState(org?.artwork_v_url ?? null)
   const [artSq, setArtSq] = useState(org?.artwork_sq_url ?? null)
   const [uploadingArt, setUploadingArt] = useState(null) // 'h' | 'v' | 'sq' | null
+  const [artError, setArtError] = useState(null) // { slot, message }
 
   // ── Descuentos ──
   const [maxSales, setMaxSales]     = useState(org?.max_discount_salesperson ?? 20)
@@ -164,12 +166,11 @@ export default function Settings() {
 
   async function handleArtworkUpload(slot, file) {
     if (!file) return
-    if (!['image/jpeg', 'image/png'].includes(file.type)) {
-      alert('Solo PNG o JPG')
-      return
-    }
-    if (file.size > 2 * 1024 * 1024) {
-      alert('Máximo 2MB por imagen')
+    setArtError(null)
+
+    const result = await validateArtwork(file, slot)
+    if (!result.valid) {
+      setArtError({ slot, message: result.error })
       return
     }
 
@@ -211,6 +212,7 @@ export default function Settings() {
   }
 
   async function handleRemoveArtwork(slot) {
+    setArtError(null)
     const col = slot === 'h' ? 'artwork_h_url'
               : slot === 'v' ? 'artwork_v_url'
               : 'artwork_sq_url'
@@ -367,6 +369,14 @@ export default function Settings() {
               title="Artes genéricos para mockups"
               subtitle="Se usan como fallback cuando el vendedor no sube arte del cliente. Máx. 2MB, solo PNG/JPG."
             />
+            {artError && (
+              <div className="mb-3 flex items-start gap-2.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5">
+                <svg className="h-4 w-4 text-red-400 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <p className="text-xs text-red-300 leading-relaxed">{artError.message}</p>
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {[
                 { key: 'h',  label: 'Horizontal', aspect: '16:9', icon: '📺', state: artH,  ratio: 'aspect-video' },
