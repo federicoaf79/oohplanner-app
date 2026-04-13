@@ -480,8 +480,26 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
   async function handlePDF() {
     setGeneratingPDF(true)
     try {
-      const sitesForMap = activeOption?.sites ?? []
-      const mapBase64 = await fetchStaticMap(sitesForMap)
+      // Esperar que el mapa termine de renderizar
+      await new Promise(resolve => setTimeout(resolve, 2000))
+
+      let mapBase64 = null
+      const mapEl = document.querySelector('.leaflet-container')
+      if (mapEl) {
+        try {
+          const html2canvas = (await import('html2canvas')).default
+          const canvas = await html2canvas(mapEl, {
+            useCORS: true,
+            allowTaint: true,
+            scale: 1.5,
+            backgroundColor: '#1e293b',
+            logging: false,
+          })
+          mapBase64 = canvas.toDataURL('image/jpeg', 0.85)
+        } catch (err) {
+          console.warn('Map capture failed:', err)
+        }
+      }
 
       const occupiedSiteIds = new Set(
         Object.entries(availability)
