@@ -320,7 +320,7 @@ export default function WizardStep1Form({ formData, setFormData, onSubmit }) {
                 </label>
                 <div className="relative">
                   <input
-                    type="number" min="1" max="2000" step="10"
+                    type="number" min="1" max="2000" step="1"
                     className="input-field pr-14 text-sm"
                     value={formData.dailySpots ?? 540}
                     onChange={e => update('dailySpots', Number(e.target.value))}
