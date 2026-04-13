@@ -148,10 +148,13 @@ function computeDerived(
   }
   const currItems = overlap(pS, pE)
 
-  // ── Tasa de cierre global (todas las propuestas históricas) ──
-  const globalNonDraft = allProposals.filter(p => p.status !== 'draft').length
-  const closeRate      = globalNonDraft > 0
-    ? allProposals.filter(p => p.status === 'accepted').length / globalNonDraft * 100
+  // ── Tasa de cierre del período (por created_at, excluye borradores) ──
+  const periodNonDraft = proposals.filter(p => {
+    const d = new Date(p.created_at)
+    return p.status !== 'draft' && d >= pS && d <= pE
+  }).length
+  const closeRate = periodNonDraft > 0
+    ? periodProps.length / periodNonDraft * 100
     : null
 
   // ── Semáforo de campañas por workflow_status (propuestas aceptadas en el período) ──
