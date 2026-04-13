@@ -52,86 +52,93 @@ function ScoreBar({ score }) {
   )
 }
 
-function BillboardCard({ site }) {
+function BillboardCard({ site, availabilityInfo }) {
   return (
-    <div className="card p-4 flex gap-4 hover:border-brand/30 transition-colors">
-      {/* Photo or placeholder */}
-      {site.photo_url ? (
-        <img src={site.photo_url} alt={site.name}
-          className="shrink-0 h-16 w-20 rounded-lg object-cover" />
-      ) : (
-        <div className="shrink-0 h-16 w-20 rounded-lg overflow-hidden bg-surface-700 flex items-center justify-center">
-          <MapPin className="h-6 w-6 text-slate-600" />
-        </div>
-      )}
-
-      <div className="min-w-0 flex-1">
-        <div className="flex items-start justify-between gap-2 flex-wrap">
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-white leading-tight">
-              {site.name}
-              {site.is_mandatory && (
-                <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-500/15 px-1.5 py-0.5 text-xs font-medium text-amber-400">
-                  Obligatorio
-                </span>
-              )}
-            </p>
+    <div className={`card p-4 flex flex-col gap-3 hover:border-brand/30 transition-colors ${
+      availabilityInfo?.available === false ? 'border-amber-500/50 bg-amber-500/5' : ''
+    }`}>
+      <div className="flex gap-4">
+        {/* Photo or placeholder */}
+        {site.photo_url ? (
+          <img src={site.photo_url} alt={site.name}
+            className="shrink-0 h-16 w-20 rounded-lg object-cover" />
+        ) : (
+          <div className="shrink-0 h-16 w-20 rounded-lg overflow-hidden bg-surface-700 flex items-center justify-center">
+            <MapPin className="h-6 w-6 text-slate-600" />
           </div>
-          <FormatBadge format={site.format} />
-        </div>
-        <p className="mt-0.5 text-xs text-slate-500 truncate">{site.address}</p>
+        )}
 
-        <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-          <span className="text-slate-500">Impactos/mes</span>
-          <span className="font-medium text-slate-300">
-            {site.monthly_impacts ? `~${(site.monthly_impacts / 1000).toFixed(0)}k` : '—'}
-          </span>
-          <span className="text-slate-500">Precio lista</span>
-          <span className="font-medium text-slate-300">{formatCurrency(site.list_price, 'ARS')}</span>
-          {site.client_price !== site.list_price && (
-            <>
-              <span className="text-slate-500">Precio cliente</span>
-              <span className="font-semibold text-emerald-400">{formatCurrency(site.client_price, 'ARS')}</span>
-            </>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2 flex-wrap">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-white leading-tight">
+                {site.name}
+                {site.is_mandatory && (
+                  <span className="ml-1.5 inline-flex items-center rounded-full bg-amber-500/15 px-1.5 py-0.5 text-xs font-medium text-amber-400">
+                    Obligatorio
+                  </span>
+                )}
+              </p>
+            </div>
+            <FormatBadge format={site.format} />
+          </div>
+          <p className="mt-0.5 text-xs text-slate-500 truncate">{site.address}</p>
+
+          <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+            <span className="text-slate-500">Impactos/mes</span>
+            <span className="font-medium text-slate-300">
+              {site.monthly_impacts ? `~${(site.monthly_impacts / 1000).toFixed(0)}k` : '—'}
+            </span>
+            <span className="text-slate-500">Precio lista</span>
+            <span className="font-medium text-slate-300">{formatCurrency(site.list_price, 'ARS')}</span>
+            {site.client_price !== site.list_price && (
+              <>
+                <span className="text-slate-500">Precio cliente</span>
+                <span className="font-semibold text-emerald-400">{formatCurrency(site.client_price, 'ARS')}</span>
+              </>
+            )}
+          </div>
+
+          {site.audience_score != null && (
+            <div className="mt-2">
+              <p className="text-xs text-slate-500 mb-1">Match audiencia</p>
+              <ScoreBar score={site.audience_score} />
+            </div>
+          )}
+
+          {site.justification && (
+            <p className="mt-2 text-xs text-slate-500 italic">"{site.justification}"</p>
           )}
         </div>
+      </div>
 
-        {site.audience_score != null && (
-          <div className="mt-2">
-            <p className="text-xs text-slate-500 mb-1">Match audiencia</p>
-            <ScoreBar score={site.audience_score} />
+      {availabilityInfo?.available === false && (() => {
+        const freeDate = availabilityInfo.occupiedUntil
+          ? new Date(availabilityInfo.occupiedUntil).toLocaleDateString('es-AR', {
+              day: '2-digit', month: 'short', year: 'numeric'
+            })
+          : null
+        return (
+          <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
+            <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0 mt-0.5" />
+            <div className="text-xs">
+              <p className="font-semibold text-amber-400">
+                ⚠️ Ocupado · {availabilityInfo.occupiedBy}
+              </p>
+              {freeDate && (
+                <p className="text-amber-600 mt-0.5">
+                  Disponible desde: <span className="text-amber-300 font-medium">{freeDate}</span>
+                  {' · '}Podés ajustar fechas, reemplazarlo o continuar igual.
+                </p>
+              )}
+            </div>
           </div>
-        )}
-
-        {site.justification && (
-          <p className="mt-2 text-xs text-slate-500 italic">"{site.justification}"</p>
-        )}
-      </div>
+        )
+      })()}
     </div>
   )
 }
 
-function AvailabilityWarning({ info }) {
-  if (!info || info.available !== false) return null
-  const freeDate = info.occupiedUntil
-    ? new Date(info.occupiedUntil).toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' })
-    : null
-  return (
-    <div className="mt-2 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5">
-      <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0 mt-0.5" />
-      <div className="text-xs">
-        <p className="font-semibold text-amber-400">Cartel ocupado en las fechas solicitadas</p>
-        <p className="text-amber-600 mt-0.5">
-          Campaña activa: <span className="text-amber-400">{info.occupiedBy}</span>
-          {freeDate && <span> · Disponible desde: <span className="text-amber-300 font-medium">{freeDate}</span></span>}
-        </p>
-        <p className="text-amber-700 mt-1">
-          Podés ajustar las fechas, reemplazarlo por un cartel similar, o continuar igual y coordinarlo con el cliente.
-        </p>
-      </div>
-    </div>
-  )
-}
 
 function OptionPanel({ option, formData, audienceNote, mapRef, availability = {} }) {
   if (!option) return null
@@ -226,10 +233,11 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
         </h3>
         <div className="space-y-3">
           {sites.map((site, i) => (
-            <div key={site.id ?? i}>
-              <BillboardCard site={site} />
-              <AvailabilityWarning info={availability[site.id]} />
-            </div>
+            <BillboardCard
+              key={site.id ?? i}
+              site={site}
+              availabilityInfo={availability[site.id]}
+            />
           ))}
         </div>
       </div>
