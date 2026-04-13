@@ -272,13 +272,20 @@ export default function Reports() {
     const activeCount = filteredProposals.filter(p => p.status === 'accepted').length
 
     // Tasa de cierre: métrica global histórica, sin filtro de fecha
-    const totalAccepted = proposals.filter(p => p.status === 'accepted').length
-    const totalNonDraft = proposals.filter(p => p.status !== 'draft').length
-    const closureRate   = totalNonDraft > 0 ? totalAccepted / totalNonDraft * 100 : 0
+    const { from, to } = getDateBounds(dateRange, customStart, customEnd)
+    const periodAllNonDraft = proposals.filter(p => {
+      if (p.status === 'draft') return false
+      const d = new Date(p.accepted_at ?? p.created_at)
+      if (from && d < from) return false
+      if (to   && d > to)   return false
+      return true
+    }).length
+    const closureRate = periodAllNonDraft > 0
+      ? filteredProposals.length / periodAllNonDraft * 100
+      : 0
 
     // Carteles ocupados: solapamiento real con el período, solo físicos
     const DIGITAL_FORMATS = new Set(['digital', 'urban_furniture_digital'])
-    const { from, to } = getDateBounds(dateRange, customStart, customEnd)
     const propStatusMap = {}
     proposals.forEach(p => { propStatusMap[p.id] = p.status })
     const invMap = {}

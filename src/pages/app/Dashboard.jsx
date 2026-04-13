@@ -419,7 +419,7 @@ export default function Dashboard() {
               <p className="text-xl font-bold text-white">
                 {derived.closeRate != null ? fmtPct(derived.closeRate) : '—'}
               </p>
-              <p className="mt-1.5 text-xs text-slate-600">Global · aceptadas / no-borradores</p>
+              <p className="mt-1.5 text-xs text-slate-600">Período · aceptadas / no-borradores</p>
             </div>
 
           </div>
