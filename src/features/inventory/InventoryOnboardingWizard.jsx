@@ -29,30 +29,87 @@ const STEPS = [
 
 const FORMAT_OPTIONS = [
   'billboard', 'digital', 'ambient', 'poster',
-  'urban_furniture', 'urban_furniture_digital', 'mobile_screen',
+  'urban_furniture', 'urban_furniture_digital',
+  'mobile_screen', 'transit', 'street_furniture',
 ]
 
 const FORMAT_LABELS = {
-  billboard:              'Espectacular',
+  billboard:              'Espectacular / Gran Formato',
   digital:                'Digital / LED',
   ambient:                'Medianera / Top Wall',
-  poster:                 'Afiche',
-  urban_furniture:        'Mobiliario Urbano',
+  poster:                 'Afiche papel',
+  urban_furniture:        'Mobiliario Urbano iluminado',
   urban_furniture_digital:'Mobiliario Digital',
   mobile_screen:          'Pantalla Móvil',
+  transit:                'Transporte / Subte',
+  street_furniture:       'Mobiliario sin luz / Papel',
 }
 
 // ── Mapeo de nombres coloquiales a valores del schema ─────────────────────────
 
 const FORMAT_KEYWORD_MAP = {
-  'espectacular': 'billboard', 'columna': 'billboard', 'cartel': 'billboard', 'valla': 'billboard',
-  'top wall': 'ambient', 'medianera': 'ambient', 'fachada': 'ambient', 'ambient': 'ambient',
-  'digital': 'digital', 'led': 'digital', 'dooh': 'digital', 'pantalla': 'digital',
-  'afiche': 'poster', 'poster': 'poster', 'gigantografía': 'poster', 'gigantografia': 'poster',
+  // billboard
+  'espectacular': 'billboard', 'espectaculares': 'billboard',
+  'columna': 'billboard', 'monocolumna': 'billboard',
+  'cartel': 'billboard', 'carteles': 'billboard',
+  'valla': 'billboard', 'vallas': 'billboard',
+  'frontlight': 'billboard', 'front light': 'billboard',
+  'backlight': 'billboard', 'back light': 'billboard',
+  'séxtuple': 'billboard', 'sextuple': 'billboard',
+  'gran formato': 'billboard', 'gran_formato': 'billboard',
+  'estructura': 'billboard', 'billboard': 'billboard',
+  'cartelera': 'billboard', 'lona': 'billboard',
+  // ambient
+  'medianera': 'ambient', 'medianeras': 'ambient',
+  'top wall': 'ambient', 'topwall': 'ambient',
+  'fachada': 'ambient', 'mural': 'ambient',
+  'pendón': 'ambient', 'pendon': 'ambient',
+  'ambient': 'ambient',
+  // digital
+  'digital': 'digital', 'led': 'digital',
+  'dooh': 'digital', 'pantalla': 'digital',
+  'pantalla led': 'digital', 'pantalla digital': 'digital',
+  'totem': 'digital', 'tótem': 'digital',
+  'pantalla vial': 'digital', 'pantalla medianera': 'digital',
+  'display': 'digital', 'screen': 'digital',
+  // poster
+  'afiche': 'poster', 'afiches': 'poster',
+  'poster': 'poster', 'papel': 'poster',
+  'gigantografía': 'poster', 'gigantografia': 'poster',
+  'cartel papel': 'poster',
+  // urban_furniture (con luz)
   'mobiliario': 'urban_furniture', 'urban_furniture': 'urban_furniture',
+  'pupi': 'urban_furniture', 'pupis': 'urban_furniture',
+  'refugio': 'urban_furniture', 'refugios': 'urban_furniture',
   'parada': 'urban_furniture', 'kiosco': 'urban_furniture',
-  'mobile_screen': 'mobile_screen', 'móvil': 'mobile_screen', 'movil': 'mobile_screen',
+  'columna publicitaria': 'urban_furniture',
+  'cara pantalla': 'urban_furniture', 'mupie': 'urban_furniture',
+  'mupi': 'urban_furniture',
+  // urban_furniture_digital
   'urban_furniture_digital': 'urban_furniture_digital',
+  'mobiliario digital': 'urban_furniture_digital',
+  'mupi digital': 'urban_furniture_digital',
+  'pupi digital': 'urban_furniture_digital',
+  'refugio digital': 'urban_furniture_digital',
+  // mobile_screen
+  'mobile_screen': 'mobile_screen',
+  'móvil': 'mobile_screen', 'movil': 'mobile_screen',
+  'pantalla móvil': 'mobile_screen', 'camion led': 'mobile_screen',
+  'camión led': 'mobile_screen', 'luneta': 'mobile_screen',
+  'colectivo': 'mobile_screen',
+  // transit
+  'transit': 'transit', 'subte': 'transit',
+  'andén': 'transit', 'anden': 'transit',
+  'transiluminado': 'transit', 'transporte': 'transit',
+  'panel andén': 'transit', 'panel anden': 'transit',
+  // street_furniture (sin luz, papel)
+  'street_furniture': 'street_furniture',
+  'soporte papel': 'street_furniture',
+  'cerco': 'street_furniture',
+  'valla obra': 'street_furniture',
+  'refugio sin luz': 'street_furniture',
+  'pupi sin luz': 'street_furniture',
+  'columna sin luz': 'street_furniture',
 }
 
 function mapFormat(val) {
@@ -163,7 +220,17 @@ Campos por cartel (usa null cuando no disponible):
 - name (string): nombre del cartel
 - address (string): dirección física
 - city (string): ciudad
-- format: "billboard" (espectacular/columna/cartel/valla) | "ambient" (top wall/medianera/fachada) | "digital" (LED/DOOH/pantalla) | "poster" (afiche/gigantografía) | "urban_furniture" (mobiliario/parada/kiosco) | "mobile_screen"
+- format: uno de estos valores exactos:
+    "billboard" → espectacular, monocolumna, frontlight, backlight, séxtuple, valla iluminada, gran formato, cartel, lona
+    "ambient" → medianera, top wall, fachada, pendón, mural
+    "digital" → pantalla LED, tótem digital, DOOH, pantalla vial, pantalla medianera LED
+    "urban_furniture" → pupi iluminado, refugio iluminado, columna publicitaria, MUPI, mobiliario urbano con luz
+    "urban_furniture_digital" → pupi digital, refugio digital, MUPI digital, mobiliario digital
+    "poster" → afiche papel, gigantografía, cartel papel
+    "mobile_screen" → pantalla móvil, camión LED, luneta de colectivo
+    "transit" → subte, andén, transiluminado, panel de transporte
+    "street_furniture" → mobiliario sin iluminación, soporte papel, cerco de obra, valla sin luz
+    Si dudás, usá "billboard". NUNCA devuelvas un valor fuera de esta lista.
 - width_m (number|null): ancho en metros
 - height_m (number|null): alto en metros
 - owner_type: "owned" o "rented"
