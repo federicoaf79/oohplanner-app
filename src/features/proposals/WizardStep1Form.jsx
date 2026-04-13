@@ -280,19 +280,87 @@ export default function WizardStep1Form({ formData, setFormData, onSubmit }) {
           })}
         </div>
 
-        {/* Frecuencia digital */}
+        {/* Configuración digital */}
         {hasDigital && (
-          <div className="mt-4 rounded-xl border border-blue-500/20 bg-blue-500/5 p-4">
-            <p className="mb-3 text-sm font-medium text-blue-300">
-              📺 Frecuencia para pantallas digitales
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {DIGITAL_FREQUENCIES.map(f => (
-                <Toggle key={f.value} label={f.label}
-                  checked={formData.digitalFrequency === f.value}
-                  onChange={() => update('digitalFrequency', f.value)} />
-              ))}
+          <div className="mt-4 rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 space-y-4">
+            <p className="text-sm font-medium text-blue-300">📺 Configuración de pantallas digitales</p>
+
+            {/* Frecuencia */}
+            <div>
+              <p className="mb-2 text-xs font-medium text-slate-400">Frecuencia de aparición</p>
+              <div className="flex flex-wrap gap-2">
+                {DIGITAL_FREQUENCIES.map(f => (
+                  <Toggle key={f.value} label={f.label}
+                    checked={formData.digitalFrequency === f.value}
+                    onChange={() => update('digitalFrequency', f.value)} />
+                ))}
+              </div>
             </div>
+
+            {/* Spot duration + daily spots + hours */}
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-400">
+                  Duración del spot
+                </label>
+                <div className="relative">
+                  <input
+                    type="number" min="5" max="60" step="5"
+                    className="input-field pr-10 text-sm"
+                    value={formData.spotDurationSec ?? 10}
+                    onChange={e => update('spotDurationSec', Number(e.target.value))}
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">seg</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-400">
+                  Salidas por día
+                </label>
+                <div className="relative">
+                  <input
+                    type="number" min="1" max="2000" step="10"
+                    className="input-field pr-14 text-sm"
+                    value={formData.dailySpots ?? 540}
+                    onChange={e => update('dailySpots', Number(e.target.value))}
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">spots</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-slate-400">
+                  Horario de emisión
+                </label>
+                <input
+                  type="text"
+                  className="input-field text-sm"
+                  placeholder="07:00-02:00"
+                  value={formData.operatingHours ?? '07:00-02:00'}
+                  onChange={e => update('operatingHours', e.target.value)}
+                />
+              </div>
+            </div>
+
+            {/* Info calculada */}
+            {(formData.spotDurationSec && formData.dailySpots) && (
+              <div className="rounded-lg bg-blue-500/10 border border-blue-500/20 px-3 py-2 text-xs text-blue-300 space-y-0.5">
+                <p>
+                  <span className="text-slate-400">Impactos diarios estimados: </span>
+                  <strong>{(formData.dailySpots ?? 540).toLocaleString('es-AR')}</strong> apariciones
+                </p>
+                <p>
+                  <span className="text-slate-400">Tiempo total en pantalla/día: </span>
+                  <strong>{Math.round((formData.dailySpots ?? 540) * (formData.spotDurationSec ?? 10) / 60)} min</strong>
+                </p>
+                <p>
+                  <span className="text-slate-400">Ciclo de rotación: </span>
+                  <strong>cada ~{Math.round(19 * 3600 / (formData.dailySpots ?? 540))} seg</strong>
+                  <span className="text-slate-500 ml-1">(estimado en 19hs de emisión)</span>
+                </p>
+              </div>
+            )}
           </div>
         )}
       </div>
