@@ -50,7 +50,7 @@ function getDateBounds(dateRange, customStart, customEnd) {
 function applyDateFilter(list, dateRange, customStart, customEnd) {
   const { from, to } = getDateBounds(dateRange, customStart, customEnd)
   return list.filter(item => {
-    const d = new Date(item.created_at)
+    const d = new Date(item.accepted_at ?? item.created_at)
     if (from && d < from) return false
     if (to   && d > to)   return false
     return true
@@ -67,7 +67,7 @@ const DATE_OPTS = [
   { id: 'custom',         label: 'Personalizado' },
 ]
 
-const REV_STATUSES    = new Set(['sent', 'accepted'])
+const REV_STATUSES    = new Set(['accepted'])
 const ACTIVE_STATUSES = new Set(['accepted'])
 
 // ─── tiny sub-components ─────────────────────────────────────────────────────
@@ -157,7 +157,7 @@ export default function Reports() {
         { data: invData,  error: e4 },
       ] = await Promise.all([
         supabase.from('proposals')
-          .select('id, status, created_at, seller_id, title, client_name')
+          .select('id, status, created_at, accepted_at, seller_id, title, client_name')
           .eq('org_id', orgId)
           .order('created_at', { ascending: false }),
 
@@ -238,7 +238,7 @@ export default function Reports() {
 
   // ── filtered proposals & items ───────────────────────────────────────────
   const filteredProposals = useMemo(
-    () => applyDateFilter(proposals, dateRange, customStart, customEnd),
+    () => applyDateFilter(proposals, dateRange, customStart, customEnd).filter(p => p.status === 'accepted'),
     [proposals, dateRange, customStart, customEnd]
   )
 
@@ -266,7 +266,7 @@ export default function Reports() {
 
     const revenue = filteredItems
       .filter(pi => revIds.has(pi.proposal_id))
-      .reduce((s, pi) => s + (pi.rate ?? 0) * (pi.duration ?? 1), 0)
+      .reduce((s, pi) => s + (pi.rate ?? 0), 0)
 
     // Propuestas activas: filtradas por período
     const activeCount = filteredProposals.filter(p => p.status === 'accepted').length
@@ -329,15 +329,16 @@ export default function Reports() {
       const monthStart = new Date(d.getFullYear(), d.getMonth(), 1)
       const monthEnd   = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59)
 
-      // Revenue: propuestas creadas en el mes con status rev
+      // Revenue: propuestas aceptadas en el mes (por accepted_at)
       const monthProps = proposals.filter(p => {
-        const dt = new Date(p.created_at)
+        if (p.status !== 'accepted') return false
+        const dt = new Date(p.accepted_at ?? p.created_at)
         return dt >= monthStart && dt <= monthEnd
       })
-      const revIds = new Set(monthProps.filter(p => REV_STATUSES.has(p.status)).map(p => p.id))
+      const revIds = new Set(monthProps.map(p => p.id))
       const revenue = propItems
         .filter(pi => revIds.has(pi.proposal_id))
-        .reduce((s, pi) => s + (pi.rate ?? 0) * (pi.duration ?? 1), 0)
+        .reduce((s, pi) => s + (pi.rate ?? 0), 0)
 
       // Ocupación: solapamiento real de campaña con el mes (solo físicos)
       const occupiedInMonth = new Set(
@@ -385,7 +386,7 @@ export default function Reports() {
       if (REV_STATUSES.has(p.status)) {
         map[sid].revenue += filteredItems
           .filter(pi => pi.proposal_id === p.id)
-          .reduce((s, pi) => s + (pi.rate ?? 0) * (pi.duration ?? 1), 0)
+          .reduce((s, pi) => s + (pi.rate ?? 0), 0)
       }
     })
 
@@ -406,7 +407,7 @@ export default function Reports() {
         const fmt = pi.format ?? '__none__'
         if (!map[fmt]) return
         if (ACTIVE_STATUSES.has(p.status)) map[fmt].occupied.add(pi.site_id)
-        if (REV_STATUSES.has(p.status))    map[fmt].revenue += (pi.rate ?? 0) * (pi.duration ?? 1)
+        if (REV_STATUSES.has(p.status))    map[fmt].revenue += (pi.rate ?? 0)
       })
     })
 
@@ -429,7 +430,7 @@ export default function Reports() {
       const revItems  = siteItems.filter(pi => REV_STATUSES.has(filteredStatusMap[pi.proposal_id]))
       const isOccupied = siteItems.some(pi => ACTIVE_STATUSES.has(filteredStatusMap[pi.proposal_id]))
 
-      const revenue = revItems.reduce((s, pi) => s + (pi.rate ?? 0) * (pi.duration ?? 1), 0)
+      const revenue = revItems.reduce((s, pi) => s + (pi.rate ?? 0), 0)
 
       // Fixed monthly costs
       const fixedCosts = (inv.cost_rent ?? 0) + (inv.cost_electricity ?? 0) +
@@ -441,9 +442,9 @@ export default function Reports() {
 
       // Commissions (per-item, then summed)
       const sellerComm = revItems.reduce((s, pi) =>
-        s + (pi.rate ?? 0) * (pi.duration ?? 1) * (pi.cost_seller_commission_pct ?? 0) / 100, 0)
+        s + (pi.rate ?? 0) * (pi.cost_seller_commission_pct ?? 0) / 100, 0)
       const agencyComm = revItems.reduce((s, pi) =>
-        s + (pi.rate ?? 0) * (pi.duration ?? 1) * (pi.cost_agency_commission_pct ?? 0) / 100, 0)
+        s + (pi.rate ?? 0) * (pi.cost_agency_commission_pct ?? 0) / 100, 0)
       const asociPct   = inv.asociado_comision_pct ?? 0
       const asociComm  = revenue * asociPct / 100
       const totalComm  = sellerComm + agencyComm + asociComm

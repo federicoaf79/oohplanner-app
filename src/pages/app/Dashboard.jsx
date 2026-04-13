@@ -119,7 +119,25 @@ function computeDerived(
   const invById = {}
   inventory.forEach(i => { invById[i.id] = i })
 
-  // Items que solapan una ventana de fechas y pertenecen a propuestas aceptadas
+  // ── Propuestas aceptadas en el período (por accepted_at) ──
+  const periodProps = proposals.filter(p => {
+    const d = new Date(p.accepted_at ?? p.created_at)
+    return p.status === 'accepted' && d >= pS && d <= pE
+  })
+  const periodAcceptedIds = new Set(periodProps.map(p => p.id))
+
+  const prevProps = proposals.filter(p => {
+    const d = new Date(p.accepted_at ?? p.created_at)
+    return p.status === 'accepted' && d >= prS && d <= prE
+  })
+  const prevAcceptedIds = new Set(prevProps.map(p => p.id))
+
+  // ── Revenue = SUM(rate) de items de propuestas aceptadas en el período ──
+  const revenue     = items.filter(pi => periodAcceptedIds.has(pi.proposal_id)).reduce((s, pi) => s + (pi.rate ?? 0), 0)
+  const prevRevenue = items.filter(pi => prevAcceptedIds.has(pi.proposal_id)).reduce((s, pi) => s + (pi.rate ?? 0), 0)
+  const revDelta    = prevRevenue > 0 ? (revenue - prevRevenue) / prevRevenue * 100 : null
+
+  // Items solapando período — solo para ocupación física
   function overlap(start, end) {
     return items.filter(pi => {
       if (!pi.start_date || !pi.end_date) return false
@@ -129,18 +147,6 @@ function computeDerived(
     })
   }
   const currItems = overlap(pS, pE)
-  const prevItems = overlap(prS, prE)
-
-  // ── FIX 1: Revenue = SUM(rate) SIN multiplicar por duration ──
-  const revenue     = currItems.reduce((s, pi) => s + (pi.rate ?? 0), 0)
-  const prevRevenue = prevItems.reduce((s, pi) => s + (pi.rate ?? 0), 0)
-  const revDelta    = prevRevenue > 0 ? (revenue - prevRevenue) / prevRevenue * 100 : null
-
-  // ── Propuestas del período (por created_at) — para conteo total ──
-  const periodProps = proposals.filter(p => {
-    const d = new Date(p.created_at)
-    return d >= pS && d <= pE
-  })
 
   // ── Tasa de cierre global (todas las propuestas históricas) ──
   const globalNonDraft = allProposals.filter(p => p.status !== 'draft').length
@@ -148,23 +154,16 @@ function computeDerived(
     ? allProposals.filter(p => p.status === 'accepted').length / globalNonDraft * 100
     : null
 
-  // ── FIX 2: Semáforo de campañas por workflow_status (usa items solapando período) ──
+  // ── Semáforo de campañas por workflow_status (propuestas aceptadas en el período) ──
   const workflowCounts = {}
-  const seenWfProps = new Set()
-  currItems.forEach(pi => {
-    if (seenWfProps.has(pi.proposal_id)) return
-    seenWfProps.add(pi.proposal_id)
-    const p = propById[pi.proposal_id]
-    if (!p || p.status !== 'accepted') return
-    const key = (!p.workflow_status || p.workflow_status === 'pending')
-      ? 'pending'
-      : p.workflow_status
+  periodProps.forEach(p => {
+    const key = (!p.workflow_status || p.workflow_status === 'pending') ? 'pending' : p.workflow_status
     workflowCounts[key] = (workflowCounts[key] ?? 0) + 1
   })
 
-  // ── FIX 6: Mix de formatos con % precalculado ──
+  // ── Mix de formatos con % precalculado (propuestas aceptadas en el período) ──
   const fmtMap = {}
-  currItems.forEach(pi => {
+  items.filter(pi => periodAcceptedIds.has(pi.proposal_id)).forEach(pi => {
     const fmt = invById[pi.site_id]?.format
     if (!fmt) return
     if (!fmtMap[fmt]) fmtMap[fmt] = new Set()
@@ -190,18 +189,20 @@ function computeDerived(
   const physPct      = physTotal > 0 ? Math.round(physOccupied / physTotal * 100) : 0
 
   // ── Mi actividad ──
-  const myPeriod = proposals.filter(p =>
-    p.created_by === userId && new Date(p.created_at) >= pS && new Date(p.created_at) <= pE
-  )
+  const myPeriod = proposals.filter(p => {
+    if (p.created_by && p.created_by !== userId) return false
+    const d = new Date(p.accepted_at ?? p.created_at)
+    return d >= pS && d <= pE
+  })
   const commPct = userProfile?.commission_pct ?? 0
 
-  // FIX 1+5: Cerradas = propuestas del usuario con items solapando período; comisión = SUM(rate) solo
+  // Cerradas = propuestas propias aceptadas en el período (por accepted_at); comisión = SUM(rate)
   const myAcceptedOverlapItems = items.filter(pi => {
-    if (!pi.start_date || !pi.end_date) return false
     const p = propById[pi.proposal_id]
     if (p?.status !== 'accepted') return false
     if (p.created_by && p.created_by !== userId) return false
-    return new Date(pi.start_date) <= pE && new Date(pi.end_date) >= pS
+    const d = new Date(p.accepted_at ?? p.created_at)
+    return d >= pS && d <= pE
   })
   const myClosed     = new Set(myAcceptedOverlapItems.map(pi => pi.proposal_id)).size
   // FIX 1: comisión sobre rate mensual sin duration
@@ -304,7 +305,7 @@ export default function Dashboard() {
 
       // 3 — Propuestas recientes (últimos 60 días) — incluye workflow_status para semáforo (FIX 2)
       supabase.from('proposals')
-        .select('id, status, workflow_status, total_value, created_by, created_at, client_name, valid_until')
+        .select('id, status, workflow_status, total_value, created_by, created_at, accepted_at, client_name, valid_until')
         .eq('org_id', profile.org_id)
         .gte('created_at', daysAgo60.toISOString()),
 
