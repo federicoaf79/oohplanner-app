@@ -15,6 +15,11 @@ import { supabase } from '../../lib/supabase'
 
 const DIGITAL_FORMATS = new Set(['digital', 'urban_furniture_digital'])
 
+function fmtNum(n) {
+  if (!n && n !== 0) return '—'
+  return Math.round(Number(n)).toLocaleString('es-AR')
+}
+
 function MetricCard({ icon: Icon, label, value, sub, color = 'text-brand' }) {
   return (
     <div className="card p-4 flex flex-col gap-1">
@@ -193,27 +198,89 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
         )
       })()}
 
-      {/* Metrics */}
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard icon={Users} label="Impactos/mes" color="text-blue-400"
-          value={option.total_impacts
-            ? `${Math.round(option.total_impacts / 1000).toLocaleString('es-AR')}k`
-            : '—'}
-          sub="Impresiones brutas" />
-        <MetricCard icon={TrendingUp} label="Alcance estimado" color="text-emerald-400"
-          value={option.estimated_reach
-            ? `${Math.round(option.estimated_reach / 1000).toLocaleString('es-AR')}k`
-            : '—'}
-          sub="Personas únicas" />
-        <MetricCard icon={DollarSign} label="CPM estimado" color="text-amber-400"
-          value={option.cpm
-            ? `$${Number(option.cpm).toLocaleString('es-AR')}`
-            : '—'}
-          sub="Costo por mil impactos" />
-        <MetricCard icon={Target} label="Presupuesto usado" color="text-purple-400"
-          value={budgetPct != null ? `${budgetPct}%` : '—'}
-          sub={option.total_client_price ? formatCurrency(option.total_client_price, 'ARS') : ''} />
-      </div>
+      {/* Metrics — separado OFF vs DOOH */}
+      {(() => {
+        const digitalSites  = sites.filter(s => DIGITAL_FORMATS.has(s.format))
+        const physicalSites = sites.filter(s => !DIGITAL_FORMATS.has(s.format))
+
+        const doohImpacts   = digitalSites.reduce((s, x) => s + (x.monthly_impacts ?? 0), 0)
+        const doohInversion = digitalSites.reduce((s, x) => s + (x.client_price ?? 0), 0)
+
+        const offContactos  = physicalSites.reduce((s, x) => s + (x.monthly_impacts ?? 0), 0)
+        const offInversion  = physicalSites.reduce((s, x) => s + (x.client_price ?? 0), 0)
+
+        const budget    = Number(formData.budget ?? 0)
+        const bPct = budget > 0 && option.total_client_price
+          ? Math.min(100, Math.round(option.total_client_price / budget * 100))
+          : null
+
+        const hasDigital  = digitalSites.length > 0
+        const hasPhysical = physicalSites.length > 0
+
+        return (
+          <div className="space-y-3">
+            {/* DOOH */}
+            {hasDigital && (
+              <div>
+                <p className="text-xs font-semibold text-blue-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                  <span>📺</span> Digital Out of Home (DOOH)
+                </p>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  <MetricCard icon={Users} label="Impactos/mes" color="text-blue-400"
+                    value={fmtNum(doohImpacts)}
+                    sub={`${digitalSites.length} pantalla${digitalSites.length > 1 ? 's' : ''} · apariciones de spot`} />
+                  <MetricCard icon={DollarSign} label="Inversión DOOH" color="text-blue-300"
+                    value={formatCurrency(doohInversion)}
+                    sub="Con descuento aplicado" />
+                  <MetricCard icon={Target} label="Pantallas" color="text-blue-200"
+                    value={String(digitalSites.length)}
+                    sub="Soportes digitales" />
+                </div>
+              </div>
+            )}
+
+            {/* OFF */}
+            {hasPhysical && (
+              <div>
+                <p className="text-xs font-semibold text-orange-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                  <span>🏙️</span> Vía Pública Estática (OFF)
+                </p>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  <MetricCard icon={Users} label="Contactos/mes" color="text-orange-400"
+                    value={fmtNum(offContactos)}
+                    sub={`${physicalSites.length} soporte${physicalSites.length > 1 ? 's' : ''} · tráfico estimado`} />
+                  <MetricCard icon={DollarSign} label="Inversión OFF" color="text-orange-300"
+                    value={formatCurrency(offInversion)}
+                    sub="Con descuento aplicado" />
+                  <MetricCard icon={Target} label="Soportes" color="text-orange-200"
+                    value={String(physicalSites.length)}
+                    sub="Carteles físicos" />
+                </div>
+              </div>
+            )}
+
+            {/* Global */}
+            <div>
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                <span>📊</span> Resumen total
+              </p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <MetricCard icon={DollarSign} label="Total cliente" color="text-emerald-400"
+                  value={formatCurrency(option.total_client_price ?? 0)}
+                  sub={bPct != null ? `${bPct}% del presupuesto` : ''} />
+                <MetricCard icon={TrendingUp} label="Presupuesto restante" color="text-slate-400"
+                  value={formatCurrency(option.budget_remaining ?? 0)}
+                  sub="Sin asignar" />
+                {option.cpm > 0 && (
+                  <MetricCard icon={Target} label="CPM general" color="text-purple-400"
+                    value={`$${fmtNum(option.cpm)}`}
+                    sub="Costo por mil impactos" />
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Format mix */}
       {Object.keys(formatMix).length > 0 && (
