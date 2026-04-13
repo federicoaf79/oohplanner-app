@@ -213,6 +213,30 @@ function renderCoverPage(doc, { formData, profile, org, logoBase64, generatedAt,
   roundRect(doc, 14, y, 182, 12, 2, [45, 35, 10])
   setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, AMBER)
   doc.text('Esta propuesta tiene una validez de 15 días corridos desde la fecha de emisión.', 18, y + 8)
+
+  // Resumen rápido en la parte inferior de la portada
+  y += 16
+  roundRect(doc, 14, y, 182, 32, 3, SURFACE)
+  setFont(doc, 'bold'); doc.setFontSize(10); setTC(doc, LIGHT)
+  doc.text('Resumen de inversión', 18, y + 9)
+
+  setFont(doc, 'bold'); doc.setFontSize(16); setTC(doc, WHITE)
+  const totalDisplay = formatCurrency(Number(formData.budget ?? 0))
+  doc.text(totalDisplay, 18, y + 20)
+  setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, LIGHT)
+  doc.text('Presupuesto total', 18, y + 26)
+
+  const fmtLabels = (formData.formats ?? [])
+    .map(f => FORMAT_MAP[f]?.label ?? f)
+    .join(' · ')
+  if (fmtLabels) {
+    setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, [165, 180, 252])
+    doc.text(truncate(doc, fmtLabels, 100), 100, y + 20)
+  }
+
+  const dateRange = `${formData.startDate ?? '—'} → ${formData.endDate ?? '—'}`
+  setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, LIGHT)
+  doc.text(dateRange, 100, y + 26)
 }
 
 async function renderOption(doc, {
@@ -353,89 +377,140 @@ async function renderOption(doc, {
   y += 6
 
   for (const site of availSites) {
-    // Determinar si tiene mockup o solo foto
     const mockupDataUrl = mockupMap[site.id] ?? null
     const siteData = siteCarasMap[site.id] ?? null
     const photoUrl = mockupDataUrl ?? siteData?.photoUrl ?? site.photo_url ?? null
     const hasMockup = !!mockupDataUrl
     const hasPhoto = !!photoUrl
+    const hasJ = !!site.justification
 
-    // Mockup = imagen más grande; foto sola = thumbnail
-    const PHOTO_W  = hasMockup ? 60 : (hasPhoto ? 32 : 0)
-    const PHOTO_H  = hasMockup ? 40 : 22
-    const hasJ     = !!site.justification
-    const rowH     = hasPhoto
-      ? Math.max(PHOTO_H + 6, hasJ ? (hasMockup ? 48 : 32) : (hasMockup ? 46 : 26))
-      : (hasJ ? 26 : 19)
+    if (hasMockup) {
+      // ── MOCKUP LAYOUT: imagen arriba, texto abajo ──
+      const IMG_W = 182
+      const IMG_H = 48
+      const TEXT_H = hasJ ? 24 : 18
+      const rowH = IMG_H + TEXT_H + 4
 
-    if (y + rowH > 278) {
-      doc.addPage()
-      addPageBackground(doc)
-      miniHeader(doc, orgName)
-      y = 18
-    }
+      if (y + rowH > 278) {
+        doc.addPage()
+        addPageBackground(doc)
+        miniHeader(doc, orgName)
+        y = 18
+      }
 
-    roundRect(doc, 14, y, 182, rowH, 2, SURFACE)
+      roundRect(doc, 14, y, 182, rowH, 2, SURFACE)
 
-    // Foto o mockup (si existe)
-    if (hasPhoto) {
       try {
         let imgData = photoUrl
         if (!photoUrl.startsWith('data:')) {
           imgData = await fetchLogoBase64(photoUrl)
         }
         if (imgData) {
-          doc.addImage(imgData, 'JPEG', 16, y + 2, PHOTO_W, PHOTO_H)
+          doc.addImage(imgData, 'JPEG', 15, y + 1, 180, IMG_H)
         }
-        if (hasMockup) {
-          // Badge "MOCKUP" sobre la imagen
-          const badgeY = y + PHOTO_H - 3
-          roundRect(doc, 16, badgeY, 16, 5, 1, BRAND)
-          setFont(doc, 'bold')
-          doc.setFontSize(4.5)
-          setTC(doc, WHITE)
-          doc.text('MOCKUP', 17, badgeY + 3.5)
-        }
-      } catch { /* ignorar si falla */ }
+      } catch { /* ignorar */ }
+
+      // Badge MOCKUP
+      const badgeY = y + IMG_H - 5
+      roundRect(doc, 16, badgeY, 18, 6, 1, BRAND)
+      setFont(doc, 'bold')
+      doc.setFontSize(5)
+      setTC(doc, WHITE)
+      doc.text('MOCKUP', 17.5, badgeY + 4)
+
+      // Texto debajo de la imagen
+      const textY = y + IMG_H + 4
+
+      setFont(doc, 'bold'); doc.setFontSize(8.5); setTC(doc, WHITE)
+      doc.text(truncate(doc, site.name ?? '—', 110), 18, textY)
+
+      const fmt = FORMAT_MAP[site.format]
+      if (fmt) {
+        setFont(doc, 'normal'); doc.setFontSize(7); setTC(doc, LIGHT)
+        doc.text(fmt.label, 160, textY)
+      }
+
+      const precioCliente = site.client_price ?? site.list_price ?? 0
+      setFont(doc, 'bold'); doc.setFontSize(8); setTC(doc, GREEN)
+      doc.text(formatCurrency(precioCliente), 192, textY, { align: 'right' })
+
+      setFont(doc, 'normal'); doc.setFontSize(7.5); setTC(doc, LIGHT)
+      doc.text(truncate(doc, site.address ?? '', 140), 18, textY + 6)
+
+      if (site.is_mandatory) {
+        roundRect(doc, 150, textY + 1, 26, 6, 1, [80, 50, 10])
+        setFont(doc, 'bold'); doc.setFontSize(6); setTC(doc, AMBER)
+        doc.text('OBLIGATORIO', 151, textY + 5)
+      }
+
+      if (hasJ) {
+        setFont(doc, 'italic'); doc.setFontSize(7); setTC(doc, [100, 116, 139])
+        doc.text(`"${truncate(doc, site.justification, 170)}"`, 18, textY + 13)
+      }
+
+      y += rowH + 3
+
+    } else {
+      // ── LAYOUT NORMAL: foto izquierda o sin foto ──
+      const PHOTO_W = hasPhoto ? 32 : 0
+      const PHOTO_H = 22
+      const rowH = hasPhoto
+        ? Math.max(PHOTO_H + 4, hasJ ? 32 : 26)
+        : (hasJ ? 26 : 19)
+
+      if (y + rowH > 278) {
+        doc.addPage()
+        addPageBackground(doc)
+        miniHeader(doc, orgName)
+        y = 18
+      }
+
+      roundRect(doc, 14, y, 182, rowH, 2, SURFACE)
+
+      if (hasPhoto) {
+        try {
+          let imgData = photoUrl
+          if (!photoUrl.startsWith('data:')) {
+            imgData = await fetchLogoBase64(photoUrl)
+          }
+          if (imgData) {
+            doc.addImage(imgData, 'JPEG', 16, y + 2, PHOTO_W, PHOTO_H)
+          }
+        } catch { /* ignorar */ }
+      }
+
+      const textX = 18 + PHOTO_W
+      const textMaxW = hasPhoto ? 95 : (site.is_mandatory ? 110 : 130)
+
+      setFont(doc, 'bold'); doc.setFontSize(8.5); setTC(doc, WHITE)
+      doc.text(truncate(doc, site.name ?? '—', textMaxW), textX, y + 7)
+
+      if (site.is_mandatory) {
+        roundRect(doc, 148, y + 2, 26, 6, 1, [80, 50, 10])
+        setFont(doc, 'bold'); doc.setFontSize(6); setTC(doc, AMBER)
+        doc.text('OBLIGATORIO', 149, y + 6.5)
+      }
+
+      const fmt = FORMAT_MAP[site.format]
+      if (fmt) {
+        setFont(doc, 'normal'); doc.setFontSize(7); setTC(doc, LIGHT)
+        doc.text(fmt.label, 192, y + 7, { align: 'right' })
+      }
+
+      setFont(doc, 'normal'); doc.setFontSize(7.5); setTC(doc, LIGHT)
+      doc.text(truncate(doc, site.address ?? '', hasPhoto ? 95 : 120), textX, y + 14)
+
+      const precioCliente = site.client_price ?? site.list_price ?? 0
+      setFont(doc, 'bold'); doc.setFontSize(7.5); setTC(doc, GREEN)
+      doc.text(formatCurrency(precioCliente), 192, y + 14, { align: 'right' })
+
+      if (hasJ) {
+        setFont(doc, 'italic'); doc.setFontSize(7); setTC(doc, [100, 116, 139])
+        doc.text(`"${truncate(doc, site.justification, hasPhoto ? 140 : 170)}"`, textX, y + 21)
+      }
+
+      y += rowH + 2
     }
-
-    const textX    = 18 + PHOTO_W
-    const textMaxW = hasMockup ? 85 : (hasPhoto ? 95 : (site.is_mandatory ? 110 : 130))
-
-    // Nombre
-    setFont(doc, 'bold'); doc.setFontSize(8.5); setTC(doc, WHITE)
-    doc.text(truncate(doc, site.name ?? '—', textMaxW), textX, y + 7)
-
-    // Badge obligatorio
-    if (site.is_mandatory) {
-      roundRect(doc, 148, y + 2, 26, 6, 1, [80, 50, 10])
-      setFont(doc, 'bold'); doc.setFontSize(6); setTC(doc, AMBER)
-      doc.text('OBLIGATORIO', 149, y + 6.5)
-    }
-
-    // Formato
-    const fmt = FORMAT_MAP[site.format]
-    if (fmt) {
-      setFont(doc, 'normal'); doc.setFontSize(7); setTC(doc, LIGHT)
-      doc.text(fmt.label, 192, y + 7, { align: 'right' })
-    }
-
-    // Dirección
-    setFont(doc, 'normal'); doc.setFontSize(7.5); setTC(doc, LIGHT)
-    doc.text(truncate(doc, site.address ?? '', hasPhoto ? 95 : 120), textX, y + 14)
-
-    // Precio cliente
-    const precioCliente = site.client_price ?? site.list_price ?? 0
-    setFont(doc, 'bold'); doc.setFontSize(7.5); setTC(doc, GREEN)
-    doc.text(formatCurrency(precioCliente), 192, y + 14, { align: 'right' })
-
-    // Justificación
-    if (hasJ) {
-      setFont(doc, 'italic'); doc.setFontSize(7); setTC(doc, [100, 116, 139])
-      doc.text(`"${truncate(doc, site.justification, hasPhoto ? 140 : 170)}"`, textX, y + 21)
-    }
-
-    y += rowH + 2
   }
 
   if (occupiedCount > 0) {
@@ -495,7 +570,6 @@ export async function generateProposalPDF({
     label: selectedLabel,
     formData,
     orgName,
-    vendorName,
     mapBase64: selectedMap,
     occupiedIds: occupiedSiteIds,
     mockupMap,

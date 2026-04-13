@@ -419,6 +419,7 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
 
   const [availability, setAvailability] = useState({})
   const [checkingAvailability, setCheckingAvailability] = useState(false)
+  const [photoEnriched, setPhotoEnriched] = useState(0)
 
   // ── Artworks del cliente (override) ──
   const [clientArtH, setClientArtH]   = useState(null) // { file, preview }
@@ -496,6 +497,39 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
       })
   }, [results, formData.startDate, formData.endDate])
 
+  // Enriquecer sites con fotos del inventario para la vista previa
+  useEffect(() => {
+    if (!results) return
+    const allSites = [
+      ...(results.optionA?.sites ?? []),
+      ...(results.optionB?.sites ?? []),
+    ]
+    const siteIds = [...new Set(allSites.map(s => s.id).filter(Boolean))]
+    if (!siteIds.length) return
+
+    supabase
+      .from('inventory')
+      .select('id, caras, photo_url, image_url')
+      .in('id', siteIds)
+      .then(({ data }) => {
+        if (!data) return
+        const photoMap = {}
+        for (const inv of data) {
+          const caras = Array.isArray(inv.caras) ? inv.caras : []
+          photoMap[inv.id] = caras[0]?.photo_url ?? inv.photo_url ?? inv.image_url ?? null
+        }
+        for (const opt of [results.optionA, results.optionB]) {
+          if (!opt?.sites) continue
+          for (const site of opt.sites) {
+            if (site.id && photoMap[site.id] && !site.photo_url) {
+              site.photo_url = photoMap[site.id]
+            }
+          }
+        }
+        setPhotoEnriched(prev => prev + 1)
+      })
+  }, [results])
+
   const activeOption = activeTab === 'A' ? results?.optionA : results?.optionB
   const audienceNote = results?.audience_mode === 'geographic_only' ? results?.audience_note : null
 
@@ -534,6 +568,9 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
       let mapBase64 = null
       const mapEl = document.querySelector('.leaflet-container')
       if (mapEl) {
+        // Ocultar controles de Leaflet para captura limpia
+        const leafletControls = mapEl.querySelectorAll('.leaflet-control-container')
+        leafletControls.forEach(el => { el.style.display = 'none' })
         try {
           const html2canvas = (await import('html2canvas')).default
           const canvas = await html2canvas(mapEl, {
@@ -544,8 +581,13 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
             logging: false,
           })
           mapBase64 = canvas.toDataURL('image/jpeg', 0.85)
+          // Restaurar controles de Leaflet
+          leafletControls.forEach(el => { el.style.display = '' })
         } catch (err) {
           console.warn('Map capture failed:', err)
+          // Restaurar controles
+          const ctrls = mapEl?.querySelectorAll('.leaflet-control-container')
+          ctrls?.forEach(el => { el.style.display = '' })
         }
       }
 
