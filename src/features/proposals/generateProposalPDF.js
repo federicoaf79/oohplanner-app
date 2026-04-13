@@ -215,7 +215,7 @@ function renderCoverPage(doc, { formData, profile, org, logoBase64, generatedAt,
   doc.text('Esta propuesta tiene una validez de 15 días corridos desde la fecha de emisión.', 18, y + 8)
 }
 
-async function renderOption(doc, { option, label, formData, orgName, mapBase64 }) {
+async function renderOption(doc, { option, label, formData, orgName, mapBase64, occupiedIds = new Set() }) {
   if (!option) return
 
   addPageBackground(doc)
@@ -314,11 +314,15 @@ async function renderOption(doc, { option, label, formData, orgName, mapBase64 }
   }
 
   // Carteles
+  const allSites      = option.sites ?? []
+  const availSites    = allSites.filter(s => !occupiedIds.has(s.id))
+  const occupiedCount = allSites.length - availSites.length
+
   setFont(doc, 'bold'); doc.setFontSize(9); setTC(doc, LIGHT)
-  doc.text(`Carteles seleccionados (${(option.sites ?? []).length})`, 14, y)
+  doc.text(`Carteles seleccionados (${availSites.length})`, 14, y)
   y += 6
 
-  for (const site of (option.sites ?? [])) {
+  for (const site of availSites) {
     const hasPhoto = !!site.photo_url
     const hasJ     = !!site.justification
     const PHOTO_W  = hasPhoto ? 32 : 0
@@ -384,9 +388,25 @@ async function renderOption(doc, { option, label, formData, orgName, mapBase64 }
 
     y += rowH + 2
   }
+
+  if (occupiedCount > 0) {
+    if (y + 14 > 278) {
+      doc.addPage()
+      addPageBackground(doc)
+      miniHeader(doc, orgName)
+      y = 18
+    }
+    roundRect(doc, 14, y, 182, 12, 2, [45, 35, 10])
+    setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, AMBER)
+    doc.text(
+      `⚠ ${occupiedCount} cartel${occupiedCount > 1 ? 'es' : ''} adicional${occupiedCount > 1 ? 'es' : ''} excluido${occupiedCount > 1 ? 's' : ''} por estar ocupado${occupiedCount > 1 ? 's' : ''} en las fechas solicitadas.`,
+      18, y + 8
+    )
+    y += 16
+  }
 }
 
-export async function generateProposalPDF({ results, formData, profile, org, mapA = null, mapB = null, activeOption = 'A' }) {
+export async function generateProposalPDF({ results, formData, profile, org, mapA = null, mapB = null, activeOption = 'A', occupiedSiteIds = new Set() }) {
   const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true })
 
@@ -412,7 +432,7 @@ export async function generateProposalPDF({ results, formData, profile, org, map
   const selectedMap    = activeOption === 'B' ? mapB : mapA
   const selectedLabel  = activeOption === 'B' ? 'B' : 'A'
   doc.addPage()
-  await renderOption(doc, { option: selectedOption, label: selectedLabel, formData, orgName, vendorName, mapBase64: selectedMap })
+  await renderOption(doc, { option: selectedOption, label: selectedLabel, formData, orgName, vendorName, mapBase64: selectedMap, occupiedIds: occupiedSiteIds })
 
   const totalPages = doc.getNumberOfPages()
   for (let p = 1; p <= totalPages; p++) {

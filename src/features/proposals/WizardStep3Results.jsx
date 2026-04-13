@@ -232,13 +232,20 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
           Carteles seleccionados ({sites.length})
         </h3>
         <div className="space-y-3">
-          {sites.map((site, i) => (
-            <BillboardCard
-              key={site.id ?? i}
-              site={site}
-              availabilityInfo={availability[site.id]}
-            />
-          ))}
+          {(() => {
+            const sorted = [...sites].sort((a, b) => {
+              const aOcc = availability[a.id]?.available === false ? 1 : 0
+              const bOcc = availability[b.id]?.available === false ? 1 : 0
+              return aOcc - bOcc
+            })
+            return sorted.map((site, i) => (
+              <BillboardCard
+                key={site.id ?? i}
+                site={site}
+                availabilityInfo={availability[site.id]}
+              />
+            ))
+          })()}
         </div>
       </div>
     </div>
@@ -395,6 +402,12 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
       const sitesForMap = activeOption?.sites ?? []
       const mapBase64 = await fetchStaticMap(sitesForMap)
 
+      const occupiedSiteIds = new Set(
+        Object.entries(availability)
+          .filter(([, info]) => info?.available === false)
+          .map(([id]) => id)
+      )
+
       await generateProposalPDF({
         results,
         formData,
@@ -403,6 +416,7 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
         mapA: activeTab === 'A' ? mapBase64 : null,
         mapB: activeTab === 'B' ? mapBase64 : null,
         activeOption: activeTab,
+        occupiedSiteIds,
       })
     } catch (err) {
       console.error('PDF generation error:', err)
