@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { Shield, Lock, Eye, Building2, Upload, X } from 'lucide-react'
+import { Shield, Lock, Eye, Building2, Upload, X, Loader2 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
 import Button from '../../components/ui/Button'
@@ -52,6 +52,12 @@ export default function Settings() {
   const fileRef = useRef(null)
   const [logoPreview, setLogoPreview] = useState(org?.logo_url ?? null)
   const [uploadingLogo, setUploadingLogo] = useState(false)
+
+  // ── Artworks para mockup ──
+  const [artH, setArtH]   = useState(org?.artwork_h_url ?? null)
+  const [artV, setArtV]   = useState(org?.artwork_v_url ?? null)
+  const [artSq, setArtSq] = useState(org?.artwork_sq_url ?? null)
+  const [uploadingArt, setUploadingArt] = useState(null) // 'h' | 'v' | 'sq' | null
 
   // ── Descuentos ──
   const [maxSales, setMaxSales]     = useState(org?.max_discount_salesperson ?? 20)
@@ -153,6 +159,71 @@ export default function Settings() {
       .update({ logo_url: null })
       .eq('id', org.id)
     setLogoPreview(null)
+    await refreshProfile()
+  }
+
+  async function handleArtworkUpload(slot, file) {
+    if (!file) return
+    if (!['image/jpeg', 'image/png'].includes(file.type)) {
+      alert('Solo PNG o JPG')
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Máximo 2MB por imagen')
+      return
+    }
+
+    setUploadingArt(slot)
+    const ext = file.name.split('.').pop()
+    const path = `${org.id}/artwork_${slot}.${ext}`
+
+    const { error: upErr } = await supabase.storage
+      .from('org-artwork')
+      .upload(path, file, { upsert: true })
+
+    if (upErr) {
+      console.error('Artwork upload error:', upErr.message)
+      setUploadingArt(null)
+      return
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('org-artwork')
+      .getPublicUrl(path)
+
+    const url = publicUrl + '?t=' + Date.now()
+
+    const col = slot === 'h' ? 'artwork_h_url'
+              : slot === 'v' ? 'artwork_v_url'
+              : 'artwork_sq_url'
+
+    await supabase
+      .from('organisations')
+      .update({ [col]: url })
+      .eq('id', org.id)
+
+    if (slot === 'h') setArtH(url)
+    else if (slot === 'v') setArtV(url)
+    else setArtSq(url)
+
+    await refreshProfile()
+    setUploadingArt(null)
+  }
+
+  async function handleRemoveArtwork(slot) {
+    const col = slot === 'h' ? 'artwork_h_url'
+              : slot === 'v' ? 'artwork_v_url'
+              : 'artwork_sq_url'
+
+    await supabase
+      .from('organisations')
+      .update({ [col]: null })
+      .eq('id', org.id)
+
+    if (slot === 'h') setArtH(null)
+    else if (slot === 'v') setArtV(null)
+    else setArtSq(null)
+
     await refreshProfile()
   }
 
@@ -287,6 +358,72 @@ export default function Settings() {
                 </Button>
                 <p className="mt-1.5 text-xs text-slate-600">PNG o SVG recomendado. Máx. 2MB.</p>
               </div>
+            </div>
+          </Card>
+
+          {/* Artworks para mockups */}
+          <Card>
+            <CardHeader
+              title="Artes genéricos para mockups"
+              subtitle="Se usan como fallback cuando el vendedor no sube arte del cliente. Máx. 2MB, solo PNG/JPG."
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {[
+                { key: 'h',  label: 'Horizontal', aspect: '16:9', icon: '📺', state: artH,  ratio: 'aspect-video' },
+                { key: 'v',  label: 'Vertical',   aspect: '9:16', icon: '📱', state: artV,  ratio: 'aspect-[9/16]' },
+                { key: 'sq', label: 'Cuadrado',   aspect: '1:1',  icon: '🟦', state: artSq, ratio: 'aspect-square' },
+              ].map(({ key, label, aspect, icon, state, ratio }) => (
+                <div key={key} className="flex flex-col gap-2">
+                  <p className="text-xs font-medium text-slate-400 text-center">
+                    {icon} {label} ({aspect})
+                  </p>
+
+                  {state ? (
+                    <>
+                      <div className="relative rounded-lg overflow-hidden border border-surface-700 bg-surface-700">
+                        <div className={ratio + ' w-full'}>
+                          <img src={state} alt={label} className="absolute inset-0 w-full h-full object-cover" />
+                        </div>
+                        <button
+                          onClick={() => handleRemoveArtwork(key)}
+                          className="absolute top-1 right-1 rounded-full bg-slate-900/80 p-0.5 text-slate-400 hover:text-red-400 transition-colors"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <label className="cursor-pointer text-center">
+                        <span className="text-xs text-slate-500 hover:text-slate-300 transition-colors cursor-pointer">
+                          Cambiar
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png"
+                          className="hidden"
+                          onChange={e => { handleArtworkUpload(key, e.target.files?.[0]); e.target.value = '' }}
+                        />
+                      </label>
+                    </>
+                  ) : (
+                    <label className="cursor-pointer">
+                      <div className={ratio + ' w-full rounded-lg border-2 border-dashed border-surface-600 bg-surface-800/30 flex flex-col items-center justify-center gap-1 hover:border-brand/40 transition-colors'}>
+                        {uploadingArt === key
+                          ? <Loader2 className="h-6 w-6 animate-spin text-brand" />
+                          : <>
+                              <Upload className="h-5 w-5 text-slate-600" />
+                              <span className="text-xs text-slate-500">Subir</span>
+                            </>
+                        }
+                      </div>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png"
+                        className="hidden"
+                        onChange={e => { handleArtworkUpload(key, e.target.files?.[0]); e.target.value = '' }}
+                      />
+                    </label>
+                  )}
+                </div>
+              ))}
             </div>
           </Card>
 
