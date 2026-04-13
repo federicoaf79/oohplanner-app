@@ -236,23 +236,43 @@ async function renderOption(doc, { option, label, formData, orgName, mapBase64, 
     y += 22
   }
 
-  // Métricas
-  const metrics = [
-    { label: 'Impactos/mes',    value: option.total_impacts    ? `~${(option.total_impacts / 1000).toFixed(0)}k`   : '—' },
-    { label: 'Alcance estimado',value: option.estimated_reach  ? `~${(option.estimated_reach / 1000).toFixed(0)}k` : '—' },
-    { label: 'CPM estimado',    value: option.cpm              ? `$${option.cpm}`                                   : '—' },
-    { label: 'Total cliente',   value: formatCurrency(option.total_client_price ?? 0) },
-  ]
-  const mW = 44
-  metrics.forEach((m, i) => {
-    const x = 14 + i * (mW + 1)
-    roundRect(doc, x, y, mW, 18, 2, SURFACE)
-    setFont(doc, 'normal'); doc.setFontSize(7); setTC(doc, LIGHT)
-    doc.text(m.label, x + 2, y + 6)
-    setFont(doc, 'bold'); doc.setFontSize(9); setTC(doc, WHITE)
-    doc.text(truncate(doc, m.value, mW - 4), x + 2, y + 15)
+  // Métricas separadas DOOH vs OFF
+  const DIGITAL_FMT = new Set(['digital', 'urban_furniture_digital'])
+  const digitalSites  = (option.sites ?? []).filter(s => DIGITAL_FMT.has(s.format) && !occupiedIds.has(s.id))
+  const physicalSites = (option.sites ?? []).filter(s => !DIGITAL_FMT.has(s.format) && !occupiedIds.has(s.id))
+
+  const doohImpacts   = digitalSites.reduce((s, x) => s + (x.monthly_impacts ?? 0), 0)
+  const doohInversion = digitalSites.reduce((s, x) => s + (x.client_price ?? 0), 0)
+  const offContactos  = physicalSites.reduce((s, x) => s + (x.monthly_impacts ?? 0), 0)
+  const offInversion  = physicalSites.reduce((s, x) => s + (x.client_price ?? 0), 0)
+  const totalInversion = doohInversion + offInversion
+
+  function fmtN(n) {
+    return Math.round(Number(n ?? 0)).toLocaleString('es-AR')
+  }
+
+  const kpiRows = []
+  if (digitalSites.length > 0) {
+    kpiRows.push(['DOOH', `Impactos: ${fmtN(doohImpacts)}`, `Inversion: ${formatCurrency(doohInversion)}`, `${digitalSites.length} pantalla${digitalSites.length > 1 ? 's' : ''}`])
+  }
+  if (physicalSites.length > 0) {
+    kpiRows.push(['OFF', `Contactos: ${fmtN(offContactos)}`, `Inversion: ${formatCurrency(offInversion)}`, `${physicalSites.length} soporte${physicalSites.length > 1 ? 's' : ''}`])
+  }
+  kpiRows.push(['Total', formatCurrency(totalInversion), `Ppto: ${formatCurrency(Number(option.total_list_price ?? 0))}`, ''])
+
+  const kpiH = 10
+  kpiRows.forEach((row, ri) => {
+    const rowY = y + ri * (kpiH + 2)
+    roundRect(doc, 14, rowY, 182, kpiH, 2, SURFACE)
+    setFont(doc, 'bold'); doc.setFontSize(7); setTC(doc, LIGHT)
+    doc.text(row[0], 18, rowY + 7)
+    setFont(doc, 'normal'); setTC(doc, WHITE)
+    doc.text(row[1], 60, rowY + 7)
+    doc.text(row[2], 110, rowY + 7)
+    setTC(doc, LIGHT)
+    doc.text(row[3], 176, rowY + 7, { align: 'right' })
   })
-  y += 24
+  y += kpiRows.length * (kpiH + 2) + 4
 
   // Desglose precio
   const discount    = formData.discountPct ?? 0
@@ -315,7 +335,14 @@ async function renderOption(doc, { option, label, formData, orgName, mapBase64, 
 
   // Carteles
   const allSites      = option.sites ?? []
-  const availSites    = allSites.filter(s => !occupiedIds.has(s.id))
+  const availSites    = allSites
+    .filter(s => !occupiedIds.has(s.id))
+    .sort((a, b) => {
+      const aD = DIGITAL_FMT.has(a.format) ? 0 : 1
+      const bD = DIGITAL_FMT.has(b.format) ? 0 : 1
+      if (aD !== bD) return aD - bD
+      return (b.client_price ?? 0) - (a.client_price ?? 0)
+    })
   const occupiedCount = allSites.length - availSites.length
 
   setFont(doc, 'bold'); doc.setFontSize(9); setTC(doc, LIGHT)

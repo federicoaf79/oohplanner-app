@@ -129,7 +129,27 @@ export default function Proposals() {
         audience_note: null,
       }
 
-      await generateProposalPDF({ results, formData, profile: { ...profile, email: user?.email }, org })
+      // Verificar ocupación de los sites guardados
+      const siteIds = sites.map(s => s.id).filter(Boolean)
+      let occupiedSiteIds = new Set()
+      if (siteIds.length > 0 && formData.startDate && formData.endDate) {
+        const { data: conflictItems } = await supabase
+          .from('proposal_items')
+          .select('site_id, start_date, end_date, proposal:proposals!proposal_id(id, status)')
+          .in('site_id', siteIds)
+          .neq('proposal_id', p.id)
+
+        for (const item of conflictItems ?? []) {
+          if (item.proposal?.status !== 'accepted') continue
+          if (!item.start_date || !item.end_date) continue
+          const overlaps =
+            new Date(item.start_date) <= new Date(formData.endDate) &&
+            new Date(item.end_date)   >= new Date(formData.startDate)
+          if (overlaps) occupiedSiteIds.add(item.site_id)
+        }
+      }
+
+      await generateProposalPDF({ results, formData, profile: { ...profile, email: user?.email }, org, occupiedSiteIds })
 
     } catch (err) {
       console.error('PDF error:', err)
