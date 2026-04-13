@@ -199,7 +199,7 @@ function CampaignCard({ proposal, canAdvance, canJump, onStatusChange, onAdvance
 
   return (
     <div
-      className="card p-4 hover:border-brand/30 transition-colors cursor-pointer"
+      className="card p-3 hover:border-brand/30 transition-colors cursor-pointer"
       onClick={onOpen}
     >
       {/* Header */}
@@ -224,23 +224,34 @@ function CampaignCard({ proposal, canAdvance, canJump, onStatusChange, onAdvance
       </div>
 
       {/* Meta row */}
-      <div className="mt-1.5 flex items-center gap-3 text-xs text-slate-600">
-        {proposal.valid_until && (
-          <span className="flex items-center gap-1">
-            <Calendar className="h-3 w-3" />
-            Vence: {formatDate(proposal.valid_until)}
-          </span>
-        )}
-        {proposal.total_value > 0 && (
-          <span className="font-medium text-slate-500">{formatCurrency(proposal.total_value)}</span>
-        )}
-        {proposal.creator?.full_name && (
-          <span className="text-slate-700">{proposal.creator.full_name}</span>
-        )}
-      </div>
+      {(() => {
+        const items = proposal.proposal_items ?? []
+        const starts = items.map(i => i.start_date).filter(Boolean).sort()
+        const ends   = items.map(i => i.end_date).filter(Boolean).sort()
+        const startDate = starts[0] ?? null
+        const endDate   = ends[ends.length - 1] ?? null
+        return (
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+            {proposal.total_value > 0 && (
+              <span className="font-semibold text-slate-300">{formatCurrency(proposal.total_value)}</span>
+            )}
+            {proposal.creator?.full_name && (
+              <span className="text-slate-400">· {proposal.creator.full_name}</span>
+            )}
+            {(startDate || endDate) && (
+              <span className="flex items-center gap-1 text-slate-500">
+                <Calendar className="h-3 w-3" />
+                {startDate ? formatDate(startDate) : '—'}
+                {' → '}
+                {endDate ? formatDate(endDate) : '—'}
+              </span>
+            )}
+          </div>
+        )
+      })()}
 
       {/* Stepper */}
-      <div className="mt-4" onClick={e => e.stopPropagation()}>
+      <div className="mt-3" onClick={e => e.stopPropagation()}>
         <WorkflowStepper
           status={proposal.workflow_status}
           onChange={(newStatus) => onStatusChange(proposal.id, newStatus)}
@@ -250,7 +261,7 @@ function CampaignCard({ proposal, canAdvance, canJump, onStatusChange, onAdvance
 
       {/* Siguiente paso button */}
       {canAdvance && next && (
-        <div className="mt-3 flex justify-end" onClick={e => e.stopPropagation()}>
+        <div className="mt-2 flex justify-end" onClick={e => e.stopPropagation()}>
           <button
             type="button"
             onClick={() => onAdvance(proposal)}
