@@ -3,7 +3,7 @@ import {
   MapPin, TrendingUp, DollarSign, Target, Users,
   Save, Printer, MessageCircle, Star,
   Clock, CheckCircle, Tag, Loader2, Info,
-  AlertTriangle, RefreshCw, Upload, Image,
+  AlertTriangle, RefreshCw, Upload, Image, Sun, Moon,
 } from 'lucide-react'
 import ProposalMap from './ProposalMap'
 import { FORMAT_MAP } from '../../lib/constants'
@@ -428,6 +428,7 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
   const [clientArtSq, setClientArtSq] = useState(null)
   const [artExpanded, setArtExpanded] = useState(false)
   const [clientArtError, setClientArtError] = useState(null)
+  const [pdfTheme, setPdfTheme] = useState('dark')
 
   async function handleClientArt(slot, file) {
     if (!file) return
@@ -678,6 +679,7 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
         formatToArt: FORMAT_TO_ART,
         mockupMap,
         siteCarasMap,
+        pdfTheme,
       })
     } catch (err) {
       console.error('PDF generation error:', err)
@@ -705,13 +707,24 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
             <MessageCircle className="h-4 w-4" />
             <span className="hidden sm:inline">WhatsApp</span>
           </button>
-          <button onClick={handlePDF} disabled={generatingPDF}
-            className="flex items-center gap-1.5 rounded-lg border border-surface-700 bg-surface-800 px-3 py-2 text-sm font-medium text-slate-400 hover:bg-surface-700 transition-colors disabled:opacity-50">
-            {generatingPDF
-              ? <Loader2 className="h-4 w-4 animate-spin" />
-              : <Printer className="h-4 w-4" />}
-            <span className="hidden sm:inline">{generatingPDF ? 'Generando…' : 'PDF'}</span>
-          </button>
+          <div className="flex items-center rounded-lg border border-surface-700 bg-surface-800 overflow-hidden">
+            <button
+              onClick={() => setPdfTheme(t => t === 'dark' ? 'light' : 'dark')}
+              title={pdfTheme === 'dark' ? 'PDF oscuro (cambiar a claro)' : 'PDF claro (cambiar a oscuro)'}
+              className="flex items-center gap-1 px-2 py-2 text-slate-400 hover:bg-surface-700 transition-colors border-r border-surface-700"
+            >
+              {pdfTheme === 'dark'
+                ? <Moon className="h-4 w-4" />
+                : <Sun className="h-4 w-4 text-amber-400" />}
+            </button>
+            <button onClick={handlePDF} disabled={generatingPDF}
+              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-slate-400 hover:bg-surface-700 transition-colors disabled:opacity-50">
+              {generatingPDF
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <Printer className="h-4 w-4" />}
+              <span className="hidden sm:inline">{generatingPDF ? 'Generando…' : 'PDF'}</span>
+            </button>
+          </div>
           <Button size="sm" loading={saving} onClick={handleSave}>
             <Save className="h-4 w-4" />
             {saved ? 'Guardada ✓' : 'Guardar propuesta'}

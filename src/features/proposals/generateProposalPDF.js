@@ -7,14 +7,65 @@
 import { formatCurrency } from '../../lib/utils'
 import { FORMAT_MAP } from '../../lib/constants'
 
-const BRAND   = [99, 102, 241]
-const DARK    = [15,  23,  42]
-const MID     = [51,  65,  85]
-const LIGHT   = [148, 163, 184]
-const WHITE   = [248, 250, 252]
-const GREEN   = [34, 197, 94]
-const AMBER   = [245, 158, 11]
-const SURFACE = [30, 41, 59]
+const THEMES = {
+  dark: {
+    BG:           [15,  23,  42],
+    SURFACE:      [30,  41,  59],
+    SURFACE2:     [40,  50,  70],
+    TEXT:         [248, 250, 252],
+    TEXT2:        [148, 163, 184],
+    TEXT3:        [100, 116, 139],
+    ACCENT:       [99,  102, 241],
+    GREEN:        [34,  197, 94],
+    AMBER:        [245, 158, 11],
+    HEADER_BG:    [99,  102, 241],
+    HEADER_TEXT:  [248, 250, 252],
+    CARD_BG:      [30,  41,  59],
+    CARD_BORDER:  [51,  65,  85],
+    LINE:         [51,  65,  85],
+    FOOTER:       [71,  85,  105],
+    PRICE_STRIKE: [120, 130, 150],
+    WARNING_BG:   [45,  35,  10],
+    WARNING_TEXT: [245, 158, 11],
+    INFO_BG:      [20,  35,  55],
+    INFO_TEXT:    [147, 197, 253],
+    VENDOR_LINK:  [165, 180, 252],
+    RATIONALE_BG: [20,  30,  55],
+    RATIONALE_TEXT:[165, 180, 252],
+    MANDATORY_BG: [80,  50,  10],
+    JUSTIFY_TEXT: [90,  105, 130],
+    SEPARATOR:    [40,  50,  70],
+  },
+  light: {
+    BG:           [255, 255, 255],
+    SURFACE:      [245, 245, 247],
+    SURFACE2:     [235, 235, 240],
+    TEXT:         [26,  26,  26],
+    TEXT2:        [100, 100, 110],
+    TEXT3:        [140, 140, 150],
+    ACCENT:       [37,  99,  235],
+    GREEN:        [22,  163, 74],
+    AMBER:        [217, 119, 6],
+    HEADER_BG:    [37,  99,  235],
+    HEADER_TEXT:  [255, 255, 255],
+    CARD_BG:      [245, 245, 247],
+    CARD_BORDER:  [220, 220, 225],
+    LINE:         [220, 220, 225],
+    FOOTER:       [140, 140, 150],
+    PRICE_STRIKE: [160, 160, 170],
+    WARNING_BG:   [255, 243, 224],
+    WARNING_TEXT: [180, 95,  6],
+    INFO_BG:      [235, 245, 255],
+    INFO_TEXT:    [37,  99,  235],
+    VENDOR_LINK:  [37,  99,  235],
+    RATIONALE_BG: [235, 240, 255],
+    RATIONALE_TEXT:[37,  99,  235],
+    MANDATORY_BG: [255, 243, 200],
+    JUSTIFY_TEXT: [100, 110, 130],
+    SEPARATOR:    [210, 215, 225],
+  },
+}
+let T = THEMES.dark
 
 function setFill(doc, arr)          { doc.setFillColor(...arr) }
 function setDraw(doc, arr)          { doc.setDrawColor(...arr) }
@@ -53,33 +104,33 @@ function sanitize(text) {
 }
 
 function hr(doc, y, x1 = 14, x2 = 196) {
-  setDraw(doc, MID)
+  setDraw(doc, T.LINE)
   doc.setLineWidth(0.2)
   doc.line(x1, y, x2, y)
   return y + 5
 }
 
 function addPageBackground(doc) {
-  setFill(doc, DARK)
+  setFill(doc, T.BG)
   doc.rect(0, 0, 210, 297, 'F')
 }
 
 function miniHeader(doc, orgName) {
-  setFill(doc, BRAND)
+  setFill(doc, T.HEADER_BG)
   doc.rect(0, 0, 210, 10, 'F')
   setFont(doc, 'bold')
   doc.setFontSize(8)
-  setTC(doc, WHITE)
+  setTC(doc, T.HEADER_TEXT)
   doc.text('OOH Planner', 14, 7)
   setFont(doc, 'normal')
-  setTC(doc, [199, 210, 254])
+  setTC(doc, T.VENDOR_LINK)
   doc.text(sanitize(orgName), 196, 7, { align: 'right' })
 }
 
 function renderFooter(doc, vendorName, orgName, pageNum, totalPages) {
   setFont(doc, 'normal')
   doc.setFontSize(7)
-  setTC(doc, [71, 85, 105])
+  setTC(doc, T.FOOTER)
   doc.text(sanitize(`Generado por ${vendorName} - ${orgName}`), 14, 289)
   doc.text(`Pag. ${pageNum} / ${totalPages}`, 196, 289, { align: 'right' })
 }
@@ -153,7 +204,7 @@ function renderCoverPage(doc, { formData, profile, org, logoBase64, generatedAt,
   const orgName    = org?.name ?? 'OOH Planner'
   const vendorName = profile?.full_name ?? 'Vendedor'
 
-  setFill(doc, BRAND)
+  setFill(doc, T.HEADER_BG)
   doc.rect(0, 0, 210, 40, 'F')
 
   if (logoBase64) {
@@ -161,16 +212,16 @@ function renderCoverPage(doc, { formData, profile, org, logoBase64, generatedAt,
   }
 
   const textX = logoBase64 ? 48 : 14
-  setFont(doc, 'bold'); doc.setFontSize(16); setTC(doc, WHITE)
+  setFont(doc, 'bold'); doc.setFontSize(16); setTC(doc, T.HEADER_TEXT)
   doc.text(sanitize(orgName), textX, 18)
-  setFont(doc, 'normal'); doc.setFontSize(9); setTC(doc, [199, 210, 254])
+  setFont(doc, 'normal'); doc.setFontSize(9); setTC(doc, T.VENDOR_LINK)
   doc.text('Propuesta Publicitaria OOH', textX, 26)
 
   let y = 56
-  setFont(doc, 'bold'); doc.setFontSize(20); setTC(doc, WHITE)
+  setFont(doc, 'bold'); doc.setFontSize(20); setTC(doc, T.TEXT)
   doc.text('Propuesta OOH', 14, y)
   y += 10
-  setFont(doc, 'normal'); doc.setFontSize(14); setTC(doc, [165, 180, 252])
+  setFont(doc, 'normal'); doc.setFontSize(14); setTC(doc, T.ACCENT)
   doc.text(sanitize(formData.clientName ?? '-'), 14, y)
   y += 14
   y = hr(doc, y)
@@ -193,13 +244,13 @@ function renderCoverPage(doc, { formData, profile, org, logoBase64, generatedAt,
   doc.setFontSize(9)
   leftData.forEach(([label, value], i) => {
     const row = y + i * 8
-    setFont(doc, 'normal'); setTC(doc, LIGHT); doc.text(label + ':', 14, row)
-    setFont(doc, 'bold'); setTC(doc, WHITE); doc.text(truncate(doc, value, 75), 52, row)
+    setFont(doc, 'normal'); setTC(doc, T.TEXT2); doc.text(label + ':', 14, row)
+    setFont(doc, 'bold'); setTC(doc, T.TEXT); doc.text(truncate(doc, value, 75), 52, row)
   })
   rightData.forEach(([label, value], i) => {
     const row = y + i * 8
-    setFont(doc, 'normal'); setTC(doc, LIGHT); doc.text(label + ':', 112, row)
-    setFont(doc, 'bold'); setTC(doc, WHITE); doc.text(truncate(doc, value, 65), 148, row)
+    setFont(doc, 'normal'); setTC(doc, T.TEXT2); doc.text(label + ':', 112, row)
+    setFont(doc, 'bold'); setTC(doc, T.TEXT); doc.text(truncate(doc, value, 65), 148, row)
   })
 
   y += Math.max(leftData.length, rightData.length) * 8 + 6
@@ -214,54 +265,54 @@ function renderCoverPage(doc, { formData, profile, org, logoBase64, generatedAt,
 
   const vendorBoxH = Math.max(32, 28 + contactLines.length * 7)
 
-  roundRect(doc, 14, y, 182, vendorBoxH, 3, SURFACE)
-  setFont(doc, 'bold'); doc.setFontSize(9); setTC(doc, LIGHT)
+  roundRect(doc, 14, y, 182, vendorBoxH, 3, T.SURFACE)
+  setFont(doc, 'bold'); doc.setFontSize(9); setTC(doc, T.TEXT2)
   doc.text('Preparado por:', 18, y + 8)
-  setTC(doc, WHITE); doc.text(sanitize(vendorName), 18, y + 15)
-  setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, LIGHT)
+  setTC(doc, T.TEXT); doc.text(sanitize(vendorName), 18, y + 15)
+  setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, T.TEXT2)
   doc.text(sanitize(orgName), 18, y + 22)
 
   let vly = y + 29
   for (const line of contactLines) {
-    setTC(doc, [165, 180, 252])
+    setTC(doc, T.VENDOR_LINK)
     doc.text(sanitize(line), 18, vly)
     vly += 7
   }
 
-  setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, LIGHT)
+  setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, T.TEXT2)
   doc.text('Fecha de emision:', 112, y + 8)
-  setFont(doc, 'bold'); setTC(doc, WHITE)
+  setFont(doc, 'bold'); setTC(doc, T.TEXT)
   doc.text(generatedAt, 112, y + 15)
-  setFont(doc, 'normal'); setTC(doc, AMBER)
+  setFont(doc, 'normal'); setTC(doc, T.AMBER)
   doc.text(`Valida hasta: ${validUntil}`, 112, y + 22)
   y += vendorBoxH + 8
 
-  roundRect(doc, 14, y, 182, 12, 2, [45, 35, 10])
-  setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, AMBER)
+  roundRect(doc, 14, y, 182, 12, 2, T.WARNING_BG)
+  setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, T.WARNING_TEXT)
   doc.text('Esta propuesta tiene una validez de 15 dias corridos desde la fecha de emision.', 18, y + 8)
 
   // Resumen rapido en la parte inferior de la portada
   y += 16
-  roundRect(doc, 14, y, 182, 32, 3, SURFACE)
-  setFont(doc, 'bold'); doc.setFontSize(10); setTC(doc, LIGHT)
+  roundRect(doc, 14, y, 182, 32, 3, T.SURFACE)
+  setFont(doc, 'bold'); doc.setFontSize(10); setTC(doc, T.TEXT2)
   doc.text('Resumen de inversion', 18, y + 9)
 
-  setFont(doc, 'bold'); doc.setFontSize(16); setTC(doc, WHITE)
+  setFont(doc, 'bold'); doc.setFontSize(16); setTC(doc, T.TEXT)
   const totalDisplay = formatCurrency(Number(formData.budget ?? 0))
   doc.text(totalDisplay, 18, y + 20)
-  setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, LIGHT)
+  setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, T.TEXT2)
   doc.text('Presupuesto total', 18, y + 26)
 
   const fmtLabels = sanitize(
     (formData.formats ?? []).map(f => FORMAT_MAP[f]?.label ?? f).join(' - ')
   )
   if (fmtLabels) {
-    setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, [165, 180, 252])
+    setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, T.VENDOR_LINK)
     doc.text(truncate(doc, fmtLabels, 100), 100, y + 20)
   }
 
   const dateRange = `${formData.startDate ?? '-'} al ${formData.endDate ?? '-'}`
-  setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, LIGHT)
+  setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, T.TEXT2)
   doc.text(dateRange, 100, y + 26)
 }
 
@@ -276,14 +327,14 @@ async function renderOption(doc, {
 
   let y = 18
 
-  roundRect(doc, 14, y, 182, 12, 2, BRAND)
-  setFont(doc, 'bold'); doc.setFontSize(12); setTC(doc, WHITE)
+  roundRect(doc, 14, y, 182, 12, 2, T.HEADER_BG)
+  setFont(doc, 'bold'); doc.setFontSize(12); setTC(doc, T.HEADER_TEXT)
   doc.text(sanitize(`${label === 'A' ? 'A -' : 'B -'} ${option.title ?? `Opcion ${label}`}`), 18, y + 8.5)
   y += 18
 
   if (option.rationale) {
-    roundRect(doc, 14, y, 182, 16, 2, [20, 30, 55])
-    setFont(doc, 'italic'); doc.setFontSize(8); setTC(doc, [165, 180, 252])
+    roundRect(doc, 14, y, 182, 16, 2, T.RATIONALE_BG)
+    setFont(doc, 'italic'); doc.setFontSize(8); setTC(doc, T.RATIONALE_TEXT)
     const lines = doc.splitTextToSize(sanitize(option.rationale), 174)
     doc.text(lines.slice(0, 2), 18, y + 7)
     y += 22
@@ -316,13 +367,13 @@ async function renderOption(doc, {
   const kpiH = 10
   kpiRows.forEach((row, ri) => {
     const rowY = y + ri * (kpiH + 2)
-    roundRect(doc, 14, rowY, 182, kpiH, 2, SURFACE)
-    setFont(doc, 'bold'); doc.setFontSize(7); setTC(doc, LIGHT)
+    roundRect(doc, 14, rowY, 182, kpiH, 2, T.SURFACE)
+    setFont(doc, 'bold'); doc.setFontSize(7); setTC(doc, T.TEXT2)
     doc.text(row[0], 18, rowY + 7)
-    setFont(doc, 'normal'); setTC(doc, WHITE)
+    setFont(doc, 'normal'); setTC(doc, T.TEXT)
     doc.text(row[1], 60, rowY + 7)
     doc.text(row[2], 110, rowY + 7)
-    setTC(doc, LIGHT)
+    setTC(doc, T.TEXT2)
     doc.text(row[3], 176, rowY + 7, { align: 'right' })
   })
   y += kpiRows.length * (kpiH + 2) + 4
@@ -336,35 +387,35 @@ async function renderOption(doc, {
   const gap         = option.next_billboard_gap ?? 0
 
   if (listTotal > 0) {
-    roundRect(doc, 14, y, 182, discount > 0 ? 28 : 18, 2, SURFACE)
-    doc.setFontSize(8); setFont(doc, 'normal'); setTC(doc, LIGHT)
+    roundRect(doc, 14, y, 182, discount > 0 ? 28 : 18, 2, T.SURFACE)
+    doc.setFontSize(8); setFont(doc, 'normal'); setTC(doc, T.TEXT2)
     doc.text('Precio de lista:', 18, y + 7)
-    setFont(doc, 'bold'); setTC(doc, WHITE)
+    setFont(doc, 'bold'); setTC(doc, T.TEXT)
     doc.text(formatCurrency(listTotal), 192, y + 7, { align: 'right' })
 
     if (discount > 0) {
-      setTC(doc, GREEN); setFont(doc, 'bold')
+      setTC(doc, T.GREEN); setFont(doc, 'bold')
       doc.text(`Descuento ${discount}%:`, 18, y + 15)
       doc.text(`-${formatCurrency(discountAmt)}`, 192, y + 15, { align: 'right' })
-      setTC(doc, WHITE); doc.setFontSize(10)
+      setTC(doc, T.TEXT); doc.setFontSize(10)
       doc.text('Total cliente:', 18, y + 24)
       doc.text(formatCurrency(clientTotal), 192, y + 24, { align: 'right' })
       y += 34
     } else {
-      setFont(doc, 'bold'); setTC(doc, WHITE); doc.setFontSize(10)
+      setFont(doc, 'bold'); setTC(doc, T.TEXT); doc.setFontSize(10)
       doc.text('Total cliente:', 18, y + 15)
       doc.text(formatCurrency(clientTotal), 192, y + 15, { align: 'right' })
       y += 24
     }
 
     if (remaining > 0) {
-      doc.setFontSize(8); setFont(doc, 'normal'); setTC(doc, LIGHT)
+      doc.setFontSize(8); setFont(doc, 'normal'); setTC(doc, T.TEXT2)
       doc.text(`Presupuesto restante: ${formatCurrency(remaining)}`, 18, y)
       y += 6
     }
     if (gap > 0) {
-      roundRect(doc, 14, y, 182, 10, 2, [20, 35, 55])
-      doc.setFontSize(7.5); setTC(doc, [147, 197, 253])
+      roundRect(doc, 14, y, 182, 10, 2, T.INFO_BG)
+      doc.setFontSize(7.5); setTC(doc, T.INFO_TEXT)
       doc.text(`Con ${formatCurrency(gap)} mas podes agregar el siguiente cartel disponible.`, 18, y + 7)
       y += 14
     }
@@ -410,7 +461,7 @@ async function renderOption(doc, {
     y = 18
   }
 
-  setFont(doc, 'bold'); doc.setFontSize(9); setTC(doc, LIGHT)
+  setFont(doc, 'bold'); doc.setFontSize(9); setTC(doc, T.TEXT2)
   doc.text(`Carteles seleccionados (${availSites.length})`, 14, y)
   y += 6
 
@@ -461,7 +512,7 @@ async function renderOption(doc, {
         y = 18
       }
 
-      roundRect(doc, 14, y, 182, rowH, 2, SURFACE)
+      roundRect(doc, 14, y, 182, rowH, 2, T.CARD_BG)
 
       // Imagen mockup a la izquierda
       const imgY = y + (rowH - imgH) / 2  // centrar verticalmente
@@ -473,10 +524,10 @@ async function renderOption(doc, {
 
       // Badge MOCKUP
       const badgeY = imgY + imgH - 5
-      roundRect(doc, 16, badgeY, 18, 5, 1, BRAND)
+      roundRect(doc, 16, badgeY, 18, 5, 1, T.ACCENT)
       setFont(doc, 'bold')
       doc.setFontSize(4.5)
-      setTC(doc, WHITE)
+      setTC(doc, T.HEADER_TEXT)
       doc.text('MOCKUP', 17.5, badgeY + 3.5)
 
       // ── Info a la derecha ──
@@ -485,33 +536,33 @@ async function renderOption(doc, {
       let tY = y + 5
 
       // Linea 1: nombre
-      setFont(doc, 'bold'); doc.setFontSize(9); setTC(doc, WHITE)
+      setFont(doc, 'bold'); doc.setFontSize(9); setTC(doc, T.TEXT)
       doc.text(truncate(doc, sanitize(site.name ?? '-'), rightW - 40), textX, tY)
 
       // Formato (alineado derecha)
       const fmt = FORMAT_MAP[site.format]
       if (fmt) {
-        setFont(doc, 'normal'); doc.setFontSize(7); setTC(doc, LIGHT)
+        setFont(doc, 'normal'); doc.setFontSize(7); setTC(doc, T.TEXT2)
         doc.text(fmt.label, 192, tY, { align: 'right' })
       }
 
       // Badge obligatorio
       if (site.is_mandatory) {
         const mandX = 192 - 26 - (fmt ? 35 : 0)
-        roundRect(doc, mandX, tY - 3, 24, 5, 1, [80, 50, 10])
-        setFont(doc, 'bold'); doc.setFontSize(5); setTC(doc, AMBER)
+        roundRect(doc, mandX, tY - 3, 24, 5, 1, T.MANDATORY_BG)
+        setFont(doc, 'bold'); doc.setFontSize(5); setTC(doc, T.AMBER)
         doc.text('OBLIGATORIO', mandX + 1, tY + 0.5)
       }
 
       tY += 5.5
 
       // Linea 2: direccion
-      setFont(doc, 'normal'); doc.setFontSize(7.5); setTC(doc, LIGHT)
+      setFont(doc, 'normal'); doc.setFontSize(7.5); setTC(doc, T.TEXT2)
       doc.text(truncate(doc, sanitize(site.address ?? ''), rightW - 5), textX, tY)
       tY += 6
 
       // Separador
-      setDraw(doc, [40, 50, 70])
+      setDraw(doc, T.SEPARATOR)
       doc.setLineWidth(0.15)
       doc.line(textX, tY, textX + rightW - 5, tY)
       tY += 4
@@ -520,9 +571,9 @@ async function renderOption(doc, {
       const isDigital = DIGITAL_FMT.has(site.format)
       const impacts = site.monthly_impacts ?? 0
       if (impacts > 0) {
-        setFont(doc, 'normal'); doc.setFontSize(7); setTC(doc, LIGHT)
+        setFont(doc, 'normal'); doc.setFontSize(7); setTC(doc, T.TEXT2)
         doc.text(isDigital ? 'Impactos/mes:' : 'Contactos/mes:', textX, tY)
-        setFont(doc, 'bold'); setTC(doc, WHITE)
+        setFont(doc, 'bold'); setTC(doc, T.TEXT)
         doc.text(Math.round(impacts).toLocaleString('es-AR'), textX + 28, tY)
         tY += 5
       }
@@ -530,25 +581,25 @@ async function renderOption(doc, {
       // Precio de lista y precio cliente
       const listPrice = site.list_price ?? 0
       if (listPrice > 0) {
-        setFont(doc, 'normal'); doc.setFontSize(7); setTC(doc, LIGHT)
+        setFont(doc, 'normal'); doc.setFontSize(7); setTC(doc, T.TEXT2)
         doc.text('Lista:', textX, tY)
-        setFont(doc, 'normal'); setTC(doc, [120, 130, 150])
+        setFont(doc, 'normal'); setTC(doc, T.PRICE_STRIKE)
         doc.text(formatCurrency(listPrice), textX + 28, tY)
 
         const precioCliente = site.client_price ?? listPrice
-        setFont(doc, 'bold'); doc.setFontSize(9); setTC(doc, GREEN)
+        setFont(doc, 'bold'); doc.setFontSize(9); setTC(doc, T.GREEN)
         doc.text(formatCurrency(precioCliente), 192, tY, { align: 'right' })
         tY += 6
       } else {
         const precioCliente = site.client_price ?? site.list_price ?? 0
-        setFont(doc, 'bold'); doc.setFontSize(9); setTC(doc, GREEN)
+        setFont(doc, 'bold'); doc.setFontSize(9); setTC(doc, T.GREEN)
         doc.text(formatCurrency(precioCliente), 192, tY, { align: 'right' })
         tY += 6
       }
 
       // Justificacion
       if (hasJ) {
-        setFont(doc, 'italic'); doc.setFontSize(6.5); setTC(doc, [90, 105, 130])
+        setFont(doc, 'italic'); doc.setFontSize(6.5); setTC(doc, T.JUSTIFY_TEXT)
         const justLines = doc.splitTextToSize(sanitize(`"${site.justification}"`), rightW - 5)
         doc.text(justLines.slice(0, 2), textX, tY)
       }
@@ -571,7 +622,7 @@ async function renderOption(doc, {
         y = 18
       }
 
-      roundRect(doc, 14, y, 182, rowH, 2, SURFACE)
+      roundRect(doc, 14, y, 182, rowH, 2, T.CARD_BG)
 
       if (hasPhoto) {
         try {
@@ -588,33 +639,33 @@ async function renderOption(doc, {
       const textX = 18 + PHOTO_W
       const textMaxW = hasPhoto ? 95 : (site.is_mandatory ? 110 : 130)
 
-      setFont(doc, 'bold'); doc.setFontSize(8.5); setTC(doc, WHITE)
+      setFont(doc, 'bold'); doc.setFontSize(8.5); setTC(doc, T.TEXT)
       doc.text(truncate(doc, sanitize(site.name ?? '-'), textMaxW), textX, y + 7)
 
       if (site.is_mandatory) {
-        roundRect(doc, 148, y + 2, 26, 6, 1, [80, 50, 10])
-        setFont(doc, 'bold'); doc.setFontSize(6); setTC(doc, AMBER)
+        roundRect(doc, 148, y + 2, 26, 6, 1, T.MANDATORY_BG)
+        setFont(doc, 'bold'); doc.setFontSize(6); setTC(doc, T.AMBER)
         doc.text('OBLIGATORIO', 149, y + 6.5)
       }
 
       const fmt = FORMAT_MAP[site.format]
       if (fmt) {
-        setFont(doc, 'normal'); doc.setFontSize(7); setTC(doc, LIGHT)
+        setFont(doc, 'normal'); doc.setFontSize(7); setTC(doc, T.TEXT2)
         doc.text(fmt.label, 192, y + 7, { align: 'right' })
       }
 
-      setFont(doc, 'normal'); doc.setFontSize(7.5); setTC(doc, LIGHT)
+      setFont(doc, 'normal'); doc.setFontSize(7.5); setTC(doc, T.TEXT2)
       doc.text(truncate(doc, sanitize(site.address ?? ''), hasPhoto ? 95 : 120), textX, y + 14)
 
       const precioCliente = site.client_price ?? site.list_price ?? 0
-      setFont(doc, 'bold'); doc.setFontSize(7.5); setTC(doc, GREEN)
+      setFont(doc, 'bold'); doc.setFontSize(7.5); setTC(doc, T.GREEN)
       doc.text(formatCurrency(precioCliente), 192, y + 14, { align: 'right' })
 
       // Impactos/contactos (si existen)
       const impacts2 = site.monthly_impacts ?? 0
       if (impacts2 > 0) {
         const isDigital2 = DIGITAL_FMT.has(site.format)
-        setFont(doc, 'normal'); doc.setFontSize(6.5); setTC(doc, LIGHT)
+        setFont(doc, 'normal'); doc.setFontSize(6.5); setTC(doc, T.TEXT2)
         doc.text(
           `${isDigital2 ? 'Impactos' : 'Contactos'}: ${Math.round(impacts2).toLocaleString('es-AR')}`,
           textX, y + (hasPhoto ? 19 : 12)
@@ -622,7 +673,7 @@ async function renderOption(doc, {
       }
 
       if (hasJ) {
-        setFont(doc, 'italic'); doc.setFontSize(7); setTC(doc, [100, 116, 139])
+        setFont(doc, 'italic'); doc.setFontSize(7); setTC(doc, T.JUSTIFY_TEXT)
         doc.text(sanitize(`"${truncate(doc, site.justification, hasPhoto ? 140 : 170)}"`), textX, y + 21)
       }
 
@@ -637,8 +688,8 @@ async function renderOption(doc, {
       miniHeader(doc, orgName)
       y = 18
     }
-    roundRect(doc, 14, y, 182, 10, 2, [45, 35, 10])
-    setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, AMBER)
+    roundRect(doc, 14, y, 182, 10, 2, T.WARNING_BG)
+    setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, T.WARNING_TEXT)
     doc.text(
       `(!) ${occupiedCount} cartel${occupiedCount > 1 ? 'es' : ''} adicional${occupiedCount > 1 ? 'es' : ''} excluido${occupiedCount > 1 ? 's' : ''} por estar ocupado${occupiedCount > 1 ? 's' : ''} en las fechas solicitadas.`,
       23, y + 7
@@ -656,7 +707,9 @@ export async function generateProposalPDF({
   formatToArt = {},
   mockupMap = {},
   siteCarasMap = {},
+  pdfTheme = 'dark',
 }) {
+  T = THEMES[pdfTheme] ?? THEMES.dark
   const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true })
 
