@@ -170,6 +170,11 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
   if (!option) return null
   const { sites = [], rationale } = option
 
+  const availableSites = sites.filter(s => {
+    if (DIGITAL_FORMATS.has(s.format)) return true
+    return availability[s.id]?.available !== false
+  })
+
   const formatMix = option.format_mix ?? {}
 
   const budgetPct = (() => {
@@ -221,8 +226,8 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
 
       {/* Metrics — separado OFF vs DOOH */}
       {(() => {
-        const digitalSites  = sites.filter(s => DIGITAL_FORMATS.has(s.format))
-        const physicalSites = sites.filter(s => !DIGITAL_FORMATS.has(s.format))
+        const digitalSites  = availableSites.filter(s => DIGITAL_FORMATS.has(s.format))
+        const physicalSites = availableSites.filter(s => !DIGITAL_FORMATS.has(s.format))
 
         const doohImpacts   = digitalSites.reduce((s, x) => s + (x.monthly_impacts ?? 0), 0)
         const doohInversion = digitalSites.reduce((s, x) => s + (x.client_price ?? 0), 0)
@@ -230,9 +235,10 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
         const offContactos  = physicalSites.reduce((s, x) => s + (x.monthly_impacts ?? 0), 0)
         const offInversion  = physicalSites.reduce((s, x) => s + (x.client_price ?? 0), 0)
 
-        const budget    = Number(formData.budget ?? 0)
-        const bPct = budget > 0 && option.total_client_price
-          ? Math.min(100, Math.round(option.total_client_price / budget * 100))
+        const budget = Number(formData.budget ?? 0)
+        const recalcTotal = availableSites.reduce((s, x) => s + (x.client_price ?? 0), 0)
+        const bPct = budget > 0 && recalcTotal
+          ? Math.min(100, Math.round(recalcTotal / budget * 100))
           : null
 
         const hasDigital  = digitalSites.length > 0
@@ -287,10 +293,10 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
               </p>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <MetricCard icon={DollarSign} label="Total cliente" color="text-emerald-400"
-                  value={formatCurrency(option.total_client_price ?? 0)}
+                  value={formatCurrency(recalcTotal)}
                   sub={bPct != null ? `${bPct}% del presupuesto` : ''} />
                 <MetricCard icon={TrendingUp} label="Presupuesto restante" color="text-slate-400"
-                  value={formatCurrency(option.budget_remaining ?? 0)}
+                  value={formatCurrency(Math.max(0, budget - recalcTotal))}
                   sub="Sin asignar" />
                 {option.cpm > 0 && (
                   <MetricCard icon={Target} label="CPM general" color="text-purple-400"
@@ -323,7 +329,7 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
       {/* Site cards */}
       <div>
         <h3 className="mb-3 text-sm font-semibold text-slate-300">
-          Carteles seleccionados ({sites.length})
+          Carteles seleccionados ({availableSites.length})
         </h3>
         <div className="space-y-3">
           {(() => {
@@ -618,12 +624,18 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
       }
 
       // Mapa estático con OpenStreetMap (después de enriquecer coordenadas)
+      const sitesWithCoords = optSites.filter(s => s.latitude && s.longitude)
+      console.log('[PDF Map] Sites total:', optSites.length, 'con coords:', sitesWithCoords.length)
+      if (sitesWithCoords.length > 0) {
+        console.log('[PDF Map] Ejemplo:', sitesWithCoords[0].name, sitesWithCoords[0].latitude, sitesWithCoords[0].longitude)
+      }
       let mapBase64 = null
       try {
         mapBase64 = await fetchStaticMap(optSites)
       } catch (err) {
         console.warn('Static map failed:', err)
       }
+      console.log('[PDF Map] Resultado:', mapBase64 ? 'OK (' + mapBase64.length + ' bytes)' : 'NULL')
 
       // Construir mapa de artworks para mockups
       const artworkMap = {
