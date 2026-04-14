@@ -122,9 +122,6 @@ function miniHeader(doc, orgName) {
   doc.setFontSize(8)
   setTC(doc, T.HEADER_TEXT)
   doc.text(sanitize(orgName), 14, 7)
-  setFont(doc, 'normal')
-  setTC(doc, T.VENDOR_LINK)
-  doc.text(sanitize(orgName), 196, 7, { align: 'right' })
 }
 
 function renderFooter(doc, vendorName, orgName, pageNum, totalPages) {
@@ -143,30 +140,42 @@ export async function fetchStaticMap(sites) {
     )
     if (validSites.length === 0) return null
 
+    console.log('[PDF Map] Fetching static map for', validSites.length, 'sites...')
+
     const avgLat = validSites.reduce((s, x) => s + Number(x.latitude), 0) / validSites.length
     const avgLon = validSites.reduce((s, x) => s + Number(x.longitude), 0) / validSites.length
+
     const markers = validSites
       .map(s => `${Number(s.latitude).toFixed(6)},${Number(s.longitude).toFixed(6)},red-pushpin`)
       .join('|')
 
-    const url = `https://staticmap.openstreetmap.de/staticmap.php?center=${avgLat.toFixed(6)},${avgLon.toFixed(6)}&zoom=12&size=560x220&markers=${markers}`
+    const urls = [
+      `https://staticmap.openstreetmap.de/staticmap.php?center=${avgLat.toFixed(6)},${avgLon.toFixed(6)}&zoom=12&size=560x220&markers=${markers}`,
+    ]
 
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), 8000)
+    for (const url of urls) {
+      try {
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), 6000)
+        const response = await fetch(url, { signal: controller.signal })
+        clearTimeout(timeout)
+        if (!response.ok) continue
+        const blob = await response.blob()
+        if (!blob.type.startsWith('image/')) continue
+        const result = await new Promise((resolve) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result)
+          reader.onerror = () => resolve(null)
+          reader.readAsDataURL(blob)
+        })
+        if (result) return result
+      } catch {
+        continue
+      }
+    }
 
-    const response = await fetch(url, { signal: controller.signal })
-    clearTimeout(timeout)
-
-    if (!response.ok) return null
-    const blob = await response.blob()
-    if (!blob.type.startsWith('image/')) return null
-
-    return new Promise((resolve) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result)
-      reader.onerror = () => resolve(null)
-      reader.readAsDataURL(blob)
-    })
+    console.log('[PDF Map] All map providers failed')
+    return null
   } catch {
     return null
   }
@@ -317,7 +326,7 @@ function renderCoverPage(doc, { formData, profile, org, logoBase64, generatedAt,
 
   // Métricas clave de la propuesta
   if (summaryData) {
-    y += 10
+    y += 38
 
     setFont(doc, 'bold'); doc.setFontSize(9); setTC(doc, T.TEXT2)
     doc.text(sanitize(`Opcion: ${summaryData.optionTitle}`), 14, y)
