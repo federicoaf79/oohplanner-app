@@ -294,9 +294,10 @@ function renderCoverPage(doc, { formData, profile, org, logoBase64, generatedAt,
   const dateRange = `${formData.startDate ?? '-'} al ${formData.endDate ?? '-'}`
   setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, T.TEXT2)
   doc.text(dateRange, 100, y + 26)
+  y += 32  // avanzar después del roundRect de 32mm
 
   // Métricas clave de la propuesta
-  if (summaryData && y + 60 < 280) {
+  if (summaryData && y + 55 < 285) {
     y += 6
 
     setFont(doc, 'bold'); doc.setFontSize(9); setTC(doc, T.TEXT2)
@@ -348,84 +349,6 @@ function renderCoverPage(doc, { formData, profile, org, logoBase64, generatedAt,
       doc.text(metrics[i].sub, mx + 4, my + 18)
     }
   }
-}
-
-function drawMapInPDF(doc, sites, y) {
-  if (!sites || sites.length === 0) return y
-
-  const validSites = sites.filter(s =>
-    s.latitude != null && s.longitude != null &&
-    !isNaN(Number(s.latitude)) && !isNaN(Number(s.longitude))
-  )
-  if (validSites.length === 0) return y
-
-  const MAP_X = 14
-  const MAP_W = 182
-  const MAP_H = 50
-  const MAP_Y = y
-  const PAD = 8
-
-  // Fondo del mapa
-  roundRect(doc, MAP_X, MAP_Y, MAP_W, MAP_H, 2, T.SURFACE)
-
-  // Bounding box de coordenadas
-  const lats = validSites.map(s => Number(s.latitude))
-  const lngs = validSites.map(s => Number(s.longitude))
-  let minLat = Math.min(...lats)
-  let maxLat = Math.max(...lats)
-  let minLng = Math.min(...lngs)
-  let maxLng = Math.max(...lngs)
-
-  const latRange = maxLat - minLat || 0.02
-  const lngRange = maxLng - minLng || 0.02
-  minLat -= latRange * 0.15
-  maxLat += latRange * 0.15
-  minLng -= lngRange * 0.15
-  maxLng += lngRange * 0.15
-
-  // Título del mapa
-  setFont(doc, 'normal'); doc.setFontSize(7); setTC(doc, T.TEXT3)
-  doc.text('Ubicaciones en mapa', MAP_X + 4, MAP_Y + 5)
-
-  // Grilla sutil
-  setDraw(doc, T.SURFACE2)
-  doc.setLineWidth(0.1)
-  for (let i = 1; i < 4; i++) {
-    const gx = MAP_X + (MAP_W / 4) * i
-    doc.line(gx, MAP_Y + 8, gx, MAP_Y + MAP_H - 4)
-  }
-  for (let i = 1; i < 3; i++) {
-    const gy = MAP_Y + 8 + ((MAP_H - 12) / 3) * i
-    doc.line(MAP_X + 4, gy, MAP_X + MAP_W - 4, gy)
-  }
-
-  // Dibujar puntos
-  const DIGITAL_SET = new Set(['digital', 'urban_furniture_digital'])
-  for (const site of validSites) {
-    const lat = Number(site.latitude)
-    const lng = Number(site.longitude)
-    const px = MAP_X + PAD + ((lng - minLng) / (maxLng - minLng)) * (MAP_W - PAD * 2)
-    const py = MAP_Y + 8 + PAD + ((maxLat - lat) / (maxLat - minLat)) * (MAP_H - 12 - PAD * 2)
-    const isDigital = DIGITAL_SET.has(site.format)
-    const dotColor = isDigital ? T.ACCENT : T.AMBER
-    setFill(doc, dotColor)
-    doc.circle(px, py, 1.8, 'F')
-    setDraw(doc, T.BG)
-    doc.setLineWidth(0.3)
-    doc.circle(px, py, 1.8, 'S')
-  }
-
-  // Leyenda
-  const legY = MAP_Y + MAP_H - 5
-  setFill(doc, T.ACCENT)
-  doc.circle(MAP_X + MAP_W - 55, legY, 1.2, 'F')
-  setFont(doc, 'normal'); doc.setFontSize(6); setTC(doc, T.TEXT3)
-  doc.text('Digital', MAP_X + MAP_W - 52, legY + 0.8)
-  setFill(doc, T.AMBER)
-  doc.circle(MAP_X + MAP_W - 35, legY, 1.2, 'F')
-  doc.text('Estatico', MAP_X + MAP_W - 32, legY + 0.8)
-
-  return MAP_Y + MAP_H + 4
 }
 
 async function renderOption(doc, {
@@ -533,10 +456,6 @@ async function renderOption(doc, {
     }
     y += 4
   }
-
-  // Mapa generado con jsPDF
-  const allAvailSites = (option.sites ?? []).filter(s => !occupiedIds.has(s.id))
-  y = drawMapInPDF(doc, allAvailSites, y)
 
   // Carteles
   const allSites   = option.sites ?? []
