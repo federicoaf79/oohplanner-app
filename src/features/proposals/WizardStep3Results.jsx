@@ -570,35 +570,13 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
   async function handlePDF() {
     setGeneratingPDF(true)
     try {
-      // Esperar que el mapa termine de renderizar
-      await new Promise(resolve => setTimeout(resolve, 3000))
-
+      // Mapa estático con OpenStreetMap (más confiable que html2canvas)
+      const optionSites = activeOption?.sites ?? []
       let mapBase64 = null
-      const mapEl = document.querySelector('.leaflet-container')
-      if (mapEl) {
-        // Ocultar controles de Leaflet para captura limpia
-        const leafletControls = mapEl.querySelectorAll('.leaflet-control-container')
-        leafletControls.forEach(el => { el.style.display = 'none' })
-        try {
-          const html2canvas = (await import('html2canvas')).default
-          const canvas = await html2canvas(mapEl, {
-            useCORS: true,
-            allowTaint: true,
-            scale: 2,
-            backgroundColor: '#1e293b',
-            logging: false,
-            imageTimeout: 5000,
-            removeContainer: false,
-          })
-          mapBase64 = canvas.toDataURL('image/jpeg', 0.90)
-          // Restaurar controles de Leaflet
-          leafletControls.forEach(el => { el.style.display = '' })
-        } catch (err) {
-          console.warn('Map capture failed:', err)
-          // Restaurar controles
-          const ctrls = mapEl?.querySelectorAll('.leaflet-control-container')
-          ctrls?.forEach(el => { el.style.display = '' })
-        }
+      try {
+        mapBase64 = await fetchStaticMap(optionSites)
+      } catch (err) {
+        console.warn('Static map failed:', err)
       }
 
       const occupiedSiteIds = new Set(
@@ -616,7 +594,7 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
         try {
           const { data: invData } = await supabase
             .from('inventory')
-            .select('id, caras, photo_url, image_url')
+            .select('id, caras, photo_url, image_url, illuminated, width_ft, height_ft')
             .in('id', siteIds)
 
           if (invData) {
@@ -626,6 +604,9 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
               siteCarasMap[inv.id] = {
                 photoUrl: cara?.photo_url ?? inv.photo_url ?? inv.image_url ?? null,
                 zone: cara?.billboard_zone ?? null,
+                illuminated: inv.illuminated ?? false,
+                width: inv.width_ft ?? null,
+                height: inv.height_ft ?? null,
               }
             }
           }

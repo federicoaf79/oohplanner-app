@@ -121,7 +121,7 @@ function miniHeader(doc, orgName) {
   setFont(doc, 'bold')
   doc.setFontSize(8)
   setTC(doc, T.HEADER_TEXT)
-  doc.text('OOH Planner', 14, 7)
+  doc.text(sanitize(orgName), 14, 7)
   setFont(doc, 'normal')
   setTC(doc, T.VENDOR_LINK)
   doc.text(sanitize(orgName), 196, 7, { align: 'right' })
@@ -198,7 +198,7 @@ function getImageDims(dataUrl) {
   })
 }
 
-function renderCoverPage(doc, { formData, profile, org, logoBase64, generatedAt, validUntil }) {
+function renderCoverPage(doc, { formData, profile, org, logoBase64, generatedAt, validUntil, summaryData }) {
   addPageBackground(doc)
 
   const orgName    = org?.name ?? 'OOH Planner'
@@ -314,6 +314,58 @@ function renderCoverPage(doc, { formData, profile, org, logoBase64, generatedAt,
   const dateRange = `${formData.startDate ?? '-'} al ${formData.endDate ?? '-'}`
   setFont(doc, 'normal'); doc.setFontSize(8); setTC(doc, T.TEXT2)
   doc.text(dateRange, 100, y + 26)
+
+  // Métricas clave de la propuesta
+  if (summaryData) {
+    y += 10
+
+    setFont(doc, 'bold'); doc.setFontSize(9); setTC(doc, T.TEXT2)
+    doc.text(sanitize(`Opcion: ${summaryData.optionTitle}`), 14, y)
+    y += 7
+
+    const metricW = 88
+    const metricH = 22
+    const metrics = [
+      {
+        label: 'Impactos / Contactos',
+        value: Math.round(summaryData.totalImpacts).toLocaleString('es-AR'),
+        sub: `${summaryData.digitalCount} digital + ${summaryData.physicalCount} fisico`,
+      },
+      {
+        label: 'Inversion cliente',
+        value: formatCurrency(summaryData.totalClient),
+        sub: 'Con descuento aplicado',
+      },
+      {
+        label: 'Soportes seleccionados',
+        value: String(summaryData.totalSites),
+        sub: 'Carteles en la pauta',
+      },
+      {
+        label: 'CPM (costo por mil)',
+        value: summaryData.cpm > 0 ? `$ ${Math.round(summaryData.cpm).toLocaleString('es-AR')}` : '-',
+        sub: 'Eficiencia de la inversion',
+      },
+    ]
+
+    for (let i = 0; i < metrics.length; i++) {
+      const col = i % 2
+      const row = Math.floor(i / 2)
+      const mx = 14 + col * (metricW + 6)
+      const my = y + row * (metricH + 4)
+
+      roundRect(doc, mx, my, metricW, metricH, 2, T.SURFACE)
+
+      setFont(doc, 'normal'); doc.setFontSize(7); setTC(doc, T.TEXT2)
+      doc.text(metrics[i].label, mx + 4, my + 6)
+
+      setFont(doc, 'bold'); doc.setFontSize(13); setTC(doc, T.TEXT)
+      doc.text(metrics[i].value, mx + 4, my + 15)
+
+      setFont(doc, 'normal'); doc.setFontSize(6.5); setTC(doc, T.TEXT3)
+      doc.text(metrics[i].sub, mx + 4, my + 20)
+    }
+  }
 }
 
 async function renderOption(doc, {
@@ -561,6 +613,17 @@ async function renderOption(doc, {
       doc.text(truncate(doc, sanitize(site.address ?? ''), rightW - 5), textX, tY)
       tY += 6
 
+      // Specs del cartel
+      const specs = siteCarasMap[site.id]
+      const specParts = []
+      if (specs?.width && specs?.height) specParts.push(`${specs.width} x ${specs.height} ft`)
+      if (specs?.illuminated) specParts.push('Iluminado')
+      if (specParts.length > 0) {
+        setFont(doc, 'normal'); doc.setFontSize(6.5); setTC(doc, T.INFO_TEXT)
+        doc.text(specParts.join(' | '), textX, tY)
+        tY += 4
+      }
+
       // Separador
       setDraw(doc, T.SEPARATOR)
       doc.setLineWidth(0.15)
@@ -729,7 +792,22 @@ export async function generateProposalPDF({
 
   const logoBase64 = await fetchLogoBase64(org?.logo_url)
 
-  renderCoverPage(doc, { formData, profile, org, logoBase64, generatedAt, validUntil })
+  const selectedOpt = activeOption === 'B' ? results?.optionB : results?.optionA
+  const DIGITAL_SET_COVER = new Set(['digital', 'urban_furniture_digital'])
+  const coverSites = selectedOpt?.sites ?? []
+  const coverDigital = coverSites.filter(s => DIGITAL_SET_COVER.has(s.format))
+  const coverPhysical = coverSites.filter(s => !DIGITAL_SET_COVER.has(s.format))
+  const summaryData = {
+    totalSites: coverSites.length,
+    digitalCount: coverDigital.length,
+    physicalCount: coverPhysical.length,
+    totalImpacts: coverSites.reduce((s, x) => s + (x.monthly_impacts ?? 0), 0),
+    totalClient: selectedOpt?.total_client_price ?? 0,
+    cpm: selectedOpt?.cpm ?? 0,
+    optionTitle: sanitize(selectedOpt?.title ?? 'Maximo Alcance'),
+  }
+
+  renderCoverPage(doc, { formData, profile, org, logoBase64, generatedAt, validUntil, summaryData })
 
   const selectedOption = activeOption === 'B' ? results?.optionB : results?.optionA
   const selectedMap    = activeOption === 'B' ? mapB : mapA
