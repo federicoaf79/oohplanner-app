@@ -325,15 +325,15 @@ function renderCoverPage(doc, { formData, profile, org, logoBase64, generatedAt,
   doc.text(dateRange, 100, y + 26)
 
   // Métricas clave de la propuesta
-  if (summaryData) {
-    y += 38
+  if (summaryData && y + 60 < 280) {
+    y += 6
 
     setFont(doc, 'bold'); doc.setFontSize(9); setTC(doc, T.TEXT2)
     doc.text(sanitize(`Opcion: ${summaryData.optionTitle}`), 14, y)
     y += 7
 
     const metricW = 88
-    const metricH = 22
+    const metricH = 20
     const metrics = [
       {
         label: 'Impactos / Contactos',
@@ -361,18 +361,20 @@ function renderCoverPage(doc, { formData, profile, org, logoBase64, generatedAt,
       const col = i % 2
       const row = Math.floor(i / 2)
       const mx = 14 + col * (metricW + 6)
-      const my = y + row * (metricH + 4)
+      const my = y + row * (metricH + 3)
+
+      if (my + metricH > 282) break
 
       roundRect(doc, mx, my, metricW, metricH, 2, T.SURFACE)
 
       setFont(doc, 'normal'); doc.setFontSize(7); setTC(doc, T.TEXT2)
       doc.text(metrics[i].label, mx + 4, my + 6)
 
-      setFont(doc, 'bold'); doc.setFontSize(13); setTC(doc, T.TEXT)
-      doc.text(metrics[i].value, mx + 4, my + 15)
+      setFont(doc, 'bold'); doc.setFontSize(12); setTC(doc, T.TEXT)
+      doc.text(metrics[i].value, mx + 4, my + 14)
 
-      setFont(doc, 'normal'); doc.setFontSize(6.5); setTC(doc, T.TEXT3)
-      doc.text(metrics[i].sub, mx + 4, my + 20)
+      setFont(doc, 'normal'); doc.setFontSize(6); setTC(doc, T.TEXT3)
+      doc.text(metrics[i].sub, mx + 4, my + 18)
     }
   }
 }
@@ -804,16 +806,23 @@ export async function generateProposalPDF({
   const selectedOpt = activeOption === 'B' ? results?.optionB : results?.optionA
   const DIGITAL_SET_COVER = new Set(['digital', 'urban_furniture_digital'])
   const coverSites = selectedOpt?.sites ?? []
-  const coverDigital = coverSites.filter(s => DIGITAL_SET_COVER.has(s.format))
-  const coverPhysical = coverSites.filter(s => !DIGITAL_SET_COVER.has(s.format))
+  const availCoverSites = coverSites.filter(s => !occupiedSiteIds.has(s.id))
+  const coverDigital = availCoverSites.filter(s => DIGITAL_SET_COVER.has(s.format))
+  const coverPhysical = availCoverSites.filter(s => !DIGITAL_SET_COVER.has(s.format))
   const summaryData = {
-    totalSites: coverSites.length,
+    totalSites: availCoverSites.length,
     digitalCount: coverDigital.length,
     physicalCount: coverPhysical.length,
-    totalImpacts: coverSites.reduce((s, x) => s + (x.monthly_impacts ?? 0), 0),
+    totalImpacts: availCoverSites.reduce((s, x) => s + (x.monthly_impacts ?? 0), 0),
     totalClient: selectedOpt?.total_client_price ?? 0,
-    cpm: selectedOpt?.cpm ?? 0,
+    cpm: 0,
     optionTitle: sanitize(selectedOpt?.title ?? 'Maximo Alcance'),
+  }
+
+  // Calcular CPM manualmente
+  const totalImp = summaryData.totalImpacts
+  if (totalImp > 0 && summaryData.totalClient > 0) {
+    summaryData.cpm = Math.round(summaryData.totalClient / (totalImp / 1000))
   }
 
   renderCoverPage(doc, { formData, profile, org, logoBase64, generatedAt, validUntil, summaryData })

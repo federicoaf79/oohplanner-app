@@ -570,22 +570,13 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
   async function handlePDF() {
     setGeneratingPDF(true)
     try {
-      // Mapa estático con OpenStreetMap (más confiable que html2canvas)
-      const optionSites = activeOption?.sites ?? []
-      let mapBase64 = null
-      try {
-        mapBase64 = await fetchStaticMap(optionSites)
-      } catch (err) {
-        console.warn('Static map failed:', err)
-      }
-
       const occupiedSiteIds = new Set(
         Object.entries(availability)
           .filter(([, info]) => info?.available === false)
           .map(([id]) => id)
       )
 
-      // Enriquecer sites con photo_url y billboard_zone desde inventory
+      // Enriquecer sites con photo_url, billboard_zone y coordenadas desde inventory
       const optSites = activeOption?.sites ?? []
       const siteIds = optSites.map(s => s.id).filter(Boolean)
       let siteCarasMap = {}
@@ -594,7 +585,7 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
         try {
           const { data: invData } = await supabase
             .from('inventory')
-            .select('id, caras, photo_url, image_url, illuminated, width_ft, height_ft')
+            .select('id, caras, photo_url, image_url, illuminated, width_ft, height_ft, latitude, longitude')
             .in('id', siteIds)
 
           if (invData) {
@@ -607,12 +598,31 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
                 illuminated: inv.illuminated ?? false,
                 width: inv.width_ft ?? null,
                 height: inv.height_ft ?? null,
+                latitude: inv.latitude ?? null,
+                longitude: inv.longitude ?? null,
               }
             }
           }
         } catch (err) {
           console.warn('Error fetching inventory for mockups:', err)
         }
+      }
+
+      // Enriquecer sites con lat/lng para el mapa estático
+      for (const site of optSites) {
+        const data = siteCarasMap[site.id]
+        if (data) {
+          if (!site.latitude && data.latitude) site.latitude = data.latitude
+          if (!site.longitude && data.longitude) site.longitude = data.longitude
+        }
+      }
+
+      // Mapa estático con OpenStreetMap (después de enriquecer coordenadas)
+      let mapBase64 = null
+      try {
+        mapBase64 = await fetchStaticMap(optSites)
+      } catch (err) {
+        console.warn('Static map failed:', err)
       }
 
       // Construir mapa de artworks para mockups
