@@ -247,7 +247,7 @@ function renderCoverPage(doc, { formData, profile, org, logoBase64, generatedAt,
     ['Fin',          sanitize(formData.endDate ?? '-')],
     ['Presupuesto',  formatCurrency(Number(formData.budget ?? 0))],
     ['Descuento',    formData.discountPct > 0 ? `${formData.discountPct}%` : 'Sin descuento'],
-    ['Formatos',     sanitize((formData.formats ?? []).map(f => FORMAT_MAP[f]?.label ?? f).join(', ') || '-')],
+    ['Formatos',     ''],
   ]
 
   doc.setFontSize(9)
@@ -261,6 +261,21 @@ function renderCoverPage(doc, { formData, profile, org, logoBase64, generatedAt,
     setFont(doc, 'normal'); setTC(doc, T.TEXT2); doc.text(label + ':', 112, row)
     setFont(doc, 'bold'); setTC(doc, T.TEXT); doc.text(truncate(doc, value, 65), 148, row)
   })
+
+  // Formatos apilados debajo de la columna derecha
+  const fmtList = (formData.formats ?? []).map(f => FORMAT_MAP[f]?.label ?? f)
+  if (fmtList.length > 0) {
+    const fmtY = y + 4 * 8  // posición de la 5ta fila (Formatos)
+    setFont(doc, 'normal'); doc.setFontSize(9); setTC(doc, T.TEXT2)
+    doc.text('Formatos:', 112, fmtY)
+    setFont(doc, 'bold'); doc.setFontSize(8); setTC(doc, T.TEXT)
+    for (let fi = 0; fi < fmtList.length; fi++) {
+      doc.text(sanitize(fmtList[fi]), 148, fmtY + fi * 5)
+    }
+    // Ajustar y si hay muchos formatos
+    const extraH = Math.max(0, (fmtList.length - 1) * 5)
+    y += extraH
+  }
 
   y += Math.max(leftData.length, rightData.length) * 8 + 6
   y = hr(doc, y)
