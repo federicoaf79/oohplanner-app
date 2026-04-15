@@ -49,12 +49,13 @@ export default function Proposals() {
   async function handlePDF(p) {
     setGeneratingPDF(p.id)
     try {
-      // Buscar los carteles guardados en proposal_items + inventory
+      const brief = p.brief_data ?? {}
+
+      // ── 1. Cargar proposal_items con datos completos ──────────────────────
       const { data: items } = await supabase
         .from('proposal_items')
         .select(`
-          rate,
-          notes,
+          site_id, rate, duration, discount_pct, notes, start_date, end_date,
           site:inventory(
             id, name, address, city, format,
             latitude, longitude, daily_traffic,
@@ -63,83 +64,149 @@ export default function Proposals() {
         `)
         .eq('proposal_id', p.id)
 
+      // Construir sites con precios correctos
+      // rate = precio lista mensual por cartel (guardado al momento del wizard)
+      // discount_pct por ítem (si existe) tiene prioridad sobre p.discount_pct
       const sites = (items ?? [])
         .filter(i => i.site)
-        .map(i => ({
-          id:              i.site.id,
-          name:            i.site.name,
-          address:         i.site.address,
-          city:            i.site.city,
-          format:          i.site.format,
-          latitude:        i.site.latitude,
-          longitude:       i.site.longitude,
-          monthly_impacts: i.site.daily_traffic ? i.site.daily_traffic * 30 : 0,
-          list_price:      i.rate ?? i.site.base_rate ?? 0,
-          client_price:    i.rate
-            ? Math.round(i.rate * (1 - (p.discount_pct ?? 0) / 100))
-            : 0,
-          justification:   i.notes ?? null,
-          photo_url:       i.site.photo_url ?? null,
-        }))
+        .map(i => {
+          const listPx   = i.rate ?? i.site.base_rate ?? 0
+          const discount = i.discount_pct ?? p.discount_pct ?? 0
+          const clientPx = Math.round(listPx * (1 - discount / 100))
+          const impacts  = i.site.daily_traffic ? i.site.daily_traffic * 30 : 0
 
-      const brief = p.brief_data ?? {}
+          return {
+            id:              i.site.id,
+            name:            i.site.name,
+            address:         i.site.address,
+            city:            i.site.city,
+            format:          i.site.format,
+            latitude:        i.site.latitude,
+            longitude:       i.site.longitude,
+            monthly_impacts: impacts,
+            list_price:      listPx,
+            client_price:    clientPx,
+            justification:   i.notes ?? null,
+            photo_url:       i.site.photo_url ?? null,
+          }
+        })
 
-      // Reconstruir formData desde brief_data
+      // ── 2. Reconstruir formData desde brief_data + columnas de proposals ──
       const formData = {
-        clientName:   p.client_name ?? '',
-        clientEmail:  p.client_email ?? '',
-        objective:    brief.objective ?? '',
-        formats:      brief.formats ?? [],
-        provinces:    brief.provinces ?? [],
-        cities:       brief.cities ?? [brief.city ?? ''],
-        budget:       brief.budget ?? '0',
-        discountPct:  p.discount_pct ?? 0,
-        startDate:    brief.startDate ?? '',
-        endDate:      brief.endDate ?? p.valid_until ?? '',
-        audience:     brief.audience ?? {},
+        clientName:  p.client_name  ?? '',
+        clientEmail: p.client_email ?? '',
+        objective:   brief.objective  ?? '',
+        formats:     brief.formats    ?? [],
+        provinces:   brief.provinces  ?? [],
+        cities:      brief.cities     ?? (brief.city ? [brief.city] : []),
+        budget:      brief.budget     ?? p.total_value ?? 0,
+        discountPct: p.discount_pct   ?? 0,
+        startDate:   brief.startDate  ?? p.start_date ?? '',
+        endDate:     brief.endDate    ?? p.end_date   ?? p.valid_until ?? '',
+        audience:    brief.audience   ?? {},
       }
 
-      // Calcular totales
-      const discount    = p.discount_pct ?? 0
-      const listTotal   = sites.reduce((s, x) => s + (x.list_price ?? 0), 0)
-      const clientTotal = p.total_value ?? Math.round(listTotal * (1 - discount / 100))
+      // ── 3. Calcular totales desde sites reales ────────────────────────────
+      const listTotal    = sites.reduce((s, x) => s + (x.list_price  ?? 0), 0)
+      const clientTotal  = sites.reduce((s, x) => s + (x.client_price ?? 0), 0)
       const totalImpacts = sites.reduce((s, x) => s + (x.monthly_impacts ?? 0), 0)
+      const discountAmt  = listTotal - clientTotal
 
-      // Armar results con una sola opción (la guardada)
       const optionLabel = brief.selectedOption === 'B' ? 'Máximo Impacto' : 'Máximo Alcance'
       const singleOption = {
-        title:             optionLabel,
-        rationale:         null,
+        title:              optionLabel,
+        rationale:          brief.rationale ?? null,
         sites,
-        total_list_price:  listTotal,
+        total_list_price:   listTotal,
         total_client_price: clientTotal,
-        discount_amount:   listTotal - clientTotal,
-        budget_remaining:  Math.max(0, Number(brief.budget ?? 0) - clientTotal),
-        next_billboard_gap: 0,
-        total_impacts:     totalImpacts,
-        estimated_reach:   Math.round(totalImpacts * 0.19),
-        cpm:               totalImpacts > 0 ? Math.round((clientTotal / totalImpacts) * 1000) : 0,
-        format_mix:        {},
+        discount_amount:    discountAmt,
+        budget_remaining:   Math.max(0, Number(formData.budget) - clientTotal),        next_billboard_gap: 0,
+        total_impacts:      totalImpacts,
+        cpm:                totalImpacts > 0
+          ? Math.round(clientTotal / (totalImpacts / 1000)) : 0,
+        format_mix: {},
       }
 
       const results = {
-        optionA: singleOption,
-        optionB: null,
+        optionA:       singleOption,
+        optionB:       null,
         audience_mode: 'full',
         audience_note: null,
       }
 
-      // Verificar ocupación de los sites guardados
+      // ── 4. Enriquecer con caras, dims e iluminación desde inventory ───────
       const siteIds = sites.map(s => s.id).filter(Boolean)
+      let siteCarasMap = {}
+
+      if (siteIds.length > 0) {
+        const { data: invData } = await supabase
+          .from('inventory')
+          .select('id, caras, photo_url, image_url, illuminated, width_ft, height_ft, latitude, longitude')
+          .in('id', siteIds)
+
+        for (const inv of invData ?? []) {
+          const caras = Array.isArray(inv.caras) ? inv.caras : []
+          const cara  = caras[0] ?? null
+          siteCarasMap[inv.id] = {
+            photoUrl:   cara?.photo_url ?? inv.photo_url ?? inv.image_url ?? null,
+            zone:       cara?.billboard_zone ?? null,
+            illuminated: inv.illuminated ?? false,
+            width:       inv.width_ft   ?? null,
+            height:      inv.height_ft  ?? null,
+            latitude:    inv.latitude   ?? null,
+            longitude:   inv.longitude  ?? null,
+          }
+          // Enriquecer coords en site si faltan
+          const site = sites.find(s => s.id === inv.id)
+          if (site) {
+            if (!site.latitude  && inv.latitude)  site.latitude  = inv.latitude
+            if (!site.longitude && inv.longitude) site.longitude = inv.longitude
+          }
+        }
+      }
+
+      // ── 5. Generar mockups (arte de empresa como fallback) ────────────────
+      const FORMAT_TO_ART = {
+        billboard: 'h', digital: 'h', ambient: 'v',
+        urban_furniture: 'v', urban_furniture_digital: 'v',
+        poster: 'v', mobile_screen: 'sq',
+      }
+      const artworkMap = {
+        h:  org?.artwork_h_url  ?? null,
+        v:  org?.artwork_v_url  ?? null,
+        sq: org?.artwork_sq_url ?? null,
+      }
+
+      const { generateMockup } = await import('../../lib/generateMockup')
+      const mockupMap = {}
+      const mockupTasks = []
+
+      for (const site of sites) {
+        const siteData = siteCarasMap[site.id]
+        if (!siteData?.zone || !siteData?.photoUrl) continue
+        const artSlot = FORMAT_TO_ART[site.format] ?? 'h'
+        const artUrl  = artworkMap[artSlot]
+        if (!artUrl) continue
+        mockupTasks.push(
+          generateMockup(siteData.photoUrl, siteData.zone, artUrl, { maxWidth: 800, quality: 0.82 })
+            .then(dataUrl => { mockupMap[site.id] = dataUrl })
+            .catch(() => {})
+        )
+      }
+      for (let i = 0; i < mockupTasks.length; i += 5) {
+        await Promise.all(mockupTasks.slice(i, i + 5))
+      }
+
+      // ── 6. Ocupados (excluir la propuesta actual) ─────────────────────────
       let occupiedSiteIds = new Set()
       if (siteIds.length > 0 && formData.startDate && formData.endDate) {
-        const { data: conflictItems } = await supabase
+        const { data: conflicts } = await supabase
           .from('proposal_items')
           .select('site_id, start_date, end_date, proposal:proposals!proposal_id(id, status)')
           .in('site_id', siteIds)
           .neq('proposal_id', p.id)
 
-        for (const item of conflictItems ?? []) {
+        for (const item of conflicts ?? []) {
           if (item.proposal?.status !== 'accepted') continue
           if (!item.start_date || !item.end_date) continue
           const overlaps =
@@ -149,7 +216,18 @@ export default function Proposals() {
         }
       }
 
-      await generateProposalPDF({ results, formData, profile: { ...profile, email: user?.email }, org, occupiedSiteIds })
+      // ── 7. Generar PDF ────────────────────────────────────────────────────
+      await generateProposalPDF({
+        results,
+        formData,
+        profile:        { ...profile, email: user?.email },
+        org,
+        activeOption:   'A',
+        occupiedSiteIds,
+        artworkMap,
+        mockupMap,
+        siteCarasMap,
+      })
 
     } catch (err) {
       console.error('PDF error:', err)

@@ -307,7 +307,7 @@ function drawCard(doc, site, cx, cy, w, { mockupDataUrl, photoUrl, siteData } = 
 
   // Specs
   const specParts = []
-  if (siteData?.width && siteData?.height) specParts.push(`${siteData.width}x${siteData.height}ft`)
+  if (siteData?.width && siteData?.height) specParts.push(`${siteData.width} x ${siteData.height} m`)
   if (siteData?.illuminated) specParts.push('Ilum.')
   if (specParts.length > 0) {
     fnt(doc, 'normal', 5.5); tc(doc, C.infoTxt)
@@ -387,10 +387,12 @@ async function renderStrategy(doc, {
   const offInversion  = physicalSites.reduce((s, x) => s + (x.client_price ?? 0), 0)
   const totalInversion = doohInversion + offInversion
 
+  // KPI rows DOOH / OFF / Total — calculado después de availSites
+  const kpiListTotal = availSites.reduce((s, x) => s + (x.list_price ?? 0), 0)
   const kpiRows = []
   if (digitalSites.length > 0)  kpiRows.push(['DOOH',  `Impactos: ${impStr(doohImpacts)}`,  `Inversion: ${peso(doohInversion)}`,  `${digitalSites.length} pantalla${digitalSites.length > 1 ? 's' : ''}`])
   if (physicalSites.length > 0) kpiRows.push(['OFF',   `Contactos: ${impStr(offContactos)}`, `Inversion: ${peso(offInversion)}`,   `${physicalSites.length} soporte${physicalSites.length > 1 ? 's' : ''}`])
-  kpiRows.push(['Total', peso(totalInversion), `Lista: ${peso(option.total_list_price ?? 0)}`, ''])
+  kpiRows.push(['Total', peso(doohInversion + offInversion), `Lista: ${peso(kpiListTotal)}`, ''])
 
   const kH = 10
   kpiRows.forEach((row, ri) => {
@@ -403,12 +405,12 @@ async function renderStrategy(doc, {
   })
   y += kpiRows.length * (kH + 2) + 3
 
-  // Desglose financiero
+  // Desglose financiero — calculado desde availSites (excluye ocupados)
   const discount    = formData.discountPct ?? 0
-  const listTotal   = option.total_list_price ?? 0
-  const clientTotal = option.total_client_price ?? 0
-  const discountAmt = option.discount_amount ?? Math.round(listTotal * discount / 100)
-  const remaining   = option.budget_remaining ?? 0
+  const listTotal   = availSites.reduce((s, x) => s + (x.list_price   ?? 0), 0)
+  const clientTotal = availSites.reduce((s, x) => s + (x.client_price ?? 0), 0)
+  const discountAmt = listTotal - clientTotal
+  const remaining   = Math.max(0, Number(formData.budget ?? 0) - clientTotal)
   const gap         = option.next_billboard_gap ?? 0
 
   if (listTotal > 0) {
@@ -501,8 +503,8 @@ async function renderStrategy(doc, {
         fnt(doc, 'bold', 4.5); tc(doc, C.white)
         doc.text('MOCKUP', 17.5, imgY + imgH - 1.5)
 
-        // Info derecha
-        const tX = 16 + imgW + 4
+        // Info derecha — tX fijo para no depender de imgW variable
+        const tX = 16 + IM_W + 4
         const rW = 192 - tX
         let tY = y + 5
 
@@ -524,7 +526,7 @@ async function renderStrategy(doc, {
 
         // Specs
         const specParts = []
-        if (siteData?.width && siteData?.height) specParts.push(`${siteData.width} x ${siteData.height} ft`)
+        if (siteData?.width && siteData?.height) specParts.push(`${siteData.width} x ${siteData.height} m`)
         if (siteData?.illuminated) specParts.push('Iluminado')
         if (specParts.length > 0) {
           fnt(doc, 'normal', 6.5); tc(doc, C.infoTxt)
@@ -753,7 +755,7 @@ export async function generateProposalPDF({
   const coverSites   = (selectedOpt?.sites ?? []).filter(s => !occupiedSiteIds.has(s.id))
   const coverDigital  = coverSites.filter(s =>  DIGITAL_SET.has(s.format))
   const coverPhysical = coverSites.filter(s => !DIGITAL_SET.has(s.format))
-  const totalClient  = selectedOpt?.total_client_price ?? 0
+  const totalClient  = coverSites.reduce((s, x) => s + (x.client_price || 0), 0)
   const totalImpacts = coverSites.reduce((s, x) => s + (x.monthly_impacts ?? 0), 0)
   const summaryData  = {
     totalSites:    coverSites.length,
