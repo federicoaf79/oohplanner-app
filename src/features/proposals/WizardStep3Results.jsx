@@ -175,7 +175,10 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
     return availability[s.id]?.available !== false
   })
 
-  const formatMix = option.format_mix ?? {}
+  const formatMix = availableSites.reduce((acc, s) => {
+    acc[s.format] = (acc[s.format] || 0) + 1
+    return acc
+  }, {})
 
   const budgetPct = (() => {
     const budget = Number(formData.budget ?? 0)
@@ -236,10 +239,19 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
         const offInversion  = physicalSites.reduce((s, x) => s + (x.client_price ?? 0), 0)
 
         const budget = Number(formData.budget ?? 0)
-        const recalcTotal = availableSites.reduce((s, x) => s + (x.client_price ?? 0), 0)
+        const discount = formData.discountPct ?? 0
+        const recalcTotal = availableSites.reduce((s, x) => {
+          const price = x.client_price > 0
+            ? x.client_price
+            : Math.round((x.list_price ?? 0) * (1 - discount / 100))
+          return s + price
+        }, 0)
         const bPct = budget > 0 && recalcTotal
           ? Math.min(100, Math.round(recalcTotal / budget * 100))
           : null
+
+        const totalImps = availableSites.reduce((s, x) => s + (x.monthly_impacts ?? 0), 0)
+        const cpm = totalImps > 0 ? Math.round(recalcTotal / (totalImps / 1000)) : 0
 
         const hasDigital  = digitalSites.length > 0
         const hasPhysical = physicalSites.length > 0
@@ -298,9 +310,9 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
                 <MetricCard icon={TrendingUp} label="Presupuesto restante" color="text-slate-400"
                   value={formatCurrency(Math.max(0, budget - recalcTotal))}
                   sub="Sin asignar" />
-                {option.cpm > 0 && (
+                {cpm > 0 && (
                   <MetricCard icon={Target} label="CPM general" color="text-purple-400"
-                    value={`$${fmtNum(option.cpm)}`}
+                    value={`$${fmtNum(cpm)}`}
                     sub="Costo por mil impactos" />
                 )}
               </div>
@@ -329,7 +341,7 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
       {/* Site cards */}
       <div>
         <h3 className="mb-3 text-sm font-semibold text-slate-300">
-          Carteles seleccionados ({availableSites.length})
+          Carteles seleccionados ({availableSites.length}) · para las fechas seleccionadas
         </h3>
         <div className="space-y-3">
           {(() => {
@@ -354,8 +366,13 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
 
 function PriceBreakdown({ formData, option }) {
   const discount = formData.discountPct ?? 0
-  const listTotal  = option?.total_list_price ?? 0
-  const clientTotal = option?.total_client_price ?? 0
+  const listTotal = (option?.sites ?? []).reduce((s, x) => s + (x.list_price ?? 0), 0)
+  const clientTotal = (option?.sites ?? []).reduce((s, x) => {
+    const price = x.client_price > 0
+      ? x.client_price
+      : Math.round((x.list_price ?? 0) * (1 - discount / 100))
+    return s + price
+  }, 0)
   const discountAmt = option?.discount_amount ?? Math.round(listTotal * discount / 100)
   const budgetRaw  = Number(formData.budget ?? 0)
   const remaining  = option?.budget_remaining ?? Math.max(0, budgetRaw - clientTotal)
