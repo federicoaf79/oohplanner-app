@@ -442,7 +442,7 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
   )
 }
 
-function PriceBreakdown({ formData, option }) {
+function PriceBreakdown({ formData, option, onAddNextBillboard }) {
   const discount = formData.discountPct ?? 0
   const listTotal = (option?.sites ?? []).reduce((s, x) => s + (x.list_price ?? 0), 0)
   const clientTotal = (option?.sites ?? []).reduce((s, x) => {
@@ -455,6 +455,9 @@ function PriceBreakdown({ formData, option }) {
   const budgetRaw  = Number(formData.budget ?? 0)
   const remaining  = option?.budget_remaining ?? Math.max(0, budgetRaw - clientTotal)
   const gap        = option?.next_billboard_gap ?? 0
+  const nextName   = option?.next_billboard_name ?? null
+  const nextId     = option?.next_billboard_id ?? null
+  const nextPrice  = option?.next_billboard_price ?? 0
 
   if (!listTotal) return null
 
@@ -494,10 +497,19 @@ function PriceBreakdown({ formData, option }) {
           </div>
         )}
       </div>
-      {gap > 0 && (
-        <p className="mt-3 text-xs text-blue-400 bg-blue-500/10 rounded-lg px-3 py-2">
-          Con {formatCurrency(gap)} más podés agregar el siguiente cartel disponible.
-        </p>
+      {gap > 0 && nextName && (
+        <div className="mt-3 rounded-lg border border-brand/20 bg-brand/5 px-3 py-2.5 space-y-2">
+          <p className="text-xs text-brand">
+            Con {formatCurrency(gap)} más podés agregar:{' '}
+            <span className="font-semibold text-white">{nextName}</span>
+            {' '}· {formatCurrency(nextPrice)}
+          </p>
+          {onAddNextBillboard && nextId && (
+            <button onClick={() => onAddNextBillboard(nextId)} className="text-[11px] font-semibold text-brand border border-brand/30 rounded px-2.5 py-1 hover:bg-brand/10 transition-colors">
+              + Agregar a la propuesta
+            </button>
+          )}
+        </div>
       )}
       {formData._pendingApproval && (
         <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
@@ -676,6 +688,25 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
       `Generado con OOH Planner IA`,
     ].join('\n')
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
+  }
+
+  async function handleAddNextBillboard(siteId) {
+    if (!siteId || !results) return
+    const { data: inv } = await supabase.from('inventory').select('id, name, address, city, format, latitude, longitude, daily_traffic, base_rate, illuminated').eq('id', siteId).single()
+    if (!inv) return
+    const discount = formData.discountPct ?? 0
+    const newSite = { id: inv.id, name: inv.name, address: inv.address, city: inv.city, format: inv.format, latitude: inv.latitude, longitude: inv.longitude, monthly_impacts: inv.daily_traffic ? inv.daily_traffic * 30 : 0, list_price: inv.base_rate ?? 0, client_price: Math.round((inv.base_rate ?? 0) * (1 - discount / 100)), justification: 'Agregado manualmente', illuminated: inv.illuminated, audience_score: null, is_mandatory: false }
+    const optKey = activeTab === 'A' ? 'optionA' : 'optionB'
+    const opt = results[optKey]
+    if (!opt) return
+    opt.sites = [...(opt.sites ?? []), newSite]
+    opt.total_client_price = (opt.total_client_price ?? 0) + newSite.client_price
+    opt.total_list_price = (opt.total_list_price ?? 0) + newSite.list_price
+    opt.budget_remaining = (opt.budget_remaining ?? 0) - newSite.client_price
+    opt.next_billboard_id = null
+    opt.next_billboard_name = null
+    opt.next_billboard_gap = 0
+    setPhotoEnriched(prev => prev + 1)
   }
 
   async function handleSave() {
@@ -1035,7 +1066,7 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
       )}
 
       {/* Price breakdown */}
-      <PriceBreakdown formData={formData} option={activeOption} />
+      <PriceBreakdown formData={formData} option={activeOption} onAddNextBillboard={handleAddNextBillboard} />
 
       {/* Active option content */}
       <OptionPanel option={activeOption} formData={formData} audienceNote={audienceNote} mapRef={activeTab === 'A' ? mapARef : mapBRef} availability={availability} partialSelections={partialSelections} onSelectPartial={handleSelectPartial} />
