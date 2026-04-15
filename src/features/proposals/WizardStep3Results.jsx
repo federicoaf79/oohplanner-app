@@ -280,15 +280,7 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
         </div>
       )}
 
-      {/* Rationale */}
-      {rationale && (
-        <div className="rounded-xl border border-brand/20 bg-brand/5 p-4">
-          <div className="flex gap-2.5">
-            <Star className="h-4 w-4 text-brand shrink-0 mt-0.5" />
-            <p className="text-sm text-slate-300 leading-relaxed">{rationale}</p>
-          </div>
-        </div>
-      )}
+      {/* Rationale — movido al ícono ⓘ en los tabs */}
 
       {/* Banner de disponibilidad */}
       {(() => {
@@ -473,6 +465,12 @@ function PriceBreakdown({ formData, option }) {
         <h3 className="text-sm font-semibold text-white">Desglose de precio</h3>
       </div>
       <div className="space-y-2 text-sm">
+        {budgetRaw > 0 && (
+          <div className="flex justify-between items-center pb-2 border-b border-surface-700/50">
+            <span className="text-slate-500">Presupuesto cliente</span>
+            <span className="font-semibold text-slate-300">{formatCurrency(budgetRaw)}</span>
+          </div>
+        )}
         <div className="flex justify-between items-center">
           <span className="text-slate-500">Precio de lista</span>
           <span className={discount > 0 ? 'text-slate-400 line-through' : 'text-slate-200'}>
@@ -524,6 +522,7 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
   const [activeTab, setActiveTab] = useState('A')
   const [saved, setSaved] = useState(false)
   const [generatingPDF, setGeneratingPDF] = useState(false)
+  const [showRationale, setShowRationale] = useState(null) // 'A' | 'B' | null
   const mapARef = useRef(null)
   const mapBRef = useRef(null)
 
@@ -983,19 +982,40 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
       {/* Tabs */}
       <div className="flex gap-2 rounded-xl border border-surface-700 bg-surface-800 p-1">
         {[
-          { key: 'A', label: results?.optionA?.title ?? 'Máximo Alcance' },
-          { key: 'B', label: results?.optionB?.title ?? 'Máximo Impacto' },
+          { key: 'A', label: results?.optionA?.title ?? 'Máximo Alcance', rationale: results?.optionA?.rationale },
+          { key: 'B', label: results?.optionB?.title ?? 'Máximo Impacto', rationale: results?.optionB?.rationale },
         ].map(tab => (
-          <button key={tab.key}
-            onClick={() => { setActiveTab(tab.key); setSaved(false) }}
-            className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition-all ${
-              activeTab === tab.key
-                ? 'bg-brand text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
+          <div key={tab.key} className="flex-1 relative">
+            <div className={`flex items-center rounded-lg transition-all ${
+              activeTab === tab.key ? 'bg-brand shadow-sm' : ''
             }`}>
-            <span className="font-bold mr-1.5">{tab.key === 'A' ? '⚡' : '🎯'}</span>
-            {tab.label}
-          </button>
+              <button
+                onClick={() => { setActiveTab(tab.key); setSaved(false) }}
+                className={`flex-1 px-4 py-2.5 text-sm font-semibold text-left transition-colors ${
+                  activeTab === tab.key ? 'text-white' : 'text-slate-400 hover:text-slate-200'
+                }`}>
+                <span className="font-bold mr-1.5">{tab.key === 'A' ? '⚡' : '🎯'}</span>
+                {tab.label}
+              </button>
+              {tab.rationale && (
+                <button
+                  onClick={e => { e.stopPropagation(); setShowRationale(showRationale === tab.key ? null : tab.key) }}
+                  className={`pr-3 pl-1 py-2.5 transition-colors ${
+                    activeTab === tab.key ? 'text-white/60 hover:text-white' : 'text-slate-600 hover:text-slate-400'
+                  }`}
+                  title="Ver estrategia"
+                >
+                  <Info className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+            {showRationale === tab.key && tab.rationale && (
+              <div className="absolute top-full left-0 right-0 z-20 mt-1 rounded-xl border border-brand/20 bg-surface-800 shadow-xl p-3">
+                <p className="text-xs text-slate-300 leading-relaxed">{tab.rationale}</p>
+                <button onClick={() => setShowRationale(null)} className="mt-2 text-[10px] text-slate-500 hover:text-slate-300">Cerrar</button>
+              </div>
+            )}
+          </div>
         ))}
       </div>
 
