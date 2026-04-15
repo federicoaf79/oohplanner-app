@@ -95,6 +95,13 @@ function addImg(doc, data, x, y, w, h) {
   } catch { /* ignorar */ }
 }
 
+function hexToRgb(hex) {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return [r, g, b]
+}
+
 // ── Estructura de página ──────────────────────────────────────
 function pageBg(doc) { fr(doc, 0, 0, 210, 297, C.bg) }
 
@@ -724,11 +731,12 @@ export async function generateProposalPDF({
   activeOption    = 'A',
   occupiedSiteIds = new Set(),
   artworkMap      = {},
-  artworks,               // alias nuevo
+  artworks,
   mockupMap       = {},
   siteCarasMap    = {},
+  mapImage        = null,
   // eslint-disable-next-line no-unused-vars
-  mapA, mapB, formatToArt, pdfTheme,  // aceptados pero no usados (compat WizardStep3)
+  mapA, mapB, formatToArt, pdfTheme,
 }) {
   const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true })
@@ -786,6 +794,42 @@ export async function generateProposalPDF({
   // Página de cierre
   doc.addPage()
   renderClosing(doc, { formData, profile, org, results, activeOption, occupiedSiteIds })
+
+  // Página de mapa (si se capturó)
+  if (mapImage) {
+    doc.addPage()
+    pageBg(doc)
+    pageHeader(doc, orgName, 'Mapa de ubicaciones')
+
+    let y = 20
+    fnt(doc, 'bold', 11); tc(doc, C.white)
+    doc.text('Ubicaciones en el mapa', 14, y); y += 10
+
+    // Imagen del mapa — ocupa el ancho completo
+    const mapW = 182
+    const mapH = 110
+    try {
+      doc.addImage(mapImage, 'JPEG', 14, y, mapW, mapH)
+    } catch { /* ignorar si falla */ }
+    y += mapH + 8
+
+    // Leyenda de carteles
+    fnt(doc, 'bold', 8); tc(doc, C.light)
+    doc.text('Carteles en pauta:', 14, y); y += 6
+
+    const availSites = (selectedOpt?.sites ?? []).filter(s => !occupiedSiteIds.has(s.id))
+    for (const site of availSites) {
+      if (y > 278) break
+      const fmt = FORMAT_MAP[site.format]
+      const color = fmt?.color ? hexToRgb(fmt.color) : C.light
+      frr(doc, 14, y - 2.5, 3, 3, 1, color)
+      fnt(doc, 'normal', 7.5); tc(doc, C.white)
+      doc.text(clip(doc, san(site.name ?? ''), 100), 20, y)
+      fnt(doc, 'normal', 7); tc(doc, C.light)
+      doc.text(clip(doc, san(site.address ?? ''), 70), 122, y)
+      y += 6
+    }
+  }
 
   // Footers en todas las páginas
   const totalPages = doc.getNumberOfPages()

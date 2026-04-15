@@ -46,7 +46,7 @@ function FitBounds({ sites }) {
   return null
 }
 
-export default function ProposalMap({ sites = [], className = '' }) {
+export default function ProposalMap({ sites = [], className = '', mapRef }) {
   const validSites = sites.filter(s => s.latitude && s.longitude)
 
   const center = useMemo(() => {
@@ -57,7 +57,7 @@ export default function ProposalMap({ sites = [], className = '' }) {
   }, [validSites])
 
   return (
-    <div className={`rounded-xl overflow-hidden border border-surface-700 ${className}`}>
+    <div ref={mapRef} className={`rounded-xl overflow-hidden border border-surface-700 ${className}`}>
       <MapContainer
         center={center}
         zoom={13}
@@ -65,8 +65,10 @@ export default function ProposalMap({ sites = [], className = '' }) {
         scrollWheelZoom={false}
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="/api/tiles/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://carto.com/">CARTO</a> &copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
+          url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
+          subdomains="abcd"
+          maxZoom={19}
         />
         <FitBounds sites={validSites} />
         {validSites.map(site => (

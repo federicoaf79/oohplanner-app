@@ -733,19 +733,27 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
         }
       }
 
-      // Mapa estático con OpenStreetMap (después de enriquecer coordenadas)
-      const sitesWithCoords = optSites.filter(s => s.latitude && s.longitude)
-      console.log('[PDF Map] Sites total:', optSites.length, 'con coords:', sitesWithCoords.length)
-      if (sitesWithCoords.length > 0) {
-        console.log('[PDF Map] Ejemplo:', sitesWithCoords[0].name, sitesWithCoords[0].latitude, sitesWithCoords[0].longitude)
-      }
+      // Capturar mapa Leaflet con html2canvas
       let mapBase64 = null
-      try {
-        mapBase64 = await fetchStaticMap(optSites)
-      } catch (err) {
-        console.warn('Static map failed:', err)
+      const activeMapRef = activeTab === 'A' ? mapARef : mapBRef
+      if (activeMapRef?.current) {
+        try {
+          const html2canvas = (await import('html2canvas')).default
+          // Esperar a que las tiles terminen de cargar
+          await new Promise(r => setTimeout(r, 1800))
+          const canvas = await html2canvas(activeMapRef.current, {
+            useCORS:         true,
+            allowTaint:      true,
+            scale:           1.5,
+            backgroundColor: '#0f172a',
+            logging:         false,
+            ignoreElements:  el => el.classList?.contains('leaflet-control-container'),
+          })
+          mapBase64 = canvas.toDataURL('image/jpeg', 0.88)
+        } catch (err) {
+          console.warn('Map capture failed:', err)
+        }
       }
-      console.log('[PDF Map] Resultado:', mapBase64 ? 'OK (' + mapBase64.length + ' bytes)' : 'NULL')
 
       // Construir mapa de artworks para mockups
       const artworkMap = {
@@ -784,8 +792,7 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
         formData,
         profile: { ...profile, email: user?.email },
         org,
-        mapA: activeTab === 'A' ? mapBase64 : null,
-        mapB: activeTab === 'B' ? mapBase64 : null,
+        mapImage: mapBase64,
         activeOption: activeTab,
         occupiedSiteIds,
         artworkMap,
