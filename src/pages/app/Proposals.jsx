@@ -18,6 +18,8 @@ export default function Proposals() {
   const [search, setSearch]           = useState('')
   const [generatingPDF, setGeneratingPDF] = useState(null)
   const [activating, setActivating]   = useState(null) // proposal id being activated
+  const [deleting, setDeleting]        = useState(null) // proposal id being deleted
+  const [confirmDelete, setConfirmDelete] = useState(null) // proposal to confirm delete
 
   useEffect(() => {
     if (!profile?.org_id) return
@@ -237,6 +239,23 @@ export default function Proposals() {
     }
   }
 
+  async function handleDelete(p) {
+    setDeleting(p.id)
+    setConfirmDelete(null)
+    try {
+      // Eliminar proposal_items primero (FK constraint)
+      await supabase.from('proposal_items').delete().eq('proposal_id', p.id)
+      const { error } = await supabase.from('proposals').delete().eq('id', p.id)
+      if (error) throw error
+      setProposals(prev => prev.filter(x => x.id !== p.id))
+    } catch (err) {
+      console.error('delete error:', err.message)
+      alert('Error al eliminar: ' + err.message)
+    } finally {
+      setDeleting(null)
+    }
+  }
+
   async function handleActivate(p) {
     setActivating(p.id)
     // Try with closed_at; fall back without it if column doesn't exist yet
@@ -380,10 +399,52 @@ export default function Proposals() {
                       Editar
                     </button>
                   )}
+
+                  {/* Eliminar — solo owner/manager */}
+                  {(isOwner || isManager) && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDelete(p)}
+                      disabled={deleting === p.id}
+                      className="flex items-center gap-1 rounded-lg border border-surface-600 bg-surface-800 px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:border-red-500/40 hover:text-red-400 transition-colors disabled:opacity-50"
+                      title="Eliminar propuesta"
+                    >
+                      {deleting === p.id
+                        ? <span className="h-3 w-3 animate-spin rounded-full border border-slate-600 border-t-red-400" />
+                        : <span className="text-[11px]">✕</span>
+                      }
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Modal confirmación delete */}
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="card w-full max-w-sm p-6 space-y-4">
+            <h3 className="text-base font-bold text-white">¿Eliminar propuesta?</h3>
+            <p className="text-sm text-slate-400">
+              Vas a eliminar <span className="font-semibold text-white">"{confirmDelete.title}"</span> de <span className="font-semibold text-white">{confirmDelete.client_name}</span>. Esta acción no se puede deshacer.
+            </p>
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setConfirmDelete(null)}
+                className="flex-1 rounded-lg border border-surface-600 px-4 py-2 text-sm font-medium text-slate-400 hover:text-slate-200 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleDelete(confirmDelete)}
+                className="flex-1 rounded-lg bg-red-500/20 border border-red-500/40 px-4 py-2 text-sm font-semibold text-red-400 hover:bg-red-500/30 transition-colors"
+              >
+                Sí, eliminar
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
