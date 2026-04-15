@@ -155,7 +155,7 @@ export default function ProposalNew() {
   }
 
   // ── Save (create or update) ─────────────────────────────────
-  async function handleSave(option, optionLabel) {
+  async function handleSave(option, optionLabel, partialSelections = {}) {
     if (!option || !profile?.org_id) return
     setSaving(true)
 
@@ -280,13 +280,19 @@ export default function ProposalNew() {
 
         const items = (option.sites ?? [])
           .filter(s => s.id && !s.id.startsWith('mock-'))
-          .map(s => ({
-            proposal_id: proposal.id,
-            site_id:     s.id,
-            org_id:      profile.org_id,
-            rate:        s.list_price ?? null,
-            notes:       s.justification ?? null,
-          }))
+          .map(s => {
+            const partial = partialSelections[s.id]
+            return {
+              proposal_id: proposal.id,
+              site_id:     s.id,
+              org_id:      profile.org_id,
+              rate:        partial ? partial.listPrice : (s.list_price ?? null),
+              notes:       s.justification ?? null,
+              start_date:  partial ? partial.startDate : (formData.startDate || null),
+              end_date:    formData.endDate || null,
+              discount_pct: formData.discountPct ?? 0,
+            }
+          })
 
         if (items.length > 0) {
           const { error: itemErr } = await supabase.from('proposal_items').insert(items)

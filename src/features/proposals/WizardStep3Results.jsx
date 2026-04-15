@@ -70,13 +70,59 @@ function ScoreBar({ score }) {
   )
 }
 
-function BillboardCard({ site, availabilityInfo }) {
-  const isDigital = DIGITAL_FORMATS.has(site.format)
+// ── Cálculo de precios parciales ────────────────────────────────────────────
+function calcPartialOptions(listPrice, discountPct, occupiedUntil) {
+  const occupied = new Date(occupiedUntil)
+  const freeDate = new Date(occupied)
+  freeDate.setDate(freeDate.getDate() + 1)
+
+  // días remanentes en el mes de liberación
+  const lastDay = new Date(freeDate.getFullYear(), freeDate.getMonth() + 1, 0)
+  const daysRemaining = lastDay.getDate() - freeDate.getDate() + 1
+
+  // primer día del mes siguiente al de liberación
+  const nextMonth = new Date(freeDate.getFullYear(), freeDate.getMonth() + 1, 1)
+
+  const factor = 1 - discountPct / 100
+
+  return {
+    freeDate,
+    daysRemaining,
+    opt1: {
+      label:       `Días remanentes (${daysRemaining}d) + mes completo`,
+      clientPrice: Math.round((listPrice / 30 * daysRemaining + listPrice) * factor),
+      listPrice:   Math.round(listPrice / 30 * daysRemaining + listPrice),
+      startDate:   freeDate.toISOString().slice(0, 10),
+    },
+    opt2: {
+      label:       'Mes completo desde liberación',
+      clientPrice: Math.round(listPrice * factor),
+      listPrice:   listPrice,
+      startDate:   nextMonth.toISOString().slice(0, 10),
+    },
+  }
+}
+
+function BillboardCard({ site, availabilityInfo, discountPct = 0, partialSelection, onSelectPartial }) {
+  const isDigital  = DIGITAL_FORMATS.has(site.format)
   const isOccupied = availabilityInfo?.available === false
+  const hasPartial = !!partialSelection
+
+  const partial = isOccupied && availabilityInfo?.occupiedUntil
+    ? calcPartialOptions(site.list_price ?? 0, discountPct, availabilityInfo.occupiedUntil)
+    : null
+
+  const freeDateLabel = availabilityInfo?.occupiedUntil
+    ? new Date(availabilityInfo.occupiedUntil).toLocaleDateString('es-AR', {
+        day: '2-digit', month: 'short', year: 'numeric'
+      })
+    : null
 
   return (
-    <div className={`card p-3 hover:border-brand/30 transition-colors ${
-      isOccupied ? 'border-amber-500/40 bg-amber-500/5' : ''
+    <div className={`card p-3 transition-colors ${
+      isOccupied && !hasPartial ? 'border-amber-500/40 bg-amber-500/5' :
+      hasPartial               ? 'border-brand/40 bg-brand/5' :
+      'hover:border-brand/30'
     }`}>
       {/* Fila 1: foto + nombre + formato + match */}
       <div className="flex items-center gap-3">
@@ -88,7 +134,6 @@ function BillboardCard({ site, availabilityInfo }) {
             <MapPin className="h-4 w-4 text-slate-600" />
           </div>
         )}
-
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-semibold text-white truncate">
@@ -109,7 +154,7 @@ function BillboardCard({ site, availabilityInfo }) {
         </div>
       </div>
 
-      {/* Fila 2: datos en línea horizontal */}
+      {/* Fila 2: datos */}
       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
         {site.monthly_impacts > 0 && (
           <span className="text-slate-500">
@@ -126,12 +171,12 @@ function BillboardCard({ site, availabilityInfo }) {
         )}
         {site.client_price > 0 && site.client_price !== site.list_price && (
           <span className="text-slate-500">
-            Cliente: <span className="font-semibold text-emerald-400">{formatCurrency(site.client_price)}</span>
+            Cliente: <span className="font-semibold text-brand">{formatCurrency(site.client_price)}</span>
           </span>
         )}
         {site.client_price > 0 && site.client_price === site.list_price && (
           <span className="text-slate-500">
-            Precio: <span className="font-semibold text-emerald-400">{formatCurrency(site.client_price)}</span>
+            Precio: <span className="font-semibold text-brand">{formatCurrency(site.client_price)}</span>
           </span>
         )}
       </div>
@@ -143,36 +188,75 @@ function BillboardCard({ site, availabilityInfo }) {
         </p>
       )}
 
-      {/* Aviso ocupado */}
-      {isOccupied && (() => {
-        const freeDate = availabilityInfo.occupiedUntil
-          ? new Date(availabilityInfo.occupiedUntil).toLocaleDateString('es-AR', {
-              day: '2-digit', month: 'short', year: 'numeric'
-            })
-          : null
-        return (
-          <div className="mt-2 flex items-start gap-1.5 rounded border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5">
+      {/* Aviso ocupado + opciones parciales */}
+      {isOccupied && (
+        <div className="mt-2 space-y-2">
+          <div className="flex items-start gap-1.5 rounded border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5">
             <AlertTriangle className="h-3 w-3 text-amber-400 shrink-0 mt-0.5" />
             <p className="text-xs text-amber-400">
               <span className="font-semibold">Ocupado · {availabilityInfo.occupiedBy}</span>
-              {freeDate && <span className="text-amber-600"> · Disponible desde: <span className="text-amber-300 font-medium">{freeDate}</span></span>}
-              <span className="text-amber-700"> · Podés ajustar fechas, reemplazarlo o continuar igual.</span>
+              {freeDateLabel && (
+                <span className="text-amber-600"> · Libre desde: <span className="text-amber-300 font-medium">{freeDateLabel}</span></span>
+              )}
             </p>
           </div>
-        )
-      })()}
+
+          {/* Opciones de venta parcial */}
+          {partial && onSelectPartial && (
+            <div className="rounded-lg border border-surface-600 bg-surface-800/60 p-2.5 space-y-1.5">
+              <p className="text-xs font-semibold text-slate-400 mb-2">¿Vendés el remanente?</p>
+              {[
+                { num: 1, data: partial.opt1 },
+                { num: 2, data: partial.opt2 },
+              ].map(({ num, data }) => {
+                const isSelected = partialSelection?.opt === num
+                return (
+                  <button
+                    key={num}
+                    onClick={() => onSelectPartial(site.id, isSelected ? null : { opt: num, ...data })}
+                    className={`w-full text-left rounded-lg px-3 py-2 text-xs transition-all border ${
+                      isSelected
+                        ? 'border-brand/60 bg-brand/15 text-brand/80'
+                        : 'border-surface-600 bg-surface-700/50 text-slate-400 hover:border-brand/40 hover:text-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">Opción {num}: {data.label}</span>
+                      <span className={`font-bold ${isSelected ? 'text-brand' : 'text-slate-300'}`}>
+                        {formatCurrency(data.clientPrice)}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">
+                      Desde {data.startDate} · Lista {formatCurrency(data.listPrice)}
+                    </div>
+                  </button>
+                )
+              })}
+              {hasPartial && (
+                <button
+                  onClick={() => onSelectPartial(site.id, null)}
+                  className="text-[10px] text-slate-600 hover:text-slate-400 transition-colors w-full text-right pt-0.5"
+                >
+                  Quitar selección parcial
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
 
 
-function OptionPanel({ option, formData, audienceNote, mapRef, availability = {} }) {
+function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}, partialSelections = {}, onSelectPartial }) {
   if (!option) return null
   const { sites = [], rationale } = option
 
   const availableSites = sites.filter(s => {
     if (DIGITAL_FORMATS.has(s.format)) return true
-    return availability[s.id]?.available !== false
+    if (availability[s.id]?.available !== false) return true
+    return !!partialSelections[s.id]  // parcialmente ocupado pero con selección del vendedor
   })
 
   const formatMix = availableSites.reduce((acc, s) => {
@@ -241,9 +325,8 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
         const budget = Number(formData.budget ?? 0)
         const discount = formData.discountPct ?? 0
         const recalcTotal = availableSites.reduce((s, x) => {
-          const price = x.client_price > 0
-            ? x.client_price
-            : Math.round((x.list_price ?? 0) * (1 - discount / 100))
+          const price = partialSelections[x.id]?.clientPrice
+            ?? (x.client_price > 0 ? x.client_price : Math.round((x.list_price ?? 0) * (1 - discount / 100)))
           return s + price
         }, 0)
         const bPct = budget > 0 && recalcTotal
@@ -304,7 +387,7 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
                 <span>📊</span> Resumen total
               </p>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                <MetricCard icon={DollarSign} label="Total cliente" color="text-emerald-400"
+                <MetricCard icon={DollarSign} label="Total cliente" color="text-brand"
                   value={formatCurrency(recalcTotal)}
                   sub={bPct != null ? `${bPct}% del presupuesto` : ''} />
                 <MetricCard icon={TrendingUp} label="Presupuesto restante" color="text-slate-400"
@@ -355,6 +438,9 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
                 key={site.id ?? i}
                 site={site}
                 availabilityInfo={availability[site.id]}
+                discountPct={formData.discountPct ?? 0}
+                partialSelection={partialSelections[site.id]}
+                onSelectPartial={onSelectPartial}
               />
             ))
           })()}
@@ -394,7 +480,7 @@ function PriceBreakdown({ formData, option }) {
           </span>
         </div>
         {discount > 0 && (
-          <div className="flex justify-between items-center text-emerald-400">
+          <div className="flex justify-between items-center text-brand">
             <span>Descuento {discount}%</span>
             <span>-{formatCurrency(discountAmt)}</span>
           </div>
@@ -424,7 +510,7 @@ function PriceBreakdown({ formData, option }) {
         </div>
       )}
       {formData._approvedBy && (
-        <div className="mt-3 flex items-center gap-2 text-xs text-emerald-400">
+        <div className="mt-3 flex items-center gap-2 text-xs text-brand">
           <CheckCircle className="h-3.5 w-3.5 shrink-0" />
           Aprobado por <strong>{formData._approvedBy}</strong> · {formData._approvedAt}
         </div>
@@ -444,6 +530,14 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
   const [availability, setAvailability] = useState({})
   const [checkingAvailability, setCheckingAvailability] = useState(false)
   const [photoEnriched, setPhotoEnriched] = useState(0)
+  const [partialSelections, setPartialSelections] = useState({})
+
+  function handleSelectPartial(siteId, data) {
+    setPartialSelections(prev => {
+      if (!data) { const n = { ...prev }; delete n[siteId]; return n }
+      return { ...prev, [siteId]: data }
+    })
+  }
 
   // ── Artworks del cliente (override) ──
   const [clientArtH, setClientArtH]   = useState(null) // { file, preview }
@@ -586,7 +680,7 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
   }
 
   async function handleSave() {
-    await onSave(activeOption, activeTab)
+    await onSave(activeOption, activeTab, partialSelections)
     setSaved(true)
   }
 
@@ -723,7 +817,7 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
 
         <div className="flex flex-wrap gap-2">
           <button onClick={handleWhatsApp}
-            className="flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-400 hover:bg-emerald-500/20 transition-colors">
+            className="flex items-center gap-1.5 rounded-lg border border-brand/30 bg-brand/10 px-3 py-2 text-sm font-medium text-brand hover:bg-brand/20 transition-colors">
             <MessageCircle className="h-4 w-4" />
             <span className="hidden sm:inline">WhatsApp</span>
           </button>
@@ -753,21 +847,21 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
       </div>
 
       {saved && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-brand/30 bg-brand/10 px-4 py-3">
           <div className="flex items-center gap-2.5">
-            <CheckCircle className="h-5 w-5 text-emerald-400 shrink-0" />
+            <CheckCircle className="h-5 w-5 text-brand shrink-0" />
             <div>
-              <p className="text-sm font-semibold text-emerald-400">¡Propuesta guardada!</p>
-              <p className="text-xs text-emerald-600 mt-0.5">Podés descargar el PDF, compartir por WhatsApp o crear una nueva.</p>
+              <p className="text-sm font-semibold text-brand">¡Propuesta guardada!</p>
+              <p className="text-xs text-brand/60 mt-0.5">Podés descargar el PDF, compartir por WhatsApp o crear una nueva.</p>
             </div>
           </div>
           <div className="flex gap-2 shrink-0">
-            <a href="/app/proposals" className="rounded-lg border border-emerald-500/30 px-3 py-1.5 text-xs font-medium text-emerald-400 hover:bg-emerald-500/10 transition-colors">
+            <a href="/app/proposals" className="rounded-lg border border-brand/30 px-3 py-1.5 text-xs font-medium text-brand hover:bg-brand/10 transition-colors">
               Ver propuestas
             </a>
             <button
               onClick={() => { setSaved(false); window.location.href = '/app/proposals/new' }}
-              className="rounded-lg bg-emerald-500/20 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/30 transition-colors"
+              className="rounded-lg bg-brand/20 px-3 py-1.5 text-xs font-medium text-brand/80 hover:bg-brand/30 transition-colors"
             >
               Nueva propuesta
             </button>
@@ -785,7 +879,7 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
             <Image className="h-4 w-4 text-brand" />
             <span className="text-sm font-semibold text-white">Artes para mockup</span>
             {hasAnyClientArt && (
-              <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-400">
+              <span className="rounded-full bg-brand/20 px-2 py-0.5 text-xs font-medium text-brand">
                 Arte cliente
               </span>
             )}
@@ -827,7 +921,7 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
 
                   {slot.state ? (
                     /* Arte del cliente subido */
-                    <div className="relative rounded-lg overflow-hidden border border-emerald-500/40 bg-surface-700">
+                    <div className="relative rounded-lg overflow-hidden border border-brand/40 bg-surface-700">
                       <div className={`${slot.ratio} w-full`}>
                         <img src={slot.state.preview} alt={slot.label}
                           className="absolute inset-0 w-full h-full object-cover" />
@@ -837,7 +931,7 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
                         <span className="sr-only">Quitar</span>
                         <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
                       </button>
-                      <div className="absolute bottom-1 left-1 rounded bg-emerald-500/90 px-1.5 py-0.5 text-[10px] font-semibold text-white">
+                      <div className="absolute bottom-1 left-1 rounded bg-brand px-1.5 py-0.5 text-[10px] font-semibold text-white">
                         Cliente
                       </div>
                     </div>
@@ -917,7 +1011,7 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
       <PriceBreakdown formData={formData} option={activeOption} />
 
       {/* Active option content */}
-      <OptionPanel option={activeOption} formData={formData} audienceNote={audienceNote} mapRef={activeTab === 'A' ? mapARef : mapBRef} availability={availability} />
+      <OptionPanel option={activeOption} formData={formData} audienceNote={audienceNote} mapRef={activeTab === 'A' ? mapARef : mapBRef} availability={availability} partialSelections={partialSelections} onSelectPartial={handleSelectPartial} />
 
       {/* Hidden panels para captura de ambos mapas */}
       <div style={{ position: 'absolute', left: '-9999px', top: 0, width: '600px', height: '300px', pointerEvents: 'none' }}>
