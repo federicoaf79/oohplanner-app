@@ -71,7 +71,7 @@ export default function Proposals() {
         .filter(i => i.site)
         .map(i => {
           const listPx   = i.rate ?? i.site.base_rate ?? 0
-          const discount = i.discount_pct ?? p.discount_pct ?? 0
+          const discount = (i.discount_pct > 0) ? i.discount_pct : (p.discount_pct ?? 0)
           const clientPx = Math.round(listPx * (1 - discount / 100))
           const impacts  = i.site.daily_traffic ? i.site.daily_traffic * 30 : 0
 
