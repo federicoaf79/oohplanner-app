@@ -522,22 +522,20 @@ export default function Dashboard() {
 
               {/* OOH Físico */}
               <p className="text-[10px] font-semibold text-orange-400 uppercase tracking-widest mb-2">🏙️ OOH Físico</p>
-              <div className="space-y-1.5 mb-3">
+              <div className="space-y-3 mb-3">
                 {derived.occByFormat.map(({ fmt, total, occupied, pct }) => (
-                  <div key={fmt} className="flex items-center gap-2">
-                    <span className="text-xs text-slate-500 w-24 truncate shrink-0">
-                      {FORMAT_MAP[fmt]?.label ?? fmt}
-                    </span>
-                    <div className="flex-1 h-1.5 rounded-full bg-surface-700">
+                  <div key={fmt}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-slate-400 truncate">{FORMAT_MAP[fmt]?.label ?? fmt}</span>
+                      <span className="text-xs text-slate-400 shrink-0 ml-2">{occupied}/{total} ({pct}%)</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-surface-700">
                       <div className="h-1.5 rounded-full transition-all"
                         style={{
                           width: `${pct}%`,
                           background: pct >= 80 ? '#f97316' : pct >= 50 ? '#6366f1' : '#3b82f6',
                         }} />
                     </div>
-                    <span className="text-xs text-slate-400 shrink-0 w-14 text-right">
-                      {occupied}/{total} · {pct}%
-                    </span>
                   </div>
                 ))}
                 {derived.occByFormat.length === 0 && (
@@ -551,10 +549,10 @@ export default function Dashboard() {
                   <div className="border-t border-surface-700 pt-3 mb-2">
                     <p className="text-[10px] font-semibold text-blue-400 uppercase tracking-widest mb-2">📺 DOOH Activo</p>
                   </div>
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     {derived.doohActivity.map(({ fmt, total, activeClients }) => (
                       <div key={fmt} className="flex items-center justify-between">
-                        <span className="text-xs text-slate-500">{FORMAT_MAP[fmt]?.label ?? fmt}</span>
+                        <span className="text-xs text-slate-400">{FORMAT_MAP[fmt]?.label ?? fmt}</span>
                         <span className="text-xs text-slate-300">
                           <span className="font-semibold text-brand">{activeClients}</span> clientes · {total} pantallas
                         </span>
