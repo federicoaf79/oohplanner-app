@@ -22,6 +22,7 @@ export default function Proposals() {
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [statusChanging, setStatusChanging] = useState(null)
   const [statusMenuOpen, setStatusMenuOpen] = useState(null) // proposal id
+  const [confirmActivate, setConfirmActivate] = useState(null)
 
   useEffect(() => {
     if (!profile?.org_id) return
@@ -285,16 +286,13 @@ export default function Proposals() {
 
   async function handleStatusChange(p, newStatus) {
     setStatusChanging(p.id + newStatus)
-    const { error } = await supabase
-      .from('proposals')
-      .update({ status: newStatus })
-      .eq('id', p.id)
+    const { error } = await supabase.from('proposals').update({ status: newStatus }).eq('id', p.id)
     if (!error) {
-      setProposals(prev => prev.map(x =>
-        x.id === p.id ? { ...x, status: newStatus } : x
-      ))
-    } else {
-      console.error('status change error:', error.message)
+      setProposals(prev => prev.map(x => x.id === p.id ? { ...x, status: newStatus } : x))
+      if (newStatus === 'accepted') {
+        await supabase.from('proposals').update({ workflow_status: 'approved' }).eq('id', p.id)
+        setProposals(prev => prev.map(x => x.id === p.id ? { ...x, workflow_status: 'approved' } : x))
+      }
     }
     setStatusChanging(null)
   }
@@ -343,25 +341,15 @@ export default function Proposals() {
       ) : (
         <div className="space-y-3">
           {filtered.map(p => {
-            // Calcular pasos disponibles para el dropdown
-            const steps = []
-            if (p.status === 'draft') {
-              const canSend = isOwner || isManager || (isSalesperson && p.created_by === profile?.id)
-              if (canSend) steps.push({ label: '📤 Marcar como enviada', next: 'sent', color: 'text-blue-400' })
-            }
-            if (p.status === 'sent' && (isOwner || isManager)) {
-              steps.push({ label: '✓ Aceptar', next: 'accepted', color: 'text-brand' })
-              steps.push({ label: '✕ Rechazar', next: 'rejected', color: 'text-red-400' })
-            }
-            if (p.status === 'accepted' && (isOwner || isManager)) {
-              steps.push({ label: '↩ Volver a enviada', next: 'sent', color: 'text-slate-400' })
-            }
+            const STATUS_OPTIONS = [
+              { id: 'draft', label: 'Borrador' },
+              { id: 'sent', label: 'Enviada' },
+              { id: 'accepted', label: 'Aceptada' },
+            ]
+            const isActivated = p.workflow_status && p.workflow_status !== 'pending'
+            const canChangeStatus = isOwner || isManager || (isSalesperson && p.created_by === profile?.id)
 
             const isOpen = statusMenuOpen === p.id
-            const needsAction = steps.length > 0
-            const statusBtnColor = p.status === 'sent'
-              ? 'border-amber-500/40 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20'
-              : 'border-surface-600 bg-surface-800 text-slate-400 hover:border-brand/40 hover:text-brand'
 
             return (
             <div key={p.id} className="card p-4 hover:border-brand/30 transition-colors">
@@ -371,6 +359,7 @@ export default function Proposals() {
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-semibold text-white truncate">{p.title}</p>
                     <StatusBadge status={p.status} type="proposal" />
+                    {isActivated && <span className="text-xs text-brand">· Activa en Campañas</span>}
                   </div>
                   <p className="mt-0.5 text-sm text-slate-500">{p.client_name}</p>
                   {p.creator?.full_name && (
@@ -406,11 +395,11 @@ export default function Proposals() {
                 {/* Derecha: Estado + Activar + Editar + Eliminar */}
                 <div className="flex items-center gap-1.5">
                   {/* Dropdown estado */}
-                  {needsAction && (
+                  {canChangeStatus && !isActivated && (
                     <div className="relative">
                       <button type="button"
                         onClick={e => { e.stopPropagation(); setStatusMenuOpen(isOpen ? null : p.id) }}
-                        className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${statusBtnColor}`}>
+                        className="flex items-center gap-1.5 rounded-lg border border-surface-600 bg-surface-800 px-3 py-1.5 text-xs font-semibold text-slate-400 hover:border-brand/40 hover:text-brand transition-colors">
                         {statusChanging?.startsWith(p.id)
                           ? <span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
                           : null}
@@ -420,27 +409,21 @@ export default function Proposals() {
                       {isOpen && (
                         <div className="absolute right-0 top-full mt-1 z-20 w-48 rounded-xl border border-surface-600 bg-surface-800 shadow-xl py-1"
                           onClick={e => e.stopPropagation()}>
-                          {steps.map(step => (
-                            <button key={step.next} type="button" disabled={!!statusChanging}
-                              onClick={async () => { setStatusMenuOpen(null); await handleStatusChange(p, step.next) }}
-                              className={`w-full text-left px-3 py-2.5 text-xs font-medium hover:bg-surface-700 transition-colors ${step.color} disabled:opacity-50`}>
-                              {step.label}
-                            </button>
-                          ))}
+                          {STATUS_OPTIONS.map(opt => {
+                            const isCurrent = p.status === opt.id
+                            return (
+                              <button key={opt.id} type="button" disabled={!!statusChanging || isCurrent}
+                                onClick={() => { setStatusMenuOpen(null); if (opt.id === 'accepted') { setConfirmActivate(p) } else { handleStatusChange(p, opt.id) } }}
+                                className="w-full text-left px-3 py-2.5 text-xs font-medium hover:bg-surface-700 transition-colors text-slate-300 disabled:opacity-50 flex items-center gap-2">
+                                <span className={`h-2 w-2 rounded-full ${isCurrent ? 'bg-brand' : 'bg-slate-600'}`} />
+                                {opt.label}
+                                {isCurrent && <span className="ml-auto text-[10px] text-brand">actual</span>}
+                              </button>
+                            )
+                          })}
                         </div>
                       )}
                     </div>
-                  )}
-
-                  {/* Activar */}
-                  {p.status === 'accepted' && (!p.workflow_status || p.workflow_status === 'pending') && (
-                    <button type="button" onClick={() => handleActivate(p)} disabled={activating === p.id}
-                      className="flex items-center gap-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-semibold text-amber-400 hover:bg-amber-500/20 transition-colors disabled:opacity-50">
-                      {activating === p.id
-                        ? <span className="h-3 w-3 animate-spin rounded-full border border-amber-500/50 border-t-amber-400" />
-                        : <Zap className="h-3 w-3" />}
-                      Activar
-                    </button>
                   )}
 
                   {/* Editar */}
@@ -466,6 +449,22 @@ export default function Proposals() {
             </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Modal confirmación activar campaña */}
+      {confirmActivate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+          <div className="card w-full max-w-sm p-6 space-y-4">
+            <h3 className="text-base font-bold text-white">¿Activar como campaña?</h3>
+            <p className="text-sm text-slate-400">
+              La propuesta <span className="font-semibold text-white">"{confirmActivate.client_name}"</span> pasará a <span className="font-semibold text-brand">Campaña Activa</span>. Quedará visible aquí como Aceptada.
+            </p>
+            <div className="flex gap-3 pt-1">
+              <button onClick={() => setConfirmActivate(null)} className="flex-1 rounded-lg border border-surface-600 px-4 py-2 text-sm font-medium text-slate-400 hover:text-slate-200 transition-colors">Cancelar</button>
+              <button onClick={async () => { const p = confirmActivate; setConfirmActivate(null); await handleStatusChange(p, 'accepted'); navigate('/app/campaigns') }} className="flex-1 rounded-lg bg-brand/20 border border-brand/40 px-4 py-2 text-sm font-semibold text-brand hover:bg-brand/30 transition-colors">Sí, activar</button>
+            </div>
+          </div>
         </div>
       )}
 
