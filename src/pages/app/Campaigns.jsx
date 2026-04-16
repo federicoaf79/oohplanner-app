@@ -453,11 +453,7 @@ export default function Campaigns() {
         const end = getCampaignEndDate(p)
         return !end || new Date(end) >= today
       })
-      .sort((a, b) => {
-        const ea = getCampaignEndDate(a) ?? ''
-        const eb = getCampaignEndDate(b) ?? ''
-        return ea.localeCompare(eb)
-      })
+      .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
   }, [allFiltered])
 
   const historial = useMemo(() => {

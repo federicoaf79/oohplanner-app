@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Search, FileText, Pencil, Download, MessageCircle, Zap } from 'lucide-react'
+import { Plus, Search, FileText, Pencil, Download, MessageCircle, Zap, ChevronDown } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -21,6 +21,7 @@ export default function Proposals() {
   const [deleting, setDeleting]        = useState(null)
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [statusChanging, setStatusChanging] = useState(null)
+  const [statusMenuOpen, setStatusMenuOpen] = useState(null) // proposal id
 
   useEffect(() => {
     if (!profile?.org_id) return
@@ -313,7 +314,7 @@ export default function Proposals() {
   }
 
   return (
-    <div className="space-y-5 animate-fade-in">
+    <div className="space-y-5 animate-fade-in" onClick={() => statusMenuOpen && setStatusMenuOpen(null)}>
       <div className="flex items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-bold text-white">Propuestas</h2>
@@ -388,52 +389,57 @@ export default function Proposals() {
                     WA
                   </button>
 
-                  {/* Cambio de status por rol */}
-                  {/* Vendedor: marcar como enviada */}
-                  {p.status === 'draft' && (isSalesperson ? p.created_by === profile?.id : true) && (
-                    <button
-                      type="button"
-                      onClick={() => handleStatusChange(p, 'sent')}
-                      disabled={statusChanging === p.id + 'sent'}
-                      className="flex items-center gap-1 rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 py-1.5 text-xs font-medium text-blue-400 hover:bg-blue-500/20 transition-colors disabled:opacity-50"
-                      title="Marcar como enviada al cliente"
-                    >
-                      {statusChanging === p.id + 'sent'
-                        ? <span className="h-3 w-3 animate-spin rounded-full border border-blue-500/50 border-t-blue-400" />
-                        : '📤'}
-                      Enviada
-                    </button>
-                  )}
-
-                  {/* Gerente/Dueño: aceptar o rechazar */}
-                  {p.status === 'sent' && (isOwner || isManager) && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => handleStatusChange(p, 'accepted')}
-                        disabled={!!statusChanging}
-                        className="flex items-center gap-1 rounded-lg border border-brand/30 bg-brand/10 px-2.5 py-1.5 text-xs font-medium text-brand hover:bg-brand/20 transition-colors disabled:opacity-50"
-                        title="Aceptar propuesta"
-                      >
-                        {statusChanging === p.id + 'accepted'
-                          ? <span className="h-3 w-3 animate-spin rounded-full border border-brand/50 border-t-brand" />
-                          : '✓'}
-                        Aceptar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleStatusChange(p, 'rejected')}
-                        disabled={!!statusChanging}
-                        className="flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50"
-                        title="Rechazar propuesta"
-                      >
-                        {statusChanging === p.id + 'rejected'
-                          ? <span className="h-3 w-3 animate-spin rounded-full border border-red-500/50 border-t-red-400" />
-                          : '✕'}
-                        Rechazar
-                      </button>
-                    </>
-                  )}
+                  {/* Menú de estado */}
+                  {(() => {
+                    const steps = []
+                    if (p.status === 'draft') {
+                      const canSend = isOwner || isManager || (isSalesperson && p.created_by === profile?.id)
+                      if (canSend) steps.push({ label: '📤 Marcar como enviada', next: 'sent', color: 'text-blue-400' })
+                    }
+                    if (p.status === 'sent' && (isOwner || isManager)) {
+                      steps.push({ label: '✓ Aceptar', next: 'accepted', color: 'text-brand' })
+                      steps.push({ label: '✕ Rechazar', next: 'rejected', color: 'text-red-400' })
+                    }
+                    if (p.status === 'accepted' && (isOwner || isManager)) {
+                      steps.push({ label: '↩ Volver a enviada', next: 'sent', color: 'text-slate-400' })
+                    }
+                    if (steps.length === 0) return null
+                    const isOpen = statusMenuOpen === p.id
+                    return (
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={e => { e.stopPropagation(); setStatusMenuOpen(isOpen ? null : p.id) }}
+                          className="flex items-center gap-1 rounded-lg border border-surface-600 bg-surface-800 px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:border-brand/40 hover:text-brand transition-colors"
+                        >
+                          Estado
+                          <ChevronDown className={`h-3 w-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                        {isOpen && (
+                          <div className="absolute right-0 top-full mt-1 z-20 w-44 rounded-xl border border-surface-600 bg-surface-800 shadow-xl py-1"
+                            onClick={e => e.stopPropagation()}>
+                            {steps.map(step => (
+                              <button
+                                key={step.next}
+                                type="button"
+                                disabled={!!statusChanging}
+                                onClick={async () => {
+                                  setStatusMenuOpen(null)
+                                  await handleStatusChange(p, step.next)
+                                }}
+                                className={`w-full text-left px-3 py-2 text-xs font-medium hover:bg-surface-700 transition-colors ${step.color} disabled:opacity-50`}
+                              >
+                                {statusChanging && statusChanging === p.id + step.next
+                                  ? <span className="inline-block h-3 w-3 animate-spin rounded-full border border-current border-t-transparent mr-1.5" />
+                                  : null}
+                                {step.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
 
                   {/* Activar campaña */}
                   {p.status === 'accepted' && (!p.workflow_status || p.workflow_status === 'pending') && (
