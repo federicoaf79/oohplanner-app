@@ -315,12 +315,19 @@ serve(async (req) => {
       )
     }
 
-    // CAMBIO 6 — Corrección de presupuesto usando enrichedInventory como referencia
+    // CAMBIO 6 — capBudget + auto-fill restante + next_billboard server-side
     const budget = Number(formData.budget) || 0
     const disc = formData.discountPct ?? 0
     const mult = 1 - disc / 100
 
-    for (const opt of [result.optionA, result.optionB]) {
+    // Enriquecer enrichedInventory con client_price para comparar fácil
+    const invWithPrice = enrichedInventory.map((item: any) => ({
+      ...item,
+      client_price: Math.round((item.base_rate ?? 0) * mult),
+    }))
+
+    for (const [optIndex, opt] of [result.optionA, result.optionB].entries()) {
+      // 1. capBudget — validar los sites que seleccionó la IA
       let remaining = budget
       const kept: any[] = []
       for (const site of (opt.sites ?? [])) {
@@ -332,14 +339,71 @@ serve(async (req) => {
           remaining -= cp
         }
       }
+
+      // 2. Auto-fill — agregar carteles del inventario que quepan en el saldo
+      const selectedIds = new Set(kept.map((s: any) => s.id))
+
+      // Ordenar candidatos: optionB por daily_traffic DESC, optionA por mix de formato
+      const candidates = invWithPrice
+        .filter((item: any) => !selectedIds.has(item.id) && item.client_price > 0 && item.client_price <= remaining)
+        .sort((a: any, b: any) =>
+          optIndex === 1
+            ? (b.daily_traffic ?? 0) - (a.daily_traffic ?? 0)   // Máximo Impacto: mayor tráfico
+            : (b.monthly_impacts ?? b.daily_traffic * 30 ?? 0) - (a.monthly_impacts ?? a.daily_traffic * 30 ?? 0)
+        )
+
+      for (const candidate of candidates) {
+        if (candidate.client_price > remaining) continue
+        kept.push({
+          id:              candidate.id,
+          name:            candidate.name,
+          address:         candidate.address,
+          city:            candidate.city,
+          format:          candidate.format,
+          latitude:        candidate.latitude,
+          longitude:       candidate.longitude,
+          monthly_impacts: candidate.daily_traffic ? candidate.daily_traffic * 30 : 0,
+          list_price:      candidate.base_rate ?? 0,
+          client_price:    candidate.client_price,
+          audience_score:  75,
+          is_mandatory:    false,
+          justification:   optIndex === 1
+            ? `Mayor tráfico disponible${candidate.daily_traffic ? ` (${candidate.daily_traffic.toLocaleString('es-AR')} diarios)` : ''}, completando presupuesto`
+            : `Cobertura adicional, completando presupuesto`,
+          illuminated:     candidate.illuminated,
+        })
+        remaining -= candidate.client_price
+        selectedIds.add(candidate.id)
+        if (remaining <= 0) break
+      }
+
+      // 3. Recalcular totales
       opt.sites = kept
       opt.total_client_price = kept.reduce((s: number, x: any) => s + x.client_price, 0)
-      opt.total_list_price = kept.reduce((s: number, x: any) => s + (x.list_price ?? 0), 0)
-      opt.discount_amount = opt.total_list_price - opt.total_client_price
-      opt.budget_remaining = budget - opt.total_client_price
+      opt.total_list_price   = kept.reduce((s: number, x: any) => s + (x.list_price ?? 0), 0)
+      opt.discount_amount    = opt.total_list_price - opt.total_client_price
+      opt.budget_remaining   = budget - opt.total_client_price
       const ti = kept.reduce((s: number, x: any) => s + (x.monthly_impacts ?? 0), 0)
       opt.total_impacts = ti
       opt.cpm = ti > 0 ? Math.round(opt.total_client_price / (ti / 1000)) : 0
+
+      // 4. next_billboard — el más barato no seleccionado
+      const nextBillboard = invWithPrice
+        .filter((item: any) => !selectedIds.has(item.id) && item.client_price > 0)
+        .sort((a: any, b: any) => a.client_price - b.client_price)[0]
+
+      if (nextBillboard) {
+        opt.next_billboard_gap        = Math.max(0, nextBillboard.client_price - opt.budget_remaining)
+        opt.next_billboard_id         = nextBillboard.id
+        opt.next_billboard_name       = nextBillboard.name
+        opt.next_billboard_price      = nextBillboard.client_price
+        opt.next_billboard_list_price = nextBillboard.base_rate ?? 0
+      } else {
+        opt.next_billboard_gap  = 0
+        opt.next_billboard_id   = null
+        opt.next_billboard_name = null
+        opt.next_billboard_price = 0
+      }
     }
 
     return new Response(JSON.stringify(result), {

@@ -34,3 +34,7 @@ supabase/.temp/
 *.njsproj
 *.sln
 *.sw?
+
+OOH Planner API KEY General.txt
+ooh-fotos/
+upload-ooh-photos.mjs
