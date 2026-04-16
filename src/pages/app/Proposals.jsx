@@ -17,9 +17,10 @@ export default function Proposals() {
   const [loading, setLoading]         = useState(false)
   const [search, setSearch]           = useState('')
   const [generatingPDF, setGeneratingPDF] = useState(null)
-  const [activating, setActivating]   = useState(null) // proposal id being activated
-  const [deleting, setDeleting]        = useState(null) // proposal id being deleted
-  const [confirmDelete, setConfirmDelete] = useState(null) // proposal to confirm delete
+  const [activating, setActivating]   = useState(null)
+  const [deleting, setDeleting]        = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(null)
+  const [statusChanging, setStatusChanging] = useState(null)
 
   useEffect(() => {
     if (!profile?.org_id) return
@@ -281,6 +282,22 @@ export default function Proposals() {
     setActivating(null)
   }
 
+  async function handleStatusChange(p, newStatus) {
+    setStatusChanging(p.id + newStatus)
+    const { error } = await supabase
+      .from('proposals')
+      .update({ status: newStatus })
+      .eq('id', p.id)
+    if (!error) {
+      setProposals(prev => prev.map(x =>
+        x.id === p.id ? { ...x, status: newStatus } : x
+      ))
+    } else {
+      console.error('status change error:', error.message)
+    }
+    setStatusChanging(null)
+  }
+
   function handleWhatsApp(p) {
     const monto = p.total_value ? formatCurrency(p.total_value) : 'a consultar'
     const fecha = formatDate(p.created_at)
@@ -370,6 +387,53 @@ export default function Proposals() {
                     <MessageCircle className="h-3 w-3" />
                     WA
                   </button>
+
+                  {/* Cambio de status por rol */}
+                  {/* Vendedor: marcar como enviada */}
+                  {p.status === 'draft' && (isSalesperson ? p.created_by === profile?.id : true) && (
+                    <button
+                      type="button"
+                      onClick={() => handleStatusChange(p, 'sent')}
+                      disabled={statusChanging === p.id + 'sent'}
+                      className="flex items-center gap-1 rounded-lg border border-blue-500/30 bg-blue-500/10 px-2.5 py-1.5 text-xs font-medium text-blue-400 hover:bg-blue-500/20 transition-colors disabled:opacity-50"
+                      title="Marcar como enviada al cliente"
+                    >
+                      {statusChanging === p.id + 'sent'
+                        ? <span className="h-3 w-3 animate-spin rounded-full border border-blue-500/50 border-t-blue-400" />
+                        : '📤'}
+                      Enviada
+                    </button>
+                  )}
+
+                  {/* Gerente/Dueño: aceptar o rechazar */}
+                  {p.status === 'sent' && (isOwner || isManager) && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleStatusChange(p, 'accepted')}
+                        disabled={!!statusChanging}
+                        className="flex items-center gap-1 rounded-lg border border-brand/30 bg-brand/10 px-2.5 py-1.5 text-xs font-medium text-brand hover:bg-brand/20 transition-colors disabled:opacity-50"
+                        title="Aceptar propuesta"
+                      >
+                        {statusChanging === p.id + 'accepted'
+                          ? <span className="h-3 w-3 animate-spin rounded-full border border-brand/50 border-t-brand" />
+                          : '✓'}
+                        Aceptar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleStatusChange(p, 'rejected')}
+                        disabled={!!statusChanging}
+                        className="flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                        title="Rechazar propuesta"
+                      >
+                        {statusChanging === p.id + 'rejected'
+                          ? <span className="h-3 w-3 animate-spin rounded-full border border-red-500/50 border-t-red-400" />
+                          : '✕'}
+                        Rechazar
+                      </button>
+                    </>
+                  )}
 
                   {/* Activar campaña */}
                   {p.status === 'accepted' && (!p.workflow_status || p.workflow_status === 'pending') && (

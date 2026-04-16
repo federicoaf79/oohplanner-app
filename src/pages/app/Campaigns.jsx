@@ -107,6 +107,15 @@ function CampaignModal({ campaign, onClose }) {
   const brief    = campaign.brief_data ?? {}
   const days     = getDaysRemaining(campaign.valid_until)
   const isExpired = days !== null && days < 0
+  const discount = campaign.discount_pct ?? 0
+
+  const DIGITAL = new Set(['digital', 'urban_furniture_digital'])
+  const doohItems = items.filter(i => DIGITAL.has(i.site?.format))
+  const offItems  = items.filter(i => !DIGITAL.has(i.site?.format))
+
+  const listTotal   = items.reduce((s, i) => s + (i.rate ?? 0), 0)
+  const clientTotal = campaign.total_value ?? Math.round(listTotal * (1 - discount / 100))
+  const discountAmt = listTotal - clientTotal
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
@@ -119,23 +128,20 @@ function CampaignModal({ campaign, onClose }) {
             <p className="font-bold text-white truncate">{campaign.client_name ?? '—'}</p>
             <p className="mt-0.5 text-xs text-slate-500 truncate">{campaign.title}</p>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="shrink-0 rounded-lg p-1 text-slate-500 hover:bg-surface-700 hover:text-white transition-colors"
-          >
+          <button type="button" onClick={onClose}
+            className="shrink-0 rounded-lg p-1 text-slate-500 hover:bg-surface-700 hover:text-white transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="p-5 space-y-4 max-h-[65vh] overflow-y-auto">
+        <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
 
           {/* Key info grid */}
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-xl bg-surface-800 p-3">
-              <p className="text-xs text-slate-500 mb-0.5">Inversión</p>
-              <p className="font-bold text-white">{formatCurrency(campaign.total_value)}</p>
+              <p className="text-xs text-slate-500 mb-0.5">Inversión cliente</p>
+              <p className="font-bold text-white">{formatCurrency(clientTotal)}</p>
             </div>
             <div className="rounded-xl bg-surface-800 p-3">
               <p className="text-xs text-slate-500 mb-0.5">Vendedor</p>
@@ -146,56 +152,104 @@ function CampaignModal({ campaign, onClose }) {
               <p className="font-semibold text-slate-300">{formatDate(brief.startDate) ?? '—'}</p>
             </div>
             <div className="rounded-xl bg-surface-800 p-3">
-              <p className="text-xs text-slate-500 mb-0.5">Vencimiento</p>
+              <p className="text-xs text-slate-500 mb-0.5">Fin</p>
               <p className={`font-semibold ${isExpired ? 'text-red-400' : 'text-slate-300'}`}>
                 {formatDate(campaign.valid_until)}
-                {days !== null && !isExpired && (
-                  <span className="ml-1.5 text-xs text-slate-500">({days}d)</span>
-                )}
+                {days !== null && !isExpired && <span className="ml-1.5 text-xs text-slate-500">({days}d)</span>}
                 {isExpired && <span className="ml-1.5 text-xs">(vencida)</span>}
               </p>
             </div>
           </div>
 
-          {/* Carteles */}
-          <div>
-            <p className="mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wide">
-              Carteles incluidos ({items.length})
-            </p>
-            {items.length === 0 ? (
-              <p className="text-xs text-slate-600 py-2">Sin carteles registrados</p>
-            ) : (
+          {/* Resumen financiero */}
+          {listTotal > 0 && (
+            <div className="rounded-xl bg-surface-800 p-4 space-y-2 text-sm">
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Resumen financiero</p>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Precio de lista</span>
+                <span className={discount > 0 ? 'text-slate-500 line-through' : 'text-slate-300'}>
+                  {formatCurrency(listTotal)}
+                </span>
+              </div>
+              {discount > 0 && (
+                <div className="flex justify-between text-brand">
+                  <span>Descuento {discount}%</span>
+                  <span>-{formatCurrency(discountAmt)}</span>
+                </div>
+              )}
+              <div className="flex justify-between font-bold text-white border-t border-surface-700 pt-2">
+                <span>Total cliente</span>
+                <span>{formatCurrency(clientTotal)}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Carteles — DOOH */}
+          {doohItems.length > 0 && (
+            <div>
+              <p className="mb-2 text-xs font-semibold text-blue-400 uppercase tracking-wide flex items-center gap-1.5">
+                📺 Digital (DOOH) · {doohItems.length} pantalla{doohItems.length > 1 ? 's' : ''}
+              </p>
               <div className="space-y-1.5">
-                {items.map((item, i) => {
-                  const inv = item.site ?? item.inventory ?? null
-                  const fmtColor = FORMAT_MAP[inv?.format]?.color
-                  const fmtLabel = FORMAT_MAP[inv?.format]?.label ?? inv?.format ?? '—'
+                {doohItems.map((item, i) => {
+                  const inv = item.site ?? null
+                  const listPx = item.rate ?? 0
+                  const clientPx = Math.round(listPx * (1 - discount / 100))
                   return (
-                    <div
-                      key={item.id ?? i}
-                      className="flex items-center justify-between rounded-lg bg-surface-800 px-3 py-2"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-white truncate">
-                          {inv?.name ?? item.site_id ?? '—'}
-                        </p>
-                        {inv?.code && (
-                          <p className="text-xs text-slate-600">{inv.code}</p>
-                        )}
+                    <div key={item.id ?? i} className="rounded-lg bg-surface-800 px-3 py-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-white truncate">{inv?.name ?? '—'}</p>
+                        <span className="shrink-0 text-sm font-bold text-brand">{formatCurrency(clientPx)}</span>
                       </div>
-                      <span
-                        className="shrink-0 ml-2 text-xs font-medium"
-                        style={{ color: fmtColor ?? '#94a3b8' }}
-                      >
-                        {fmtLabel}
-                      </span>
+                      {inv?.address && <p className="text-xs text-slate-500 truncate mt-0.5">{inv.address}</p>}
+                      {listPx > 0 && discount > 0 && (
+                        <p className="text-xs text-slate-600 mt-0.5">Lista: {formatCurrency(listPx)}</p>
+                      )}
                     </div>
                   )
                 })}
               </div>
-            )}
-          </div>
+            </div>
+          )}
 
+          {/* Carteles — OFF */}
+          {offItems.length > 0 && (
+            <div>
+              <p className="mb-2 text-xs font-semibold text-orange-400 uppercase tracking-wide flex items-center gap-1.5">
+                🏙️ Vía Pública (OFF) · {offItems.length} soporte{offItems.length > 1 ? 's' : ''}
+              </p>
+              <div className="space-y-1.5">
+                {offItems.map((item, i) => {
+                  const inv = item.site ?? null
+                  const fmtColor = FORMAT_MAP[inv?.format]?.color
+                  const fmtLabel = FORMAT_MAP[inv?.format]?.label ?? inv?.format ?? '—'
+                  const listPx = item.rate ?? 0
+                  const clientPx = Math.round(listPx * (1 - discount / 100))
+                  return (
+                    <div key={item.id ?? i} className="rounded-lg bg-surface-800 px-3 py-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-white truncate">{inv?.name ?? '—'}</p>
+                        <span className="shrink-0 text-sm font-bold text-brand">{formatCurrency(clientPx)}</span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {inv?.address && <p className="text-xs text-slate-500 truncate flex-1">{inv.address}</p>}
+                        <span className="shrink-0 text-xs font-medium" style={{ color: fmtColor ?? '#94a3b8' }}>
+                          {fmtLabel}
+                        </span>
+                      </div>
+                      {listPx > 0 && discount > 0 && (
+                        <p className="text-xs text-slate-600 mt-0.5">Lista: {formatCurrency(listPx)}</p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {items.length === 0 && (
+            <p className="text-xs text-slate-600 py-2 text-center">Sin carteles registrados</p>
+          )}
         </div>
       </div>
     </div>
@@ -324,7 +378,7 @@ export default function Campaigns() {
             creator:profiles!created_by(id, full_name),
             proposal_items(
               id, site_id, rate, start_date, end_date, duration,
-              site:inventory(id, name, code, format)
+              site:inventory(id, name, code, format, address)
             )
           `)
           .eq('org_id', profile.org_id)
