@@ -342,114 +342,100 @@ export default function Proposals() {
         </div>
       ) : (
         <div className="space-y-3">
-          {filtered.map(p => (
+          {filtered.map(p => {
+            // Calcular pasos disponibles para el dropdown
+            const steps = []
+            if (p.status === 'draft') {
+              const canSend = isOwner || isManager || (isSalesperson && p.created_by === profile?.id)
+              if (canSend) steps.push({ label: '📤 Marcar como enviada', next: 'sent', color: 'text-blue-400' })
+            }
+            if (p.status === 'sent' && (isOwner || isManager)) {
+              steps.push({ label: '✓ Aceptar', next: 'accepted', color: 'text-brand' })
+              steps.push({ label: '✕ Rechazar', next: 'rejected', color: 'text-red-400' })
+            }
+            if (p.status === 'accepted' && (isOwner || isManager)) {
+              steps.push({ label: '↩ Volver a enviada', next: 'sent', color: 'text-slate-400' })
+            }
+
+            const isOpen = statusMenuOpen === p.id
+            const needsAction = steps.length > 0
+            const statusBtnColor = p.status === 'sent'
+              ? 'border-amber-500/40 bg-amber-500/10 text-amber-400 hover:bg-amber-500/20'
+              : 'border-surface-600 bg-surface-800 text-slate-400 hover:border-brand/40 hover:text-brand'
+
+            return (
             <div key={p.id} className="card p-4 hover:border-brand/30 transition-colors">
-              <div className="flex items-start justify-between gap-4">
+              {/* Fila 1: info */}
+              <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <p className="font-semibold text-white truncate">{p.title}</p>
                     <StatusBadge status={p.status} type="proposal" />
                   </div>
-                  <p className="mt-1 text-sm text-slate-500">{p.client_name}</p>
+                  <p className="mt-0.5 text-sm text-slate-500">{p.client_name}</p>
                   {p.creator?.full_name && (
                     <p className="text-xs text-slate-600">Creado por: {p.creator.full_name}</p>
                   )}
-                  <div className="mt-2 flex items-center gap-4 text-xs text-slate-600">
-                    <span>{formatDate(p.created_at)}</span>
-                    {p.total_value && (
-                      <span className="font-medium text-slate-400">{formatCurrency(p.total_value)}</span>
-                    )}
-                  </div>
                 </div>
+                <div className="shrink-0 text-right">
+                  {p.total_value > 0 && (
+                    <p className="font-semibold text-slate-300 text-sm">{formatCurrency(p.total_value)}</p>
+                  )}
+                  <p className="text-xs text-slate-600 mt-0.5">{formatDate(p.created_at)}</p>
+                </div>
+              </div>
 
-                <div className="shrink-0 flex items-center gap-1.5">
-                  {/* PDF */}
-                  <button
-                    type="button"
-                    onClick={() => handlePDF(p)}
-                    disabled={generatingPDF === p.id}
-                    className="flex items-center gap-1 rounded-lg border border-surface-600 bg-surface-800 px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:border-brand/40 hover:text-brand transition-colors disabled:opacity-50"
-                    title="Descargar PDF"
-                  >
+              {/* Fila 2: acciones */}
+              <div className="mt-3 flex items-center justify-between gap-2 border-t border-surface-700/50 pt-3">
+                {/* Izquierda: PDF + WA */}
+                <div className="flex items-center gap-1.5">
+                  <button type="button" onClick={() => handlePDF(p)} disabled={generatingPDF === p.id}
+                    className="flex items-center gap-1 rounded-lg border border-surface-600 bg-surface-800 px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:border-brand/40 hover:text-brand transition-colors disabled:opacity-50">
                     {generatingPDF === p.id
                       ? <span className="h-3 w-3 animate-spin rounded-full border border-slate-600 border-t-brand" />
-                      : <Download className="h-3 w-3" />
-                    }
+                      : <Download className="h-3 w-3" />}
                     PDF
                   </button>
-
-                  {/* WhatsApp */}
-                  <button
-                    type="button"
-                    onClick={() => handleWhatsApp(p)}
-                    className="flex items-center gap-1 rounded-lg border border-surface-600 bg-surface-800 px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:border-green-500/40 hover:text-green-400 transition-colors"
-                    title="Compartir por WhatsApp"
-                  >
+                  <button type="button" onClick={() => handleWhatsApp(p)}
+                    className="flex items-center gap-1 rounded-lg border border-surface-600 bg-surface-800 px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:text-slate-200 transition-colors">
                     <MessageCircle className="h-3 w-3" />
                     WA
                   </button>
+                </div>
 
-                  {/* Menú de estado */}
-                  {(() => {
-                    const steps = []
-                    if (p.status === 'draft') {
-                      const canSend = isOwner || isManager || (isSalesperson && p.created_by === profile?.id)
-                      if (canSend) steps.push({ label: '📤 Marcar como enviada', next: 'sent', color: 'text-blue-400' })
-                    }
-                    if (p.status === 'sent' && (isOwner || isManager)) {
-                      steps.push({ label: '✓ Aceptar', next: 'accepted', color: 'text-brand' })
-                      steps.push({ label: '✕ Rechazar', next: 'rejected', color: 'text-red-400' })
-                    }
-                    if (p.status === 'accepted' && (isOwner || isManager)) {
-                      steps.push({ label: '↩ Volver a enviada', next: 'sent', color: 'text-slate-400' })
-                    }
-                    if (steps.length === 0) return null
-                    const isOpen = statusMenuOpen === p.id
-                    return (
-                      <div className="relative">
-                        <button
-                          type="button"
-                          onClick={e => { e.stopPropagation(); setStatusMenuOpen(isOpen ? null : p.id) }}
-                          className="flex items-center gap-1 rounded-lg border border-surface-600 bg-surface-800 px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:border-brand/40 hover:text-brand transition-colors"
-                        >
-                          Estado
-                          <ChevronDown className={`h-3 w-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-                        </button>
-                        {isOpen && (
-                          <div className="absolute right-0 top-full mt-1 z-20 w-44 rounded-xl border border-surface-600 bg-surface-800 shadow-xl py-1"
-                            onClick={e => e.stopPropagation()}>
-                            {steps.map(step => (
-                              <button
-                                key={step.next}
-                                type="button"
-                                disabled={!!statusChanging}
-                                onClick={async () => {
-                                  setStatusMenuOpen(null)
-                                  await handleStatusChange(p, step.next)
-                                }}
-                                className={`w-full text-left px-3 py-2 text-xs font-medium hover:bg-surface-700 transition-colors ${step.color} disabled:opacity-50`}
-                              >
-                                {statusChanging && statusChanging === p.id + step.next
-                                  ? <span className="inline-block h-3 w-3 animate-spin rounded-full border border-current border-t-transparent mr-1.5" />
-                                  : null}
-                                {step.label}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })()}
+                {/* Derecha: Estado + Activar + Editar + Eliminar */}
+                <div className="flex items-center gap-1.5">
+                  {/* Dropdown estado */}
+                  {needsAction && (
+                    <div className="relative">
+                      <button type="button"
+                        onClick={e => { e.stopPropagation(); setStatusMenuOpen(isOpen ? null : p.id) }}
+                        className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${statusBtnColor}`}>
+                        {statusChanging?.startsWith(p.id)
+                          ? <span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
+                          : null}
+                        Estado
+                        <ChevronDown className={`h-3 w-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                      </button>
+                      {isOpen && (
+                        <div className="absolute right-0 top-full mt-1 z-20 w-48 rounded-xl border border-surface-600 bg-surface-800 shadow-xl py-1"
+                          onClick={e => e.stopPropagation()}>
+                          {steps.map(step => (
+                            <button key={step.next} type="button" disabled={!!statusChanging}
+                              onClick={async () => { setStatusMenuOpen(null); await handleStatusChange(p, step.next) }}
+                              className={`w-full text-left px-3 py-2.5 text-xs font-medium hover:bg-surface-700 transition-colors ${step.color} disabled:opacity-50`}>
+                              {step.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-                  {/* Activar campaña */}
+                  {/* Activar */}
                   {p.status === 'accepted' && (!p.workflow_status || p.workflow_status === 'pending') && (
-                    <button
-                      type="button"
-                      onClick={() => handleActivate(p)}
-                      disabled={activating === p.id}
-                      className="flex items-center gap-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-400 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
-                      title="Activar como campaña"
-                    >
+                    <button type="button" onClick={() => handleActivate(p)} disabled={activating === p.id}
+                      className="flex items-center gap-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5 text-xs font-semibold text-amber-400 hover:bg-amber-500/20 transition-colors disabled:opacity-50">
                       {activating === p.id
                         ? <span className="h-3 w-3 animate-spin rounded-full border border-amber-500/50 border-t-amber-400" />
                         : <Zap className="h-3 w-3" />}
@@ -459,36 +445,27 @@ export default function Proposals() {
 
                   {/* Editar */}
                   {canEdit(p) && (
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/app/proposals/${p.id}/edit`)}
-                      className="flex items-center gap-1 rounded-lg border border-surface-600 bg-surface-800 px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:border-brand/40 hover:text-brand transition-colors"
-                      title="Editar propuesta"
-                    >
+                    <button type="button" onClick={() => navigate(`/app/proposals/${p.id}/edit`)}
+                      className="flex items-center gap-1 rounded-lg border border-surface-600 bg-surface-800 px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:border-brand/40 hover:text-brand transition-colors">
                       <Pencil className="h-3 w-3" />
                       Editar
                     </button>
                   )}
 
-                  {/* Eliminar — solo owner/manager */}
+                  {/* Eliminar */}
                   {(isOwner || isManager) && (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmDelete(p)}
-                      disabled={deleting === p.id}
-                      className="flex items-center gap-1 rounded-lg border border-surface-600 bg-surface-800 px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:border-red-500/40 hover:text-red-400 transition-colors disabled:opacity-50"
-                      title="Eliminar propuesta"
-                    >
+                    <button type="button" onClick={() => setConfirmDelete(p)} disabled={deleting === p.id}
+                      className="rounded-lg border border-surface-600 bg-surface-800 px-2 py-1.5 text-xs text-slate-500 hover:border-red-500/40 hover:text-red-400 transition-colors disabled:opacity-50">
                       {deleting === p.id
                         ? <span className="h-3 w-3 animate-spin rounded-full border border-slate-600 border-t-red-400" />
-                        : <span className="text-[11px]">✕</span>
-                      }
+                        : '✕'}
                     </button>
                   )}
                 </div>
               </div>
             </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
