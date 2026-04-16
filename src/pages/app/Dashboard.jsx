@@ -133,8 +133,8 @@ function computeDerived(
   const prevAcceptedIds = new Set(prevProps.map(p => p.id))
 
   // ── Revenue = SUM(rate) de items de propuestas aceptadas en el período ──
-  const revenue     = items.filter(pi => periodAcceptedIds.has(pi.proposal_id)).reduce((s, pi) => s + (pi.rate ?? 0), 0)
-  const prevRevenue = items.filter(pi => prevAcceptedIds.has(pi.proposal_id)).reduce((s, pi) => s + (pi.rate ?? 0), 0)
+  const revenue     = items.filter(pi => periodAcceptedIds.has(pi.proposal_id)).reduce((s, pi) => s + (pi.client_price ?? pi.rate ?? 0), 0)
+  const prevRevenue = items.filter(pi => prevAcceptedIds.has(pi.proposal_id)).reduce((s, pi) => s + (pi.client_price ?? pi.rate ?? 0), 0)
   const revDelta    = prevRevenue > 0 ? (revenue - prevRevenue) / prevRevenue * 100 : null
 
   // Items solapando período — solo para ocupación física
@@ -182,7 +182,8 @@ function computeDerived(
     }))
     .sort((a, b) => b.value - a.value)
 
-  // ── Ocupación física (excl. digitales) ──
+  // ── Ocupación por formato ──
+  const PHYSICAL_FORMATS = ['billboard', 'ambient', 'poster', 'urban_furniture', 'street_furniture', 'mobile_screen']
   const physInv      = inventory.filter(i => !DIGITAL.has(i.format))
   const physOccSet   = new Set(
     currItems.filter(pi => !DIGITAL.has(invById[pi.site_id]?.format)).map(pi => pi.site_id)
@@ -190,6 +191,28 @@ function computeDerived(
   const physTotal    = physInv.length
   const physOccupied = physOccSet.size
   const physPct      = physTotal > 0 ? Math.round(physOccupied / physTotal * 100) : 0
+
+  // Desglose por formato físico
+  const occByFormat = PHYSICAL_FORMATS.map(fmt => {
+    const total    = inventory.filter(i => i.format === fmt).length
+    const occupied = new Set(
+      currItems
+        .filter(pi => invById[pi.site_id]?.format === fmt)
+        .map(pi => pi.site_id)
+    ).size
+    return { fmt, total, occupied, pct: total > 0 ? Math.round(occupied / total * 100) : 0 }
+  }).filter(d => d.total > 0)
+
+  // Actividad DOOH: clientes activos por formato digital
+  const doohActivity = ['digital', 'urban_furniture_digital'].map(fmt => {
+    const total    = inventory.filter(i => i.format === fmt).length
+    const activeClients = new Set(
+      currItems
+        .filter(pi => invById[pi.site_id]?.format === fmt)
+        .map(pi => pi.proposal_id)
+    ).size
+    return { fmt, total, activeClients }
+  }).filter(d => d.total > 0)
 
   // ── Mi actividad ──
   const myPeriod = proposals.filter(p => {
@@ -210,7 +233,7 @@ function computeDerived(
   const myClosed     = new Set(myAcceptedOverlapItems.map(pi => pi.proposal_id)).size
   // FIX 1: comisión sobre rate mensual sin duration
   const myCommission = myAcceptedOverlapItems
-    .reduce((s, pi) => s + (pi.rate ?? 0) * commPct / 100, 0)
+    .reduce((s, pi) => s + (pi.client_price ?? pi.rate ?? 0) * commPct / 100, 0)
 
   // Formato top: histórico de todas mis propuestas aceptadas
   const myFmt = {}
@@ -266,7 +289,7 @@ function computeDerived(
     closeRate,
     workflowCounts,
     formatMix,
-    physTotal, physOccupied, physPct,
+    physTotal, physOccupied, physPct, occByFormat, doohActivity,
     myInCourse: myPeriod.filter(p => ['draft', 'sent'].includes(p.status)).length,
     myClosed,
     myCommission, commPct, topFormat,
@@ -308,7 +331,7 @@ export default function Dashboard() {
 
       // 3 — Propuestas recientes (últimos 60 días) — incluye workflow_status para semáforo (FIX 2)
       supabase.from('proposals')
-        .select('id, status, workflow_status, total_value, created_by, created_at, accepted_at, client_name, valid_until')
+        .select('id, status, workflow_status, total_value, discount_pct, created_by, created_at, accepted_at, client_name, valid_until')
         .eq('org_id', profile.org_id)
         .gte('created_at', daysAgo60.toISOString()),
 
@@ -332,9 +355,18 @@ export default function Dashboard() {
         .eq('org_id', profile.org_id),
 
     ]).then(([invR, itemsR, propsR, profileR, campaignsR, allPropsR]) => {
+      // Enriquecer items con client_price (aplicar descuento de la propuesta)
+      const discountMap = {}
+      ;(propsR.data ?? []).forEach(p => { discountMap[p.id] = p.discount_pct ?? 0 })
+
+      const enrichedItems = (itemsR.data ?? []).map(pi => ({
+        ...pi,
+        client_price: Math.round((pi.rate ?? 0) * (1 - (discountMap[pi.proposal_id] ?? 0) / 100)),
+      }))
+
       setRaw({
         inventory:         invR.data      ?? [],
-        items:             itemsR.data    ?? [],
+        items:             enrichedItems,
         proposals:         propsR.data    ?? [],
         allProposals:      allPropsR.data ?? [],
         userProfile:       profileR.error  ? {} : (profileR.data ?? {}),
@@ -484,29 +516,53 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* C — FIX 3: Ocupación del Inventario (% grande) */}
+            {/* C — Ocupación discriminada por formato */}
             <div className="card p-4 flex flex-col">
-              <p className="mb-4 text-sm font-semibold text-white">Ocupación del Inventario</p>
-              <div className="flex-1 flex flex-col items-center justify-center text-center">
-                <p className="text-5xl font-bold text-white leading-none">{derived.physPct}%</p>
-                <p className="mt-2 text-sm text-slate-500">
-                  {derived.physOccupied} de {derived.physTotal} carteles físicos
-                </p>
+              <p className="mb-3 text-sm font-semibold text-white">Ocupación del Inventario</p>
+
+              {/* OOH Físico */}
+              <p className="text-[10px] font-semibold text-orange-400 uppercase tracking-widest mb-2">🏙️ OOH Físico</p>
+              <div className="space-y-1.5 mb-3">
+                {derived.occByFormat.map(({ fmt, total, occupied, pct }) => (
+                  <div key={fmt} className="flex items-center gap-2">
+                    <span className="text-xs text-slate-500 w-24 truncate shrink-0">
+                      {FORMAT_MAP[fmt]?.label ?? fmt}
+                    </span>
+                    <div className="flex-1 h-1.5 rounded-full bg-surface-700">
+                      <div className="h-1.5 rounded-full transition-all"
+                        style={{
+                          width: `${pct}%`,
+                          background: pct >= 80 ? '#f97316' : pct >= 50 ? '#6366f1' : '#3b82f6',
+                        }} />
+                    </div>
+                    <span className="text-xs text-slate-400 shrink-0 w-14 text-right">
+                      {occupied}/{total} · {pct}%
+                    </span>
+                  </div>
+                ))}
+                {derived.occByFormat.length === 0 && (
+                  <p className="text-xs text-slate-600">Sin carteles físicos</p>
+                )}
               </div>
-              <div className="mt-5">
-                <div className="h-2 w-full rounded-full bg-surface-700">
-                  <div
-                    className="h-2 rounded-full transition-all duration-500"
-                    style={{
-                      width: `${derived.physPct}%`,
-                      background: derived.physPct >= 80 ? '#22c55e'
-                        : derived.physPct >= 50 ? '#f97316'
-                        : '#3b82f6',
-                    }}
-                  />
-                </div>
-                <p className="mt-2 text-xs text-slate-600">Excluye digitales y mob. digital</p>
-              </div>
+
+              {/* DOOH */}
+              {derived.doohActivity.length > 0 && (
+                <>
+                  <div className="border-t border-surface-700 pt-3 mb-2">
+                    <p className="text-[10px] font-semibold text-blue-400 uppercase tracking-widest mb-2">📺 DOOH Activo</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    {derived.doohActivity.map(({ fmt, total, activeClients }) => (
+                      <div key={fmt} className="flex items-center justify-between">
+                        <span className="text-xs text-slate-500">{FORMAT_MAP[fmt]?.label ?? fmt}</span>
+                        <span className="text-xs text-slate-300">
+                          <span className="font-semibold text-brand">{activeClients}</span> clientes · {total} pantallas
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
 
           </div>
