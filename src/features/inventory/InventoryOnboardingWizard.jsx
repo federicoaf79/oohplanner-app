@@ -128,8 +128,10 @@ const HEADER_ALIASES = {
   address:   ['dirección','direccion','address','ubicación','ubicacion','domicilio'],
   city:      ['ciudad','city','localidad'],
   format:    ['formato','format','tipo','type','tipo_soporte'],
-  width_m:   ['ancho','width','ancho_m','ancho (m)','ancho m','width_m'],
-  height_m:  ['alto','height','alto_m','alto (m)','alto m','altura','height_m'],
+  width_m:         ['ancho','width','ancho_m','ancho (m)','ancho m','width_m'],
+  height_m:        ['alto','height','alto_m','alto (m)','alto m','altura','height_m'],
+  print_width_cm:  ['ancho_impresion_cm','ancho impresion','ancho impresión','print_width_cm','ancho_impresion'],
+  print_height_cm: ['alto_impresion_cm','alto impresion','alto impresión','print_height_cm','alto_impresion'],
   owner_type:['propietario','owner','owner_type','tipo_propiedad','propiedad'],
   illuminated:['iluminado','illuminated','ilum','luz','iluminación','iluminacion'],
   latitude:  ['latitud','latitude','lat'],
@@ -182,6 +184,8 @@ function normalizeRow(raw) {
     sale_price:        toNum(raw.sale_price),       // display only (no DB column yet)
     faces_count:       raw.faces_count ? Number(raw.faces_count) : 1,  // display only
     traffic_direction: String(raw.traffic_direction ?? '').trim() || null, // display only
+    print_width_cm:    toNum(raw.print_width_cm),
+    print_height_cm:   toNum(raw.print_height_cm),
   }
 }
 
@@ -207,6 +211,8 @@ function toDbPayload(item, orgId) {
     sale_price:        item.sale_price,
     faces_count:       item.faces_count ?? 1,
     traffic_direction: item.traffic_direction || null,
+    print_width_cm:    item.print_width_cm ?? null,
+    print_height_cm:   item.print_height_cm ?? null,
   }
 }
 

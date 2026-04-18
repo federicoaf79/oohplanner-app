@@ -31,6 +31,7 @@ const CSV_COLS_ES = [
   'costo_dueno_cartel', 'costo_impresion_m2',
   'costo_colocacion', 'costo_diseno',
   'comision_vendedor_pct', 'comision_agencia_pct', 'comision_dueno_pct',
+  'ancho_impresion_cm', 'alto_impresion_cm',
 ]
 
 // Mapeo columnas en español → claves internas en inglés
@@ -63,6 +64,8 @@ const ES_TO_EN = {
   comision_vendedor_pct:  'cost_seller_commission_pct',
   comision_agencia_pct:   'cost_agency_commission_pct',
   comision_dueno_pct:     'cost_owner_commission_pct',
+  ancho_impresion_cm:     'print_width_cm',
+  alto_impresion_cm:      'print_height_cm',
 }
 
 // ── Rollback helpers ──────────────────────────────────────────
@@ -173,6 +176,8 @@ function buildXLSX(items) {
     item.cost_seller_commission_pct ?? '',
     item.cost_agency_commission_pct ?? '',
     item.cost_owner_commission_pct ?? '',
+    item.print_width_cm ?? '',
+    item.print_height_cm ?? '',
   ]
   const ws = XLSX.utils.aoa_to_sheet([CSV_COLS_ES, ...items.map(toRow)])
   ws['!cols'] = CSV_COLS_ES.map(h => ({ wch: Math.max(h.length + 4, 16) }))
@@ -234,6 +239,8 @@ function rowToPayload(row, orgId) {
     cost_seller_commission_pct: parseNum(row.cost_seller_commission_pct, 5),
     cost_agency_commission_pct: parseNum(row.cost_agency_commission_pct, 0),
     cost_owner_commission_pct:  parseNum(row.cost_owner_commission_pct, 0),
+    print_width_cm:             parseNum(row.print_width_cm),
+    print_height_cm:            parseNum(row.print_height_cm),
   }
 }
 

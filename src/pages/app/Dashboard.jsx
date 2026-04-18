@@ -148,13 +148,46 @@ function computeDerived(
   }
   const currItems = overlap(pS, pE)
 
-  // ── Tasa de cierre del período (por created_at, excluye borradores) ──
-  const periodNonDraft = proposals.filter(p => {
-    const d = new Date(p.created_at)
-    return p.status !== 'draft' && d >= pS && d <= pE
-  }).length
-  const closeRate = periodNonDraft > 0
-    ? periodProps.length / periodNonDraft * 100
+  // ── Tasa de cierre = conversión del pipeline del mes ──
+  // Numerador: propuestas aceptadas en el período (por accepted_at)
+  // Denominador: universo único de propuestas con actividad en el período
+  const pipelineIds = new Set()
+  proposals.forEach(p => {
+    if (p.status === 'draft') return
+
+    const created  = new Date(p.created_at)
+    const accepted = p.accepted_at ? new Date(p.accepted_at) : null
+    const updated  = p.updated_at  ? new Date(p.updated_at)  : null
+
+    // 1. Creada en el período
+    if (created >= pS && created <= pE) {
+      pipelineIds.add(p.id)
+      return
+    }
+
+    // 2. Aceptada en el período (aunque creada antes)
+    if (p.status === 'accepted' && accepted && accepted >= pS && accepted <= pE) {
+      pipelineIds.add(p.id)
+      return
+    }
+
+    // 3. Rechazada/descartada en el período — sin valores de lost en este sistema
+    const lostStatuses = []
+    if (lostStatuses.includes(p.status) && updated && updated >= pS && updated <= pE) {
+      pipelineIds.add(p.id)
+      return
+    }
+
+    // 4. Todavía abierta al final del período y creada antes/durante
+    const openStatuses = ['sent', 'pending_approval']
+    if (openStatuses.includes(p.status) && created <= pE) {
+      pipelineIds.add(p.id)
+      return
+    }
+  })
+  const pipelineCount = pipelineIds.size
+  const closeRate = pipelineCount > 0
+    ? periodProps.length / pipelineCount * 100
     : null
 
   // ── Semáforo de campañas por workflow_status (propuestas aceptadas en el período) ──
@@ -452,7 +485,7 @@ export default function Dashboard() {
               <p className="text-xl font-bold text-white">
                 {derived.closeRate != null ? fmtPct(derived.closeRate) : '—'}
               </p>
-              <p className="mt-1.5 text-xs text-slate-600">Período · aceptadas / no-borradores</p>
+              <p className="mt-1.5 text-xs text-slate-600">Aprobadas / total del período</p>
             </div>
 
           </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, Fragment } from 'react'
+import { Link } from 'react-router-dom'
 import { Search, Megaphone, Calendar, ChevronRight, X, Filter } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -13,7 +14,7 @@ const STATUS_IDX = Object.fromEntries(WORKFLOW_STATUSES.map((s, i) => [s.id, i])
 const WF_LABELS = {
   approved:     'Aprobada',
   printing:     'En impresión',
-  installation: 'En instalación',
+  colocation: 'En colocación',
   active:       'Activa',
   withdraw:     'Retirada',
   renew:        'Renovada',
@@ -99,9 +100,86 @@ function WorkflowStepper({ status, onChange, readOnly = false }) {
   )
 }
 
+// ── Print measures sub-modal ──────────────────────────────────
+
+function PrintMeasuresModal({ campaign, onClose }) {
+  const items = campaign.proposal_items ?? []
+  const [copied, setCopied] = useState(false)
+
+  function handleCopy() {
+    const lines = [`Medidas de impresión — ${campaign.client_name ?? campaign.title}`, '']
+    items.forEach((item, i) => {
+      const inv = item.site
+      const label = [inv?.name, inv?.code ? `(${inv.code})` : null].filter(Boolean).join(' ')
+      const dims = inv?.print_width_cm && inv?.print_height_cm
+        ? `${inv.print_width_cm} × ${inv.print_height_cm} cm`
+        : 'Sin datos'
+      lines.push(`${i + 1}. ${label || '—'}: ${dims}`)
+    })
+    navigator.clipboard.writeText(lines.join('\n')).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-md rounded-2xl bg-surface-900 border border-surface-700 shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b border-surface-700">
+          <p className="text-sm font-semibold text-white">Medidas de impresión</p>
+          <button type="button" onClick={onClose} className="rounded-lg p-1 text-slate-500 hover:bg-surface-700 hover:text-white transition-colors">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="p-4 max-h-[55vh] overflow-y-auto space-y-2">
+          {items.length === 0 && (
+            <p className="text-sm text-slate-500 text-center py-4">Sin carteles en esta campaña</p>
+          )}
+          {items.map((item, i) => {
+            const inv = item.site ?? null
+            const hasMeasures = inv?.print_width_cm && inv?.print_height_cm
+            return (
+              <div key={item.id ?? i} className="flex items-center justify-between gap-3 rounded-lg bg-surface-800 px-3 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-white truncate">{inv?.name ?? '—'}</p>
+                  {inv?.code && <p className="text-xs text-slate-500">{inv.code}</p>}
+                </div>
+                {hasMeasures ? (
+                  <span className="shrink-0 text-sm font-bold text-brand">
+                    {inv.print_width_cm} × {inv.print_height_cm} cm
+                  </span>
+                ) : (
+                  <Link
+                    to="/app/inventory"
+                    onClick={onClose}
+                    className="shrink-0 text-xs text-amber-400 hover:text-amber-300 transition-colors whitespace-nowrap"
+                  >
+                    Sin datos — cargar en inventario
+                  </Link>
+                )}
+              </div>
+            )
+          })}
+        </div>
+        <div className="p-4 border-t border-surface-700">
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="w-full rounded-lg bg-surface-800 border border-surface-700 px-4 py-2.5 text-sm font-medium text-slate-200 hover:bg-surface-700 transition-colors"
+          >
+            {copied ? '¡Copiado!' : 'Copiar al portapapeles'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Campaign detail modal ─────────────────────────────────────
 
 function CampaignModal({ campaign, onClose }) {
+  const [showPrint, setShowPrint] = useState(false)
   if (!campaign) return null
   const items    = campaign.proposal_items ?? []
   const brief    = campaign.brief_data ?? {}
@@ -183,6 +261,20 @@ function CampaignModal({ campaign, onClose }) {
               </div>
             </div>
           )}
+
+          {/* Medidas de impresión */}
+          {items.length > 0 && (
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowPrint(true)}
+                className="text-xs text-brand hover:text-blue-300 transition-colors"
+              >
+                📐 Medidas de impresión →
+              </button>
+            </div>
+          )}
+          {showPrint && <PrintMeasuresModal campaign={campaign} onClose={() => setShowPrint(false)} />}
 
           {/* Carteles — DOOH */}
           {doohItems.length > 0 && (
@@ -378,7 +470,7 @@ export default function Campaigns() {
             creator:profiles!created_by(id, full_name),
             proposal_items(
               id, site_id, rate, start_date, end_date, duration,
-              site:inventory(id, name, code, format, address)
+              site:inventory(id, name, code, format, address, print_width_cm, print_height_cm)
             )
           `)
           .eq('org_id', profile.org_id)

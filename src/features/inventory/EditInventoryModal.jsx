@@ -94,6 +94,9 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
       cost_design:              item.cost_design ?? 0,
       cost_seller_commission_pct: item.cost_seller_commission_pct ?? 5,
       cost_agency_commission_pct: item.cost_agency_commission_pct ?? 0,
+      // Medidas de impresión
+      print_width_cm:           item.print_width_cm ?? null,
+      print_height_cm:          item.print_height_cm ?? null,
     })
 
     // Load formats from DB (global + org-specific)
@@ -202,6 +205,8 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
         cost_design:              form.cost_design,
         cost_seller_commission_pct: form.cost_seller_commission_pct,
         cost_agency_commission_pct: form.cost_agency_commission_pct,
+        print_width_cm:           form.print_width_cm ? Number(form.print_width_cm) : null,
+        print_height_cm:          form.print_height_cm ? Number(form.print_height_cm) : null,
       })
       .eq('id', item.id)
 
@@ -320,6 +325,15 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
               <div className="grid gap-4 sm:grid-cols-2">
                 <NumericField label="Ancho (m)" value={form.width_ft} onChange={v => set('width_ft', v)} step="0.1" />
                 <NumericField label="Alto (m)" value={form.height_ft} onChange={v => set('height_ft', v)} step="0.1" />
+              </div>
+
+              {/* Medidas de impresión (tela/afiche) */}
+              <div>
+                <p className="text-xs font-medium text-slate-500 mb-3">Medidas de impresión (tela/afiche)</p>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <NumericField label="Ancho impresión (cm)" value={form.print_width_cm} onChange={v => set('print_width_cm', v)} step="0.1" />
+                  <NumericField label="Alto impresión (cm)" value={form.print_height_cm} onChange={v => set('print_height_cm', v)} step="0.1" />
+                </div>
               </div>
 
               {/* Toggles */}
