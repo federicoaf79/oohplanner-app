@@ -176,7 +176,7 @@ export const DIGITAL_FREQUENCIES = [
 export const WORKFLOW_STATUSES = [
   { id: 'approved',     label: 'Aprobada',    color: '#22c55e' },
   { id: 'printing',     label: 'Impresión',   color: '#f59e0b' },
-  { id: 'installation', label: 'Instalación', color: '#3b82f6' },
+  { id: 'colocation', label: 'Colocación', color: '#3b82f6' },
   { id: 'active',       label: 'Activa',      color: '#10b981' },
   { id: 'withdraw',     label: 'Retirar',     color: '#f97316' },
   { id: 'renew',        label: 'Renovar',     color: '#a855f7' },

@@ -41,7 +41,7 @@ const DIGITAL = new Set(['digital', 'urban_furniture_digital'])
 // Orden de display para el semáforo
 const WF_PILLS = [
   { key: 'active',       label: 'Activas',        color: '#10b981' },
-  { key: 'installation', label: 'En instalación', color: '#3b82f6' },
+  { key: 'colocation', label: 'En colocación', color: '#3b82f6' },
   { key: 'printing',     label: 'En impresión',   color: '#f59e0b' },
   { key: 'approved',     label: 'Aprobadas',      color: '#22c55e' },
   { key: 'renew',        label: 'Renovadas',      color: '#a855f7' },
@@ -420,6 +420,7 @@ export default function Dashboard() {
           <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Empresa</p>
 
           {/* Métricas empresa — 3 números pequeños */}
+          {profile?.role !== 'salesperson' && (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
 
             {/* Revenue */}
@@ -455,6 +456,7 @@ export default function Dashboard() {
             </div>
 
           </div>
+          )}
 
           {/* Actividad del período — 3 bloques */}
           <div className="grid gap-4 lg:grid-cols-3">

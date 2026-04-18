@@ -435,7 +435,7 @@ Devolvé ÚNICAMENTE un array JSON sin texto adicional:
   "cost_maintenance": number|null,
   "cost_imponderables": number|null,
   "cost_print_per_m2": number|null,
-  "cost_installation": number|null,
+  "cost_colocation": number|null,
   "cost_design": number|null,
   "cost_seller_commission_pct": number|null,
   "cost_agency_commission_pct": number|null,
@@ -870,7 +870,7 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
         cost_taxes: r.cost_taxes ?? null, cost_maintenance: r.cost_maintenance ?? null,
         cost_imponderables: r.cost_imponderables ?? null,
         cost_print_per_m2: r.cost_print_per_m2 ?? null,
-        cost_installation: r.cost_installation ?? null, cost_design: r.cost_design ?? null,
+        cost_colocation: r.cost_colocation ?? null, cost_design: r.cost_design ?? null,
         cost_seller_commission_pct: r.cost_seller_commission_pct ?? null,
         cost_agency_commission_pct: r.cost_agency_commission_pct ?? null,
         asociado_nombre: r.asociado_nombre ?? null, asociado_comision_pct: r.asociado_comision_pct ?? null,
@@ -938,7 +938,7 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
       'banda_neg_meses_min','costo_alquiler_anual','costo_impuestos_anual',
       'costo_derechos_anual','costo_luz_mensual','costo_mant_mensual',
       'costo_imponderable_mensual','costo_dueno_mensual','costo_impresion_m2',
-      'costo_instalacion','costo_diseno','comision_vendedor_pct',
+      'costo_colocacion','costo_diseno','comision_vendedor_pct',
       'comision_agencia_pct','comision_dueno_pct','inflacion_ajuste_pct','notas',
     ]
     const wsInventario = XLSX.utils.aoa_to_sheet([inventarioHeaders])
@@ -949,7 +949,7 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
       'id_cartel *','alquiler_anual_ars','impuestos_anual_ars',
       'derechos_anual_ars','luz_mensual_ars','mant_mensual_ars',
       'imponderable_mensual_ars','dueno_mensual_ars','impresion_por_m2_ars',
-      'instalacion_ars','diseno_ars','comision_vendedor_pct',
+      'colocacion_ars','diseno_ars','comision_vendedor_pct',
       'comision_agencia_pct','comision_dueno_pct','inflacion_ajuste_pct',
       'banda_neg_precio_ars','banda_neg_meses_min','notas',
     ]
@@ -996,7 +996,7 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
     const XLSX = XLSXmod.default ?? XLSXmod
     const headers = ['codigo','nombre','direccion','precio_mensual','precio_venta',
       'costo_alquiler','costo_luz','costo_impuestos','costo_mantenimiento',
-      'costo_imponderables','costo_impresion_m2','costo_instalacion','costo_diseno',
+      'costo_imponderables','costo_impresion_m2','costo_colocacion','costo_diseno',
       'comision_vendedor_pct','comision_agencia_pct','asociado_nombre','asociado_comision_pct']
     const rows = importedItems.map(i => [i.code, i.name, i.address, '', '', '', '', '', '', '', '', '', '', '', '', '', ''])
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])

@@ -90,7 +90,7 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
       asociado_comision_pct:    item.asociado_comision_pct ?? 0,
       // Costos campaña
       cost_print_per_m2:        item.cost_print_per_m2 ?? 0,
-      cost_installation:        item.cost_installation ?? 0,
+      cost_colocation:        item.cost_colocation ?? 0,
       cost_design:              item.cost_design ?? 0,
       cost_seller_commission_pct: item.cost_seller_commission_pct ?? 5,
       cost_agency_commission_pct: item.cost_agency_commission_pct ?? 0,
@@ -198,7 +198,7 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
         asociado_nombre:          form.asociado_nombre || null,
         asociado_comision_pct:    form.asociado_comision_pct,
         cost_print_per_m2:        form.cost_print_per_m2,
-        cost_installation:        form.cost_installation,
+        cost_colocation:        form.cost_colocation,
         cost_design:              form.cost_design,
         cost_seller_commission_pct: form.cost_seller_commission_pct,
         cost_agency_commission_pct: form.cost_agency_commission_pct,
@@ -428,7 +428,7 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
               </p>
               <div className="grid gap-4 sm:grid-cols-2">
                 <NumericField label="Impresión de lona (por m²)" value={form.cost_print_per_m2} onChange={v => set('cost_print_per_m2', v)} prefix="$" />
-                <NumericField label="Instalación de lona" value={form.cost_installation} onChange={v => set('cost_installation', v)} prefix="$" />
+                <NumericField label="Colocación de lona" value={form.cost_colocation} onChange={v => set('cost_colocation', v)} prefix="$" />
                 <NumericField label="Diseño gráfico" value={form.cost_design} onChange={v => set('cost_design', v)} prefix="$" />
                 <NumericField label="Comisión vendedor" value={form.cost_seller_commission_pct} onChange={v => set('cost_seller_commission_pct', v)} suffix="%" />
                 <NumericField label="Comisión agencia" value={form.cost_agency_commission_pct} onChange={v => set('cost_agency_commission_pct', v)} suffix="%" />

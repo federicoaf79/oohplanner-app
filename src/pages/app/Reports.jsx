@@ -157,7 +157,7 @@ export default function Reports() {
         { data: invData,  error: e4 },
       ] = await Promise.all([
         supabase.from('proposals')
-          .select('id, status, created_at, accepted_at, seller_id, title, client_name')
+          .select('id, status, created_at, accepted_at, created_by, discount_pct, total_value, title, client_name')
           .eq('org_id', orgId)
           .order('created_at', { ascending: false }),
 
@@ -197,15 +197,22 @@ export default function Reports() {
       // Enrich proposals with seller name/pct
       const flatProposals = (propData ?? []).map(p => ({
         ...p,
-        seller_name: profMap[p.seller_id]?.full_name ?? null,
-        seller_commission_pct: profMap[p.seller_id]?.commission_pct ?? 0,
+        seller_id:             p.created_by,
+        seller_name:           profMap[p.created_by]?.full_name ?? null,
+        seller_commission_pct: profMap[p.created_by]?.commission_pct ?? 0,
       }))
 
-      // Enrich proposal_items with inventory fields
+      // Enrich proposal_items with inventory fields + client_price
+      const propDiscountMap = {}
+      ;(propData ?? []).forEach(p => { propDiscountMap[p.id] = p.discount_pct ?? 0 })
+
       const flatItems = (itemData ?? []).map(pi => {
         const inv = invMap[pi.site_id] ?? {}
+        const discountPct = propDiscountMap[pi.proposal_id] ?? 0
+        const clientPrice = Math.round((pi.rate ?? 0) * (1 - discountPct / 100))
         return {
           ...pi,
+          client_price: clientPrice,
           site_name: inv.name ?? null,
           site_code: inv.code ?? null,
           format:    inv.format ?? null,
@@ -266,7 +273,7 @@ export default function Reports() {
 
     const revenue = filteredItems
       .filter(pi => revIds.has(pi.proposal_id))
-      .reduce((s, pi) => s + (pi.rate ?? 0), 0)
+      .reduce((s, pi) => s + (pi.client_price ?? pi.rate ?? 0), 0)
 
     // Propuestas activas: filtradas por período
     const activeCount = filteredProposals.filter(p => p.status === 'accepted').length
@@ -345,7 +352,7 @@ export default function Reports() {
       const revIds = new Set(monthProps.map(p => p.id))
       const revenue = propItems
         .filter(pi => revIds.has(pi.proposal_id))
-        .reduce((s, pi) => s + (pi.rate ?? 0), 0)
+        .reduce((s, pi) => s + (pi.client_price ?? pi.rate ?? 0), 0)
 
       // Ocupación: solapamiento real de campaña con el mes (solo físicos)
       const occupiedInMonth = new Set(
@@ -393,7 +400,7 @@ export default function Reports() {
       if (REV_STATUSES.has(p.status)) {
         map[sid].revenue += filteredItems
           .filter(pi => pi.proposal_id === p.id)
-          .reduce((s, pi) => s + (pi.rate ?? 0), 0)
+          .reduce((s, pi) => s + (pi.client_price ?? pi.rate ?? 0), 0)
       }
     })
 
@@ -414,7 +421,7 @@ export default function Reports() {
         const fmt = pi.format ?? '__none__'
         if (!map[fmt]) return
         if (ACTIVE_STATUSES.has(p.status)) map[fmt].occupied.add(pi.site_id)
-        if (REV_STATUSES.has(p.status))    map[fmt].revenue += (pi.rate ?? 0)
+        if (REV_STATUSES.has(p.status))    map[fmt].revenue += (pi.client_price ?? pi.rate ?? 0)
       })
     })
 

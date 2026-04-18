@@ -57,7 +57,7 @@ function calcMargin(item: any, discountPct: number): number {
   const fixedCosts = (item.cost_rent ?? 0) + (item.cost_electricity ?? 0) +
     (item.cost_taxes ?? 0) + (item.cost_maintenance ?? 0) + (item.cost_imponderables ?? 0)
   const campaignCosts = (item.cost_print_per_m2 ?? 0) * area +
-    (item.cost_installation ?? 0) + (item.cost_design ?? 0)
+    (item.cost_colocation ?? 0) + (item.cost_design ?? 0)
   const commissions = (item.base_rate ?? 0) * (
     ((item.cost_seller_commission_pct ?? 0) +
      (item.cost_agency_commission_pct ?? 0) +
@@ -189,7 +189,7 @@ serve(async (req) => {
     // CAMBIO 1 — Query con campos de costos ampliados
     let query = supabase
       .from('inventory')
-      .select('id, name, format, address, city, latitude, longitude, daily_traffic, base_rate, illuminated, cluster_audiencia, cost_rent, cost_electricity, cost_taxes, cost_maintenance, cost_imponderables, cost_print_per_m2, cost_installation, cost_design, cost_seller_commission_pct, cost_agency_commission_pct, asociado_comision_pct, width_m, height_m')
+      .select('id, name, format, address, city, latitude, longitude, daily_traffic, base_rate, illuminated, cluster_audiencia, cost_rent, cost_electricity, cost_taxes, cost_maintenance, cost_imponderables, cost_print_per_m2, cost_colocation, cost_design, cost_seller_commission_pct, cost_agency_commission_pct, asociado_comision_pct, width_m, height_m')
       .eq('org_id', orgId)
       .eq('is_available', true)
       .gte('base_rate', 100000)
@@ -263,7 +263,7 @@ serve(async (req) => {
         // CAMBIO 1 — mismo select ampliado para los obligatorios faltantes
         const { data: extra } = await supabase
           .from('inventory')
-          .select('id, name, format, address, city, latitude, longitude, daily_traffic, base_rate, illuminated, cluster_audiencia, cost_rent, cost_electricity, cost_taxes, cost_maintenance, cost_imponderables, cost_print_per_m2, cost_installation, cost_design, cost_seller_commission_pct, cost_agency_commission_pct, asociado_comision_pct, width_m, height_m')
+          .select('id, name, format, address, city, latitude, longitude, daily_traffic, base_rate, illuminated, cluster_audiencia, cost_rent, cost_electricity, cost_taxes, cost_maintenance, cost_imponderables, cost_print_per_m2, cost_colocation, cost_design, cost_seller_commission_pct, cost_agency_commission_pct, asociado_comision_pct, width_m, height_m')
           .in('id', missingMandatory)
         // CAMBIO 7 — push a availableInventory
         if (extra) availableInventory.push(...extra)
