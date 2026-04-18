@@ -20,6 +20,7 @@ import Inventory    from './pages/app/Inventory'
 import Proposals    from './pages/app/Proposals'
 import ProposalNew  from './pages/app/ProposalNew'
 import Reports      from './pages/app/Reports'
+import Contacts     from './pages/app/Contacts'
 import Team         from './pages/app/Team'
 import Settings     from './pages/app/Settings'
 import Support      from './pages/app/Support'
@@ -61,6 +62,7 @@ const router = createBrowserRouter([
           { path: '/app/proposals',            element: <Proposals /> },
           { path: '/app/proposals/new',        element: <ProposalNew /> },
           { path: '/app/proposals/:id/edit',   element: <ProposalNew /> },
+          { path: '/app/contacts',             element: <Contacts /> },
           { path: '/app/settings',             element: <Settings /> },
           { path: '/app/support',              element: <Support /> },
           { path: '/app/billing',              element: <Billing /> },

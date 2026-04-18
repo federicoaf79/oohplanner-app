@@ -12,6 +12,7 @@ const PAGE_TITLES = {
   '/app/inventory':        'Inventario',
   '/app/proposals':        'Propuestas',
   '/app/proposals/new':    'Planificador IA',
+  '/app/contacts':         'Contactos',
   '/app/reports':          'Reportes',
   '/app/team':             'Equipo',
   '/app/settings':         'Ajustes',

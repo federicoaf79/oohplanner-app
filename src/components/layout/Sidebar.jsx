@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Megaphone, MapPin, FileText,
-  BarChart2, Users, Settings, X, Zap, HelpCircle, Receipt, Crosshair,
+  BarChart2, Users, Settings, X, Zap, HelpCircle, Receipt, Crosshair, BookUser,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { cn } from '../../lib/utils'
@@ -12,6 +12,7 @@ const NAV = [
   { label: 'Inventario',   path: '/app/inventory',   icon: MapPin,                      roles: ['owner','manager'] },
   { label: 'Editor de Zonas', path: '/app/zone-editor', icon: Crosshair,                  roles: ['owner','manager'] },
   { label: 'Propuestas',   path: '/app/proposals',   icon: FileText,                    roles: ['owner','manager','salesperson'] },
+  { label: 'Contactos',    path: '/app/contacts',    icon: BookUser,                    roles: ['owner','manager','salesperson'] },
   { label: 'Reportes',     path: '/app/reports',     icon: BarChart2,                   roles: ['owner','manager'] },
   { label: 'Equipo',       path: '/app/team',        icon: Users,                       roles: ['owner'] },
   { label: 'Facturación',  path: '/app/billing',     icon: Receipt,                     roles: ['owner'] },

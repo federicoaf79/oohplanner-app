@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { LayoutDashboard, Megaphone, FileText, Settings, BarChart2, Crosshair } from 'lucide-react'
+import { LayoutDashboard, Megaphone, FileText, Settings, BarChart2, Crosshair, BookUser } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { cn } from '../../lib/utils'
 
@@ -7,6 +7,7 @@ const NAV = [
   { label: 'Inicio',     path: '/app',           icon: LayoutDashboard, end: true,  roles: ['owner','manager','salesperson'] },
   { label: 'Campañas',   path: '/app/campaigns', icon: Megaphone,                   roles: ['owner','manager','salesperson'] },
   { label: 'Propuestas', path: '/app/proposals', icon: FileText,                    roles: ['owner','manager','salesperson'] },
+  { label: 'Contactos',  path: '/app/contacts',  icon: BookUser,                    roles: ['owner','manager','salesperson'] },
   { label: 'Zonas',      path: '/app/zone-editor',icon: Crosshair,                   roles: ['owner','manager'] },
   { label: 'Reportes',   path: '/app/reports',   icon: BarChart2,                   roles: ['owner','manager'] },
   { label: 'Ajustes',    path: '/app/settings',  icon: Settings,                    roles: ['owner','manager','salesperson'] },
