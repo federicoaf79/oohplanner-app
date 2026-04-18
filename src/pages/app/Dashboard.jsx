@@ -453,7 +453,6 @@ export default function Dashboard() {
           <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Empresa</p>
 
           {/* Métricas empresa — 3 números pequeños */}
-          {profile?.role !== 'salesperson' && (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
 
             {/* Revenue */}
@@ -489,7 +488,6 @@ export default function Dashboard() {
             </div>
 
           </div>
-          )}
 
           {/* Actividad del período — 3 bloques */}
           <div className="grid gap-4 lg:grid-cols-3">

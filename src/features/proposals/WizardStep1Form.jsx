@@ -416,6 +416,7 @@ export default function WizardStep1Form({ formData, setFormData, onSubmit }) {
                 step="1"
                 className={`input-field pr-8 text-center ${needsApproval ? 'border-amber-500/70' : ''}`}
                 value={discountVal}
+                onFocus={e => e.target.select()}
                 onChange={e => update('discountPct', Math.min(100, Math.max(0, Number(e.target.value))))}
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">%</span>

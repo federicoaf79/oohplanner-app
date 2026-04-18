@@ -351,6 +351,7 @@ function CampaignModal({ campaign, onClose }) {
 // ── Campaign card ─────────────────────────────────────────────
 
 function CampaignCard({ proposal, canAdvance, canJump, onStatusChange, onAdvance, onOpen, advancing }) {
+  const [showMeasures, setShowMeasures] = useState(false)
   const days      = getDaysRemaining(proposal.valid_until)
   const isExpired = days !== null && days < 0
   const next      = getNextStatus(proposal.workflow_status)
@@ -404,9 +405,21 @@ function CampaignCard({ proposal, canAdvance, canJump, onStatusChange, onAdvance
                 {endDate ? formatDate(endDate) : '—'}
               </span>
             )}
+            {items.length > 0 && (
+              <button
+                type="button"
+                onClick={e => { e.stopPropagation(); setShowMeasures(true) }}
+                className="text-xs font-medium text-brand hover:text-blue-300 transition-colors"
+              >
+                📐 Medidas
+              </button>
+            )}
           </div>
         )
       })()}
+      {showMeasures && (
+        <PrintMeasuresModal campaign={proposal} onClose={() => setShowMeasures(false)} />
+      )}
 
       {/* Stepper */}
       <div className="mt-3" onClick={e => e.stopPropagation()}>
