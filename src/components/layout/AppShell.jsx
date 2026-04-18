@@ -55,7 +55,7 @@ function TrialExpiredOverlay() {
   const [message, setMessage] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState(false)
-  const { org } = useAuth()
+  const { org, profile, user } = useAuth()
 
   if (dismissed) return null
 
@@ -63,10 +63,14 @@ function TrialExpiredOverlay() {
     e.preventDefault()
     setSubmitting(true)
     await supabase.from('support_tickets').insert({
-      org_id: org?.id,
-      subject: 'Trial vencido - solicitud de extensión',
-      message: name ? `De: ${name}\n\n${message}` : message,
-      status: 'open',
+      org_id:        org?.id,
+      created_by:    profile?.id,
+      creator_name:  name || profile?.full_name || null,
+      creator_email: user?.email || null,
+      subject:       'Trial vencido - solicitud de extensión',
+      message,
+      status:        'open',
+      priority:      'high',
     })
     setSubmitting(false)
     setSuccess(true)
