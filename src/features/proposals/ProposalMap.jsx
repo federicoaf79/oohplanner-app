@@ -10,8 +10,8 @@ import { formatCurrency } from '../../lib/utils'
 delete L.Icon.Default.prototype._getIconUrl
 L.Icon.Default.mergeOptions({ iconUrl: '', shadowUrl: '' })
 
-function createDivIcon(format, isSelected = false) {
-  const color = FORMAT_MAP[format]?.color ?? '#94a3b8'
+function createDivIcon(format, isSelected = false, colorOverride = null) {
+  const color = colorOverride ?? FORMAT_MAP[format]?.color ?? '#94a3b8'
   const size = isSelected ? 18 : 14
   const shadow = isSelected ? `0 0 0 3px ${color}40, 0 2px 6px rgba(0,0,0,0.6)` : '0 1px 4px rgba(0,0,0,0.5)'
   return L.divIcon({
@@ -46,7 +46,7 @@ function FitBounds({ sites }) {
   return null
 }
 
-export default function ProposalMap({ sites = [], className = '', mapRef }) {
+export default function ProposalMap({ sites = [], className = '', mapRef, mapHeight = '100%', getMarkerColor = null }) {
   const validSites = sites.filter(s => s.latitude && s.longitude)
 
   const center = useMemo(() => {
@@ -61,7 +61,7 @@ export default function ProposalMap({ sites = [], className = '', mapRef }) {
       <MapContainer
         center={center}
         zoom={13}
-        style={{ height: '100%', width: '100%' }}
+        style={{ height: mapHeight, width: '100%' }}
         scrollWheelZoom={false}
       >
         <TileLayer
@@ -75,7 +75,7 @@ export default function ProposalMap({ sites = [], className = '', mapRef }) {
           <Marker
             key={site.site_id}
             position={[site.latitude, site.longitude]}
-            icon={createDivIcon(site.format)}
+            icon={createDivIcon(site.format, false, getMarkerColor ? getMarkerColor(site) : null)}
           >
             <Popup maxWidth={220}>
               <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', lineHeight: 1.4 }}>

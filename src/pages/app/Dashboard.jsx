@@ -11,6 +11,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { FORMAT_MAP } from '../../lib/constants'
 import Spinner from '../../components/ui/Spinner'
+import ProposalMap from '../../features/proposals/ProposalMap'
 
 // ─── Helpers ─────────────────────────────────────────────────
 
@@ -328,6 +329,18 @@ function computeDerived(
     myCommission, commPct, topFormat,
     opportunities,
     activeCampaigns,
+    inventoryConCoords: inventory
+      .filter(i => i.latitude != null && i.longitude != null)
+      .map(i => ({
+        site_id:    i.id,
+        name:       i.name ?? i.code ?? '—',
+        address:    i.address ?? '',
+        format:     i.format,
+        latitude:   Number(i.latitude),
+        longitude:  Number(i.longitude),
+        rate:       i.base_rate ?? null,
+        owner_type: i.owner_type ?? null,
+      })),
   }
 }
 
@@ -354,7 +367,7 @@ export default function Dashboard() {
     Promise.all([
       // 1 — Inventario completo
       supabase.from('inventory')
-        .select('id, name, code, format, is_available, available_until, base_rate, cost_rent, cost_electricity, cost_taxes, cost_maintenance, cost_imponderables')
+        .select('id, name, code, format, is_available, available_until, base_rate, cost_rent, cost_electricity, cost_taxes, cost_maintenance, cost_imponderables, latitude, longitude, address, owner_type')
         .eq('org_id', profile.org_id),
 
       // 2 — Proposal items con fechas
@@ -597,6 +610,41 @@ export default function Dashboard() {
             </div>
 
           </div>
+
+          {/* ── Mapa de inventario ── */}
+          <div>
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-500">
+              Mi inventario en el mapa
+            </h3>
+            {derived.inventoryConCoords.length === 0 ? (
+              <EmptyCard>
+                Sin ubicaciones cargadas. Agregá latitud y longitud al editar cada cartel desde Inventario.
+              </EmptyCard>
+            ) : (
+              <>
+                <ProposalMap
+                  sites={derived.inventoryConCoords}
+                  mapHeight="350px"
+                  getMarkerColor={(item) => {
+                    if (item.owner_type === 'owned')  return '#3B82F6'
+                    if (item.owner_type === 'rented') return '#F59E0B'
+                    return '#64748B'
+                  }}
+                />
+                <div className="mt-2 flex flex-wrap items-center gap-4 text-xs text-slate-500">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: '#3B82F6' }} />
+                    Propios
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ background: '#F59E0B' }} />
+                    Comercializados
+                  </span>
+                </div>
+              </>
+            )}
+          </div>
+
         </div>
       )}
 
