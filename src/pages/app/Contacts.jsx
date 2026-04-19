@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Plus, Search, BookUser, MoreVertical, ChevronUp, ChevronDown, Mail, Phone } from 'lucide-react'
+import { Plus, Search, BookUser, MoreVertical, ChevronUp, ChevronDown, Mail, Phone, Lock } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { ROLE_LABEL_MAP, ROLE_CATEGORY_MAP, CONTACT_ROLE_CATEGORIES } from '../../lib/contactRoles'
@@ -49,6 +49,7 @@ export default function Contacts() {
   const [search, setSearch]           = useState('')
   const [filterRole, setFilterRole]   = useState(ALL)
   const [filterStatus, setFilterStatus] = useState(ALL)
+  const [visibilityFilter, setVisibilityFilter] = useState('all')
   const [sortDir, setSortDir]         = useState('asc')
   const [modal, setModal]             = useState(null)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
@@ -87,8 +88,10 @@ export default function Contacts() {
       if (filterStatus === 'active'   && !c.is_active) return false
       if (filterStatus === 'inactive' &&  c.is_active) return false
     }
+    if (visibilityFilter === 'org')        return c.visibility === 'org' || !c.visibility
+    if (visibilityFilter === 'owner_only') return c.visibility === 'owner_only'
     return true
-  }), [contacts, search, filterRole, filterStatus])
+  }), [contacts, search, filterRole, filterStatus, visibilityFilter])
 
   const sorted = useMemo(() => [...filtered].sort((a, b) => {
     const cmp = (a.name ?? '').localeCompare(b.name ?? '', 'es')
@@ -158,6 +161,13 @@ export default function Contacts() {
           <option value="active">Activos</option>
           <option value="inactive">Inactivos</option>
         </select>
+        {isOwner && (
+          <select value={visibilityFilter} onChange={e => setVisibilityFilter(e.target.value)} className="input-field sm:w-44">
+            <option value="all">Todos</option>
+            <option value="org">Solo públicos</option>
+            <option value="owner_only">Solo confidenciales</option>
+          </select>
+        )}
       </div>
 
       {/* Content */}
@@ -218,6 +228,9 @@ export default function Contacts() {
                       <div className="flex items-center gap-2">
                         {inactive && (
                           <span className="shrink-0 text-sm text-slate-500" title="Inactivo">⊘</span>
+                        )}
+                        {contact.visibility === 'owner_only' && (
+                          <Lock className="h-3.5 w-3.5 shrink-0 text-amber-400" aria-label="Contacto confidencial" />
                         )}
                         <span className="font-medium text-white">{contact.name}</span>
                       </div>

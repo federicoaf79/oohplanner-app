@@ -294,9 +294,100 @@ export default function Proposals() {
       if (newStatus === 'accepted') {
         await supabase.from('proposals').update({ workflow_status: 'approved' }).eq('id', p.id)
         setProposals(prev => prev.map(x => x.id === p.id ? { ...x, workflow_status: 'approved' } : x))
+        // Fire and forget — no bloquea UI
+        autoCreateCommissionsOnAccept(p)
       }
     }
     setStatusChanging(null)
+  }
+
+  async function autoCreateCommissionsOnAccept(proposal) {
+    const sellerId = proposal.created_by
+    if (!sellerId) {
+      console.warn('Proposal sin created_by, no se crean comisiones:', proposal.id)
+      return
+    }
+
+    const { data: seller, error: sellerErr } = await supabase
+      .from('profiles')
+      .select(`
+        id, org_id, commission_pct, supervisor_id,
+        supervisor:profiles!profiles_supervisor_id_fkey(
+          id, is_supervisor, supervisor_commission_pct
+        )
+      `)
+      .eq('id', sellerId)
+      .single()
+
+    if (sellerErr || !seller) {
+      console.error('Error cargando seller profile:', sellerErr)
+      return
+    }
+
+    const commissionsToInsert = []
+
+    // internal_seller — solo si pct > 0
+    const sellerPct = parseFloat(seller.commission_pct ?? 0)
+    if (sellerPct > 0) {
+      const { data: existing } = await supabase
+        .from('campaign_commissions')
+        .select('id')
+        .eq('proposal_id', proposal.id)
+        .eq('commission_type', 'internal_seller')
+        .maybeSingle()
+      if (!existing) {
+        commissionsToInsert.push({
+          org_id:                 seller.org_id,
+          proposal_id:            proposal.id,
+          commission_type:        'internal_seller',
+          beneficiary_profile_id: sellerId,
+          beneficiary_contact_id: null,
+          commission_pct:         sellerPct,
+          amount_fixed:           null,
+          notes:                  'Auto-creada al aceptar. % snapshot del vendedor al momento de la aceptación.',
+          created_by:             profile.id,
+        })
+      }
+    }
+
+    // supervisor_override — solo si supervisor existe, is_supervisor=true y pct > 0
+    const sup = seller.supervisor
+    if (sup && sup.is_supervisor && parseFloat(sup.supervisor_commission_pct ?? 0) > 0) {
+      const { data: existing } = await supabase
+        .from('campaign_commissions')
+        .select('id')
+        .eq('proposal_id', proposal.id)
+        .eq('commission_type', 'supervisor_override')
+        .maybeSingle()
+      if (!existing) {
+        commissionsToInsert.push({
+          org_id:                 seller.org_id,
+          proposal_id:            proposal.id,
+          commission_type:        'supervisor_override',
+          beneficiary_profile_id: sup.id,
+          beneficiary_contact_id: null,
+          commission_pct:         parseFloat(sup.supervisor_commission_pct),
+          amount_fixed:           null,
+          notes:                  'Override auto-creado al aceptar. % snapshot del supervisor del vendedor.',
+          created_by:             profile.id,
+        })
+      }
+    }
+
+    if (commissionsToInsert.length === 0) {
+      console.log('No hay comisiones para auto-crear (pct=0 en todos los niveles)')
+      return
+    }
+
+    const { error: insErr } = await supabase
+      .from('campaign_commissions')
+      .insert(commissionsToInsert)
+
+    if (insErr) {
+      console.error('Error insertando comisiones auto:', insErr)
+    } else {
+      console.log(`Auto-creadas ${commissionsToInsert.length} comisión(es) para propuesta ${proposal.id}`)
+    }
   }
 
   function handleWhatsApp(p) {

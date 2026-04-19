@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { X, ChevronDown, ChevronRight, AlertTriangle, Search } from 'lucide-react'
+import { X, ChevronDown, ChevronRight, AlertTriangle, Search, Lock } from 'lucide-react'
 import { ROLES_BY_CATEGORY, CONTACT_ROLE_CATEGORIES } from '../../lib/contactRoles'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -38,6 +38,7 @@ const EMPTY = {
   tax_id: '',
   roles: [],
   is_active: true,
+  visibility: 'org',
   email: '',
   phone: '',
   whatsapp: '',
@@ -52,7 +53,7 @@ const EMPTY = {
 }
 
 export default function ContactFormModal({ contact, onClose, onSaved }) {
-  const { profile } = useAuth()
+  const { profile, isOwner } = useAuth()
   const isEdit = !!contact?.id
 
   const [form, setForm] = useState(() => isEdit ? {
@@ -61,6 +62,7 @@ export default function ContactFormModal({ contact, onClose, onSaved }) {
     tax_id:              contact.tax_id              ?? '',
     roles:               contact.roles               ?? [],
     is_active:           contact.is_active           ?? true,
+    visibility:          contact.visibility          ?? 'org',
     email:               contact.email               ?? '',
     phone:               contact.phone               ?? '',
     whatsapp:            contact.whatsapp            ?? '',
@@ -73,7 +75,7 @@ export default function ContactFormModal({ contact, onClose, onSaved }) {
     country:             contact.country             ?? 'Argentina',
     notes:               contact.notes               ?? '',
   } : { ...EMPTY })
-  const [open, setOpen] = useState({ basics: true, contact: true, person: false, address: false, notes: false })
+  const [open, setOpen] = useState({ basics: true, visibility: true, contact: true, person: false, address: false, notes: false })
   const [roleSearch, setRoleSearch] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
@@ -114,6 +116,7 @@ export default function ContactFormModal({ contact, onClose, onSaved }) {
       tax_id:               (form.tax_id              ?? '').replace(/[-\s]/g, '') || null,
       roles:                form.roles,
       is_active:            form.is_active,
+      visibility:           isOwner ? (form.visibility ?? 'org') : undefined,
       email:                (form.email               ?? '').trim() || null,
       phone:                (form.phone               ?? '').trim() || null,
       whatsapp:             (form.whatsapp            ?? '').trim() || null,
@@ -205,7 +208,52 @@ export default function ContactFormModal({ contact, onClose, onSaved }) {
                   </div>
                 </Section>
 
-                {/* 2 — Datos de contacto */}
+                {/* 2 — Visibilidad del contacto (solo owner) */}
+                {isOwner && (
+                  <Section title="Visibilidad del contacto" open={open.visibility} onToggle={() => toggle('visibility')}>
+                    <div className="space-y-2">
+                      <label className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${
+                        form.visibility === 'org'
+                          ? 'border-brand/60 bg-brand/5'
+                          : 'border-surface-600 hover:border-surface-500'
+                      }`}>
+                        <input
+                          type="radio" name="visibility" value="org"
+                          checked={form.visibility === 'org'}
+                          onChange={() => set('visibility', 'org')}
+                          className="mt-0.5 accent-brand"
+                        />
+                        <div>
+                          <p className="text-sm font-medium text-slate-100">Toda la empresa lo ve</p>
+                          <p className="text-xs text-slate-500 mt-0.5">Cualquier miembro del equipo puede ver este contacto.</p>
+                        </div>
+                      </label>
+                      <label className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors ${
+                        form.visibility === 'owner_only'
+                          ? 'border-amber-500/50 bg-amber-500/5'
+                          : 'border-surface-600 hover:border-surface-500'
+                      }`}>
+                        <input
+                          type="radio" name="visibility" value="owner_only"
+                          checked={form.visibility === 'owner_only'}
+                          onChange={() => set('visibility', 'owner_only')}
+                          className="mt-0.5"
+                        />
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <Lock className="h-3.5 w-3.5 text-amber-400" />
+                            <p className="text-sm font-medium text-slate-100">Solo yo lo veo (confidencial)</p>
+                          </div>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            No aparecerá para el resto del equipo. En reportes figurará como "Facilitador" sin identificar.
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+                  </Section>
+                )}
+
+                {/* 3 — Datos de contacto */}
                 <Section title="Datos de contacto" open={open.contact} onToggle={() => toggle('contact')}>
                   <div>
                     <label className="mb-1.5 block text-xs font-medium text-slate-400">Email</label>
