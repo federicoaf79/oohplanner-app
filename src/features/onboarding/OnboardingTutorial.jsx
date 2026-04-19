@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { X, Home, BarChart3, MapPin, FileText, BookUser, Users, DollarSign, LifeBuoy } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -106,6 +106,12 @@ export default function OnboardingTutorial() {
   const Icon    = current.icon
   const isLast  = step === STEPS.length - 1
 
+  // Prevent background scroll while modal is open
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = '' }
+  }, [])
+
   async function dismiss() {
     if (closing) return
     setClosing(true)
@@ -128,108 +134,115 @@ export default function OnboardingTutorial() {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-surface-700 bg-surface-800 shadow-2xl">
+    // Backdrop — fullscreen, never clips, scrollable if dialog exceeds viewport
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm">
+      {/* Centering wrapper */}
+      <div className="flex min-h-full items-center justify-center p-4">
+        {/* Dialog — max-h + overflow-hidden so rounded corners stay intact */}
+        <div className="relative w-full max-w-4xl overflow-hidden rounded-2xl bg-surface-900 ring-1 ring-white/10 shadow-2xl">
 
-        {/* Close button */}
-        <button
-          onClick={dismiss}
-          className="absolute right-4 top-4 z-10 rounded-lg p-1.5 text-slate-500 hover:bg-surface-700/80 hover:text-slate-300 transition-colors"
-          aria-label="Cerrar tutorial"
-        >
-          <X className="h-4 w-4" />
-        </button>
+          {/* Close button */}
+          <button
+            onClick={dismiss}
+            className="absolute right-4 top-4 z-10 rounded-lg p-1.5 text-slate-500 hover:bg-surface-700/80 hover:text-slate-300 transition-colors"
+            aria-label="Cerrar tutorial"
+          >
+            <X className="h-4 w-4" />
+          </button>
 
-        {/* ── Image: full-width, aspect ratio matches 1920×864 captures ── */}
-        <div className="w-full overflow-hidden rounded-t-2xl bg-slate-950 ring-1 ring-white/10"
-             style={{ aspectRatio: '1920/864' }}>
-          {!imgError ? (
-            <img
-              key={step}
-              src={current.image}
-              alt={current.title}
-              className="h-full w-full object-cover"
-              onError={() => setImgError(true)}
-            />
-          ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand/15">
-                <Icon className="h-8 w-8 text-brand" />
-              </div>
-              <p className="text-xs text-slate-600">Vista previa no disponible</p>
-            </div>
-          )}
-        </div>
+          {/* Scrollable content — scrolls inside the rounded dialog on short screens */}
+          <div className="flex max-h-[90vh] flex-col overflow-y-auto">
 
-        {/* ── Content ── */}
-        <div className="px-6 pb-6 pt-6 md:px-8 md:pb-8">
-
-          {/* Icon + step counter */}
-          <div className="flex items-center gap-2.5">
-            <Icon className="h-5 w-5 shrink-0 text-brand" />
-            <p className="text-xs font-medium text-slate-500">
-              Paso {step + 1} de {STEPS.length}
-            </p>
-          </div>
-
-          {/* Title + description */}
-          <h2 className="mt-3 text-2xl font-semibold text-white">{current.title}</h2>
-          <p className="mt-3 text-base leading-relaxed text-slate-300">{current.description}</p>
-
-          {/* Bullets */}
-          <ul className="mt-4 space-y-2">
-            {current.bullets.map((b, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-slate-400">
-                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
-                {b}
-              </li>
-            ))}
-          </ul>
-
-          {/* Optional footer note */}
-          {current.footer && (
-            <p className="mt-3 text-xs italic text-slate-500">{current.footer}</p>
-          )}
-
-          {/* Progress bar + navigation */}
-          <div className="mt-8 flex items-center justify-between gap-4">
-
-            {/* Anterior */}
-            {step > 0 ? (
-              <Button variant="ghost" onClick={handleBack} size="sm">
-                ← Atrás
-              </Button>
-            ) : (
-              <div />
-            )}
-
-            {/* Progress dots */}
-            <div className="flex flex-1 gap-1.5">
-              {STEPS.map((_, i) => (
-                <div
-                  key={i}
-                  className={`h-1 flex-1 rounded-full transition-colors duration-300 ${
-                    i <= step ? 'bg-brand' : 'bg-surface-700'
-                  }`}
+            {/* Image — aspect ratio matches 1920×864 captures exactly */}
+            <div
+              className="w-full shrink-0 overflow-hidden bg-slate-950 ring-1 ring-white/10"
+              style={{ aspectRatio: '1920/864' }}
+            >
+              {!imgError ? (
+                <img
+                  key={step}
+                  src={current.image}
+                  alt={current.title}
+                  className="h-full w-full object-cover"
+                  onError={() => setImgError(true)}
                 />
-              ))}
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand/15">
+                    <Icon className="h-8 w-8 text-brand" />
+                  </div>
+                  <p className="text-xs text-slate-600">Vista previa no disponible</p>
+                </div>
+              )}
             </div>
 
-            {/* Siguiente / Saltar */}
-            <div className="flex gap-2">
-              {!isLast && (
-                <Button variant="ghost" onClick={dismiss} size="sm">
-                  Saltar
-                </Button>
+            {/* Text content */}
+            <div className="px-6 pb-6 pt-6 md:px-8 md:pb-8">
+
+              {/* Icon + step counter */}
+              <div className="flex items-center gap-2.5">
+                <Icon className="h-5 w-5 shrink-0 text-brand" />
+                <p className="text-xs font-medium text-slate-500">
+                  Paso {step + 1} de {STEPS.length}
+                </p>
+              </div>
+
+              {/* Title + description */}
+              <h2 className="mt-3 text-2xl font-semibold text-white">{current.title}</h2>
+              <p className="mt-3 text-base leading-relaxed text-slate-300">{current.description}</p>
+
+              {/* Bullets */}
+              <ul className="mt-4 space-y-2">
+                {current.bullets.map((b, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-slate-400">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
+                    {b}
+                  </li>
+                ))}
+              </ul>
+
+              {current.footer && (
+                <p className="mt-3 text-xs italic text-slate-500">{current.footer}</p>
               )}
-              <Button onClick={handleNext} disabled={closing} size="sm">
-                {isLast ? 'Empezar a usar OOH Planner' : 'Siguiente →'}
-              </Button>
+
+              {/* Progress dots + navigation */}
+              <div className="mt-8 flex items-center justify-between gap-4">
+
+                {step > 0 ? (
+                  <Button variant="ghost" onClick={handleBack} size="sm">
+                    ← Atrás
+                  </Button>
+                ) : (
+                  <div />
+                )}
+
+                <div className="flex flex-1 gap-1.5">
+                  {STEPS.map((_, i) => (
+                    <div
+                      key={i}
+                      className={`h-1 flex-1 rounded-full transition-colors duration-300 ${
+                        i <= step ? 'bg-brand' : 'bg-surface-700'
+                      }`}
+                    />
+                  ))}
+                </div>
+
+                <div className="flex gap-2">
+                  {!isLast && (
+                    <Button variant="ghost" onClick={dismiss} size="sm">
+                      Saltar
+                    </Button>
+                  )}
+                  <Button onClick={handleNext} disabled={closing} size="sm">
+                    {isLast ? 'Empezar a usar OOH Planner' : 'Siguiente →'}
+                  </Button>
+                </div>
+
+              </div>
             </div>
 
           </div>
         </div>
-
       </div>
     </div>
   )
