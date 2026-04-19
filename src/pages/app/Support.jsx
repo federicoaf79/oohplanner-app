@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { PlusCircle, X } from 'lucide-react'
+import { PlusCircle, X, ChevronDown } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { sendEmail } from '../../lib/email'
@@ -23,6 +23,41 @@ const PRIORITY_CFG = {
 }
 
 const EMPTY = { subject: '', message: '', priority: 'normal' }
+
+const FAQ_ITEMS = [
+  {
+    q: '¿Cómo agrego un cartel nuevo al inventario?',
+    a: 'Andá a Inventario y hacé click en "Nuevo cartel". Completá la ubicación, tipo de soporte, medidas y precio. Podés asignarle un dueño y configurar la disponibilidad por fechas.',
+  },
+  {
+    q: '¿Cómo creo una propuesta para un cliente?',
+    a: 'En Propuestas, usá el Planificador IA: describí el target, zona y presupuesto del cliente. El sistema selecciona los carteles más adecuados y genera un PDF profesional para presentar.',
+  },
+  {
+    q: '¿Qué es un acuerdo de facilitador?',
+    a: 'Es un contrato con un contacto externo (facilitador o agencia) que te trae negocios. Configurás el porcentaje de comisión y los carteles incluidos. Las comisiones se calculan automáticamente al aceptar propuestas.',
+  },
+  {
+    q: '¿Cómo invito a alguien a mi equipo?',
+    a: 'El usuario debe registrarse en la app usando el mismo dominio de tu empresa. Una vez registrado, el dueño o gerente puede asignarle el rol correspondiente desde Ajustes > Equipo.',
+  },
+  {
+    q: '¿Cómo funcionan las comisiones automáticas?',
+    a: 'Cuando aceptás una propuesta, el sistema crea automáticamente las comisiones para el vendedor y su supervisor (si tiene uno asignado). Los porcentajes se toman de la configuración del equipo en Ajustes.',
+  },
+  {
+    q: '¿Puedo exportar reportes?',
+    a: 'Sí. En la sección Reportes podés filtrar por período, vendedor y estado. Los reportes se pueden exportar para compartir con tu equipo o analizar fuera de la plataforma.',
+  },
+  {
+    q: '¿Qué pasa con mis datos si termina el período de prueba?',
+    a: 'Tus datos se conservan íntegramente. Podés seguir accediendo en modo lectura. Para retomar el uso completo, contactá a nuestro equipo a través del botón "Nuevo ticket" en esta misma pantalla.',
+  },
+  {
+    q: '¿Cómo cambio el logo o los datos de mi empresa?',
+    a: 'En Ajustes > Empresa podés actualizar el nombre, logo, datos de facturación y horarios de atención. El logo aparece en los PDFs de propuestas generados para clientes.',
+  },
+]
 
 export default function Support() {
   const { profile, org, user } = useAuth()
@@ -95,7 +130,7 @@ export default function Support() {
   if (loading) return <div className="flex justify-center py-20"><Spinner size="lg" /></div>
 
   return (
-    <div className="max-w-2xl space-y-5 animate-fade-in">
+    <div className="max-w-2xl space-y-6 animate-fade-in">
       <div className="flex items-center justify-between gap-4">
         <div>
           <h2 className="text-lg font-bold text-white">Soporte</h2>
@@ -106,6 +141,23 @@ export default function Support() {
           Nuevo ticket
         </Button>
       </div>
+
+      {/* FAQ */}
+      <div>
+        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Preguntas frecuentes
+        </h3>
+        <div className="divide-y divide-surface-700 rounded-xl border border-surface-700 overflow-hidden">
+          {FAQ_ITEMS.map((item, i) => (
+            <FAQAccordion key={i} question={item.q} answer={item.a} />
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Mis tickets
+        </h3>
 
       {tickets.length === 0 ? (
         <Card>
@@ -139,6 +191,7 @@ export default function Support() {
           ))}
         </div>
       )}
+      </div>
 
       {/* Detail modal */}
       {detail && (
@@ -209,6 +262,28 @@ export default function Support() {
             </Button>
           </form>
         </Modal>
+      )}
+    </div>
+  )
+}
+
+function FAQAccordion({ question, answer }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="bg-surface-800">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex w-full items-center justify-between gap-4 px-4 py-3.5 text-left hover:bg-surface-700/50 transition-colors"
+      >
+        <span className="text-sm font-medium text-slate-200">{question}</span>
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-slate-500 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+      {open && (
+        <div className="border-t border-surface-700 px-4 py-3">
+          <p className="text-sm leading-relaxed text-slate-400">{answer}</p>
+        </div>
       )}
     </div>
   )

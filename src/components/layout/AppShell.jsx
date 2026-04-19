@@ -5,6 +5,7 @@ import Topbar from './Topbar'
 import MobileNav from './MobileNav'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
+import OnboardingTutorial from '../../features/onboarding/OnboardingTutorial'
 
 const PAGE_TITLES = {
   '/app':                  'Dashboard',
@@ -23,7 +24,7 @@ const PAGE_TITLES = {
 export default function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const location = useLocation()
-  const { isExpired } = useAuth()
+  const { isExpired, profile } = useAuth()
 
   const title = PAGE_TITLES[location.pathname] ?? 'OOH Planner'
 
@@ -41,6 +42,11 @@ export default function AppShell() {
         </main>
 
         <MobileNav />
+
+        {/* Onboarding tutorial — shown once for new users */}
+        {profile && profile.onboarding_tutorial_seen === false && !isExpired && (
+          <OnboardingTutorial />
+        )}
 
         {/* Trial expired overlay */}
         {isExpired && <TrialExpiredOverlay />}

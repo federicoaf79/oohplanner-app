@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo, Fragment } from 'react'
 import { validateArtwork } from '../../lib/validateArtwork'
-import { Shield, Lock, Eye, Building2, Upload, X, Loader2, ChevronRight, MoreVertical } from 'lucide-react'
+import { Shield, Lock, Eye, Building2, Upload, X, Loader2, ChevronRight, MoreVertical, BookOpen } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
 import Button from '../../components/ui/Button'
@@ -32,6 +32,8 @@ export default function Settings() {
   const [bio, setBio]               = useState(profile?.bio ?? '')
   const [savingProfile, setSavingProfile] = useState(false)
   const [savedProfile, setSavedProfile]   = useState(false)
+  const [resettingTutorial, setResettingTutorial] = useState(false)
+  const [tutorialReset, setTutorialReset]         = useState(false)
 
   // ── Org — info general ──
   const [orgName, setOrgName]         = useState(org?.name ?? '')
@@ -119,6 +121,15 @@ export default function Settings() {
     setSavingProfile(false)
     setSavedProfile(true)
     setTimeout(() => setSavedProfile(false), 3000)
+  }
+
+  async function handleResetTutorial() {
+    setResettingTutorial(true)
+    await supabase.from('profiles').update({ onboarding_tutorial_seen: false }).eq('id', profile.id)
+    await refreshProfile()
+    setResettingTutorial(false)
+    setTutorialReset(true)
+    setTimeout(() => setTutorialReset(false), 3000)
   }
 
   async function handleSaveOrg(e) {
@@ -612,6 +623,7 @@ export default function Settings() {
 
         {/* TAB 1 — Mi perfil */}
         {activeTab === 'profile' && (
+          <div className="space-y-5">
           <Card>
             <CardHeader title="Mi perfil" />
             <div className="mb-5 flex items-center gap-4">
@@ -676,6 +688,37 @@ export default function Settings() {
               <SaveRow loading={savingProfile} saved={savedProfile} />
             </form>
           </Card>
+
+          <Card>
+            <CardHeader title="Tutorial de bienvenida" />
+            <div className="flex items-start gap-4">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand/15">
+                <BookOpen className="h-5 w-5 text-brand" />
+              </div>
+              <div className="flex-1">
+                <p className="text-sm text-slate-300">
+                  Volvé a ver el tutorial de introducción a OOH Planner en cualquier momento.
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  El wizard te guía por las funcionalidades principales de la plataforma.
+                </p>
+                <div className="mt-4 flex items-center gap-3">
+                  <Button
+                    onClick={handleResetTutorial}
+                    loading={resettingTutorial}
+                    size="sm"
+                    variant="secondary"
+                  >
+                    Ver tutorial nuevamente
+                  </Button>
+                  {tutorialReset && (
+                    <span className="text-xs text-emerald-400">✓ Se mostrará al recargar</span>
+                  )}
+                </div>
+              </div>
+            </div>
+          </Card>
+          </div>
         )}
 
         {/* TAB 2 — Empresa */}
