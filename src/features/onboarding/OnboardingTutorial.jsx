@@ -1,13 +1,15 @@
 import { useState } from 'react'
-import { X, ChevronLeft, ChevronRight, Sparkles, Map, Calendar, FileText, BookUser, DollarSign, Users, CheckCircle2 } from 'lucide-react'
+import { X, Home, BarChart3, MapPin, FileText, BookUser, Users, DollarSign, LifeBuoy } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
+import Button from '../../components/ui/Button'
 
 const STEPS = [
   {
-    icon: Sparkles,
-    title: '¡Bienvenido/a a OOH Planner!',
-    subtitle: 'Tu plataforma profesional para publicidad exterior',
+    icon: Home,
+    image: '/tutorial/01-welcome.png',
+    title: 'Bienvenido a OOH Planner',
+    description: 'Tu plataforma profesional para gestionar, planificar y vender publicidad exterior.',
     bullets: [
       'Gestioná tu inventario de carteles y soportes',
       'Creá propuestas para clientes en segundos',
@@ -15,29 +17,32 @@ const STEPS = [
     ],
   },
   {
-    icon: Map,
-    title: 'Inventario de carteles',
-    subtitle: 'El corazón de tu operación OOH',
+    icon: BarChart3,
+    image: '/tutorial/02-dashboard.png',
+    title: 'Dashboard',
+    description: 'Desde el dashboard tenés una vista ejecutiva de toda tu operación en tiempo real.',
     bullets: [
-      'Cargá todos tus espacios: vallas, medianeras, pantallas y más',
+      'KPIs de ocupación, ingresos y propuestas activas',
+      'Mapa de inventario con estado de cada cartel',
+      'Actividad reciente del equipo comercial',
+    ],
+  },
+  {
+    icon: MapPin,
+    image: '/tutorial/03-inventory.png',
+    title: 'Inventario de carteles',
+    description: 'El corazón de tu operación. Cargá y gestioná todos tus espacios publicitarios.',
+    bullets: [
+      'Cargá vallas, medianeras, pantallas y más',
       'Asigná ubicación, medidas, tipo y precio por período',
       'Controlá disponibilidad en tiempo real desde el mapa',
     ],
   },
   {
-    icon: Calendar,
-    title: 'Campañas',
-    subtitle: 'Organizá reservas por cliente y período',
-    bullets: [
-      'Una campaña agrupa carteles para un cliente en un período determinado',
-      'Gestioná el estado de cada cartel (activo, vencido, pendiente)',
-      'Adjuntá artes y materiales para cada campaña',
-    ],
-  },
-  {
     icon: FileText,
-    title: 'Propuestas con IA',
-    subtitle: 'El Planificador arma propuestas en segundos',
+    image: '/tutorial/04-proposals.png',
+    title: 'Planificador IA',
+    description: 'El Planificador con IA arma propuestas completas y profesionales en segundos.',
     bullets: [
       'Describí qué busca el cliente y el sistema selecciona los mejores carteles',
       'Generá un PDF profesional para presentar directamente al cliente',
@@ -46,8 +51,9 @@ const STEPS = [
   },
   {
     icon: BookUser,
+    image: '/tutorial/05-contacts.png',
     title: 'Contactos',
-    subtitle: 'Clientes, agencias y facilitadores en un lugar',
+    description: 'Clientes, agencias y facilitadores, todo en un solo lugar.',
     bullets: [
       'Registrá empresas, agencias y contactos comerciales',
       'Asigná roles: cliente, agencia, facilitador, proveedor',
@@ -55,9 +61,21 @@ const STEPS = [
     ],
   },
   {
+    icon: Users,
+    image: '/tutorial/06-team.png',
+    title: 'Equipo y comisiones',
+    description: 'Roles y permisos para cada integrante, con comisiones configurables por vendedor.',
+    bullets: [
+      'Invitá a dueños, gerentes, supervisores y vendedores',
+      'Cada rol accede solo a lo que necesita ver',
+      'Configurá comisiones individuales y estructuras de supervisión',
+    ],
+  },
+  {
     icon: DollarSign,
-    title: 'Reglas comerciales',
-    subtitle: 'Comisiones automáticas sin errores de cálculo',
+    image: '/tutorial/07-commercial.png',
+    title: 'Acuerdos de facilitadores',
+    description: 'Comisiones automáticas sin errores de cálculo ni planillas manuales.',
     bullets: [
       'Configurá acuerdos con facilitadores y sus porcentajes',
       'Las comisiones se crean solas cuando aceptás una propuesta',
@@ -65,36 +83,28 @@ const STEPS = [
     ],
   },
   {
-    icon: Users,
-    title: 'Equipo',
-    subtitle: 'Roles y permisos para cada integrante',
+    icon: LifeBuoy,
+    image: '/tutorial/08-support.png',
+    title: '¿Necesitás ayuda?',
+    description: 'El centro de soporte está siempre disponible para resolver tus dudas.',
     bullets: [
-      'Invitá a dueños, gerentes, supervisores y vendedores',
-      'Cada rol accede solo a lo que necesita ver',
-      'Configurá comisiones y supervisores por vendedor',
-    ],
-  },
-  {
-    icon: CheckCircle2,
-    title: '¡Todo listo para empezar!',
-    subtitle: 'Ya tenés todo lo que necesitás',
-    bullets: [
-      'Empezá cargando tu inventario de carteles disponibles',
-      'Si tenés dudas, revisá el centro de Soporte en el menú lateral',
+      'Revisá las preguntas frecuentes antes de abrir un ticket',
+      'Abrí tickets de soporte directamente desde la app',
       'Podés volver a ver este tutorial desde Ajustes > Mi perfil',
     ],
+    footer: 'El equipo de OOH Planner responde en menos de 24 horas hábiles.',
   },
 ]
 
 export default function OnboardingTutorial() {
   const { profile, refreshProfile } = useAuth()
-  const [step, setStep] = useState(0)
-  const [closing, setClosing] = useState(false)
+  const [step, setStep]         = useState(0)
+  const [closing, setClosing]   = useState(false)
+  const [imgError, setImgError] = useState(false)
 
   const current = STEPS[step]
-  const Icon = current.icon
-  const isLast = step === STEPS.length - 1
-  const progress = ((step + 1) / STEPS.length) * 100
+  const Icon    = current.icon
+  const isLast  = step === STEPS.length - 1
 
   async function dismiss() {
     if (closing) return
@@ -106,84 +116,120 @@ export default function OnboardingTutorial() {
     refreshProfile()
   }
 
-  function next() {
+  function handleNext() {
     if (isLast) { dismiss(); return }
     setStep(s => s + 1)
+    setImgError(false)
+  }
+
+  function handleBack() {
+    setStep(s => s - 1)
+    setImgError(false)
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-      <div className="relative w-full max-w-lg rounded-2xl border border-surface-700 bg-surface-800 shadow-2xl">
+      <div className="relative w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-2xl border border-surface-700 bg-surface-800 shadow-2xl">
 
-        {/* Close */}
+        {/* Close button */}
         <button
           onClick={dismiss}
-          className="absolute right-4 top-4 rounded-lg p-1.5 text-slate-500 hover:bg-surface-700 hover:text-slate-300 transition-colors"
+          className="absolute right-4 top-4 z-10 rounded-lg p-1.5 text-slate-500 hover:bg-surface-700/80 hover:text-slate-300 transition-colors"
           aria-label="Cerrar tutorial"
         >
           <X className="h-4 w-4" />
         </button>
 
-        {/* Progress bar */}
-        <div className="h-1 w-full overflow-hidden rounded-t-2xl bg-surface-700">
-          <div
-            className="h-full bg-brand transition-all duration-300 ease-out"
-            style={{ width: `${progress}%` }}
-          />
+        {/* ── Image: full-width, aspect ratio matches 1920×864 captures ── */}
+        <div className="w-full overflow-hidden rounded-t-2xl bg-slate-950 ring-1 ring-white/10"
+             style={{ aspectRatio: '1920/864' }}>
+          {!imgError ? (
+            <img
+              key={step}
+              src={current.image}
+              alt={current.title}
+              className="h-full w-full object-cover"
+              onError={() => setImgError(true)}
+            />
+          ) : (
+            <div className="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-brand/15">
+                <Icon className="h-8 w-8 text-brand" />
+              </div>
+              <p className="text-xs text-slate-600">Vista previa no disponible</p>
+            </div>
+          )}
         </div>
 
-        {/* Content */}
-        <div className="p-8">
-          {/* Icon */}
-          <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand/15">
-            <Icon className="h-7 w-7 text-brand" />
+        {/* ── Content ── */}
+        <div className="px-6 pb-6 pt-6 md:px-8 md:pb-8">
+
+          {/* Icon + step counter */}
+          <div className="flex items-center gap-2.5">
+            <Icon className="h-5 w-5 shrink-0 text-brand" />
+            <p className="text-xs font-medium text-slate-500">
+              Paso {step + 1} de {STEPS.length}
+            </p>
           </div>
 
-          {/* Step counter */}
-          <p className="mb-2 text-xs font-medium uppercase tracking-widest text-slate-500">
-            Paso {step + 1} de {STEPS.length}
-          </p>
-
-          {/* Title */}
-          <h2 className="text-xl font-bold text-white">{current.title}</h2>
-          <p className="mt-1 text-sm text-slate-400">{current.subtitle}</p>
+          {/* Title + description */}
+          <h2 className="mt-3 text-2xl font-semibold text-white">{current.title}</h2>
+          <p className="mt-3 text-base leading-relaxed text-slate-300">{current.description}</p>
 
           {/* Bullets */}
-          <ul className="mt-5 space-y-2.5">
+          <ul className="mt-4 space-y-2">
             {current.bullets.map((b, i) => (
-              <li key={i} className="flex items-start gap-2.5 text-sm text-slate-300">
-                <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-brand/20 text-[10px] font-bold text-brand">
-                  {i + 1}
-                </span>
+              <li key={i} className="flex items-start gap-2 text-sm text-slate-400">
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
                 {b}
               </li>
             ))}
           </ul>
-        </div>
 
-        {/* Navigation */}
-        <div className="flex items-center justify-between border-t border-surface-700 px-6 py-4">
-          {step > 0 ? (
-            <button
-              onClick={() => setStep(s => s - 1)}
-              className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-slate-200 transition-colors"
-            >
-              <ChevronLeft className="h-4 w-4" />
-              Anterior
-            </button>
-          ) : (
-            <div />
+          {/* Optional footer note */}
+          {current.footer && (
+            <p className="mt-3 text-xs italic text-slate-500">{current.footer}</p>
           )}
 
-          <button
-            onClick={next}
-            disabled={closing}
-            className="btn-primary flex items-center gap-1.5 disabled:opacity-50"
-          >
-            {isLast ? 'Comenzar' : 'Siguiente'}
-            {!isLast && <ChevronRight className="h-4 w-4" />}
-          </button>
+          {/* Progress bar + navigation */}
+          <div className="mt-8 flex items-center justify-between gap-4">
+
+            {/* Anterior */}
+            {step > 0 ? (
+              <Button variant="ghost" onClick={handleBack} size="sm">
+                ← Atrás
+              </Button>
+            ) : (
+              <div />
+            )}
+
+            {/* Progress dots */}
+            <div className="flex flex-1 gap-1.5">
+              {STEPS.map((_, i) => (
+                <div
+                  key={i}
+                  className={`h-1 flex-1 rounded-full transition-colors duration-300 ${
+                    i <= step ? 'bg-brand' : 'bg-surface-700'
+                  }`}
+                />
+              ))}
+            </div>
+
+            {/* Siguiente / Saltar */}
+            <div className="flex gap-2">
+              {!isLast && (
+                <Button variant="ghost" onClick={dismiss} size="sm">
+                  Saltar
+                </Button>
+              )}
+              <Button onClick={handleNext} disabled={closing} size="sm">
+                {isLast ? 'Empezar a usar OOH Planner' : 'Siguiente →'}
+              </Button>
+            </div>
+
+          </div>
         </div>
+
       </div>
     </div>
   )
