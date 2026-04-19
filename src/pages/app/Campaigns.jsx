@@ -31,6 +31,32 @@ function getNextStatus(currentId) {
   return WORKFLOW_STATUSES[idx + 1]
 }
 
+function getCampaignTimeStatus(proposal) {
+  const items = proposal.proposal_items ?? []
+  const starts = items.map(i => i.start_date).filter(Boolean).sort()
+  const ends   = items.map(i => i.end_date).filter(Boolean).sort()
+  const startDate = starts[0]           ? new Date(starts[0])           : null
+  const endDate   = ends[ends.length-1] ? new Date(ends[ends.length-1]) : null
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  if (!startDate || !endDate) return { label: 'Fechas pendientes', color: 'amber' }
+  if (startDate > today) {
+    const days = Math.ceil((startDate - today) / 86_400_000)
+    return { label: `En ${days} ${days === 1 ? 'día' : 'días'} inicia`, color: 'blue' }
+  }
+  if (endDate < today) return { label: 'Campaña finalizada', color: 'slate' }
+  const daysActive = Math.floor((today - startDate) / 86_400_000) + 1
+  return { label: `Día ${daysActive} de campaña`, color: 'brand' }
+}
+
+const BADGE_COLORS = {
+  amber: 'bg-amber-500/10 text-amber-400',
+  blue:  'bg-blue-500/10 text-blue-400',
+  brand: 'bg-brand/10 text-brand',
+  slate: 'bg-slate-500/10 text-slate-400',
+}
+
 function getCampaignEndDate(proposal) {
   const items = proposal.proposal_items ?? []
   const ends = items.map(i => i.end_date).filter(Boolean).sort()
@@ -198,7 +224,7 @@ function CampaignModal({ campaign, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-lg rounded-2xl bg-surface-900 border border-surface-700 shadow-2xl overflow-hidden">
+      <div className="relative w-full md:max-w-4xl xl:max-w-5xl rounded-2xl bg-surface-900 border border-surface-700 shadow-2xl overflow-hidden">
 
         {/* Header */}
         <div className="flex items-start justify-between gap-3 p-5 border-b border-surface-700">
@@ -206,143 +232,148 @@ function CampaignModal({ campaign, onClose }) {
             <p className="font-bold text-white truncate">{campaign.client_name ?? '—'}</p>
             <p className="mt-0.5 text-xs text-slate-500 truncate">{campaign.title}</p>
           </div>
-          <button type="button" onClick={onClose}
-            className="shrink-0 rounded-lg p-1 text-slate-500 hover:bg-surface-700 hover:text-white transition-colors">
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            {items.length > 0 && (
+              <button type="button" onClick={() => setShowPrint(true)}
+                className="rounded-lg border border-surface-700 px-3 py-1.5 text-xs font-medium text-slate-300 hover:bg-surface-700 transition-colors">
+                📐 Medidas
+              </button>
+            )}
+            <button type="button" onClick={onClose}
+              className="rounded-lg p-1 text-slate-500 hover:bg-surface-700 hover:text-white transition-colors">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         {/* Body */}
-        <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+        <div className="p-5 max-h-[70vh] overflow-y-auto">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-          {/* Key info grid */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-xl bg-surface-800 p-3">
-              <p className="text-xs text-slate-500 mb-0.5">Inversión cliente</p>
-              <p className="font-bold text-white">{formatCurrency(clientTotal)}</p>
-            </div>
-            <div className="rounded-xl bg-surface-800 p-3">
-              <p className="text-xs text-slate-500 mb-0.5">Vendedor</p>
-              <p className="font-semibold text-white truncate">{campaign.creator?.full_name ?? '—'}</p>
-            </div>
-            <div className="rounded-xl bg-surface-800 p-3">
-              <p className="text-xs text-slate-500 mb-0.5">Inicio</p>
-              <p className="font-semibold text-slate-300">{formatDate(brief.startDate) ?? '—'}</p>
-            </div>
-            <div className="rounded-xl bg-surface-800 p-3">
-              <p className="text-xs text-slate-500 mb-0.5">Fin</p>
-              <p className={`font-semibold ${isExpired ? 'text-red-400' : 'text-slate-300'}`}>
-                {formatDate(campaign.valid_until)}
-                {days !== null && !isExpired && <span className="ml-1.5 text-xs text-slate-500">({days}d)</span>}
-                {isExpired && <span className="ml-1.5 text-xs">(vencida)</span>}
-              </p>
-            </div>
-          </div>
+            {/* ── Columna izquierda ── */}
+            <div className="space-y-4">
 
-          {/* Resumen financiero */}
-          {listTotal > 0 && (
-            <div className="rounded-xl bg-surface-800 p-4 space-y-2 text-sm">
-              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Resumen financiero</p>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Precio de lista</span>
-                <span className={discount > 0 ? 'text-slate-500 line-through' : 'text-slate-300'}>
-                  {formatCurrency(listTotal)}
-                </span>
+              {/* Key info grid */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-xl bg-surface-800 p-3">
+                  <p className="text-xs text-slate-500 mb-0.5">Inversión cliente</p>
+                  <p className="font-bold text-white">{formatCurrency(clientTotal)}</p>
+                </div>
+                <div className="rounded-xl bg-surface-800 p-3">
+                  <p className="text-xs text-slate-500 mb-0.5">Vendedor</p>
+                  <p className="font-semibold text-white truncate">{campaign.creator?.full_name ?? '—'}</p>
+                </div>
+                <div className="rounded-xl bg-surface-800 p-3">
+                  <p className="text-xs text-slate-500 mb-0.5">Inicio</p>
+                  <p className="font-semibold text-slate-300">{formatDate(brief.startDate) ?? '—'}</p>
+                </div>
+                <div className="rounded-xl bg-surface-800 p-3">
+                  <p className="text-xs text-slate-500 mb-0.5">Fin</p>
+                  <p className={`font-semibold ${isExpired ? 'text-red-400' : 'text-slate-300'}`}>
+                    {formatDate(campaign.valid_until)}
+                    {days !== null && !isExpired && <span className="ml-1.5 text-xs text-slate-500">({days}d)</span>}
+                    {isExpired && <span className="ml-1.5 text-xs">(vencida)</span>}
+                  </p>
+                </div>
               </div>
-              {discount > 0 && (
-                <div className="flex justify-between text-brand">
-                  <span>Descuento {discount}%</span>
-                  <span>-{formatCurrency(discountAmt)}</span>
+
+              {/* Resumen financiero */}
+              {listTotal > 0 && (
+                <div className="rounded-xl bg-surface-800 p-4 space-y-2 text-sm">
+                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Resumen financiero</p>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">Precio de lista</span>
+                    <span className={discount > 0 ? 'text-slate-500 line-through' : 'text-slate-300'}>
+                      {formatCurrency(listTotal)}
+                    </span>
+                  </div>
+                  {discount > 0 && (
+                    <div className="flex justify-between text-brand">
+                      <span>Descuento {discount}%</span>
+                      <span>-{formatCurrency(discountAmt)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold text-white border-t border-surface-700 pt-2">
+                    <span>Total cliente</span>
+                    <span>{formatCurrency(clientTotal)}</span>
+                  </div>
                 </div>
               )}
-              <div className="flex justify-between font-bold text-white border-t border-surface-700 pt-2">
-                <span>Total cliente</span>
-                <span>{formatCurrency(clientTotal)}</span>
-              </div>
             </div>
-          )}
 
-          {/* Medidas de impresión */}
-          {items.length > 0 && (
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setShowPrint(true)}
-                className="text-xs text-brand hover:text-blue-300 transition-colors"
-              >
-                📐 Medidas de impresión →
-              </button>
+            {/* ── Columna derecha ── */}
+            <div className="space-y-4">
+
+              {/* Carteles — DOOH */}
+              {doohItems.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-semibold text-blue-400 uppercase tracking-wide flex items-center gap-1.5">
+                    📺 Digital (DOOH) · {doohItems.length} pantalla{doohItems.length > 1 ? 's' : ''}
+                  </p>
+                  <div className="space-y-1.5">
+                    {doohItems.map((item, i) => {
+                      const inv = item.site ?? null
+                      const listPx = item.rate ?? 0
+                      const clientPx = Math.round(listPx * (1 - discount / 100))
+                      return (
+                        <div key={item.id ?? i} className="rounded-lg bg-surface-800 px-3 py-2.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-medium text-white truncate">{inv?.name ?? '—'}</p>
+                            <span className="shrink-0 text-sm font-bold text-brand">{formatCurrency(clientPx)}</span>
+                          </div>
+                          {inv?.address && <p className="text-xs text-slate-500 truncate mt-0.5">{inv.address}</p>}
+                          {listPx > 0 && discount > 0 && (
+                            <p className="text-xs text-slate-600 mt-0.5">Lista: {formatCurrency(listPx)}</p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Carteles — OFF */}
+              {offItems.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-semibold text-orange-400 uppercase tracking-wide flex items-center gap-1.5">
+                    🏙️ Vía Pública (OFF) · {offItems.length} soporte{offItems.length > 1 ? 's' : ''}
+                  </p>
+                  <div className="space-y-1.5">
+                    {offItems.map((item, i) => {
+                      const inv = item.site ?? null
+                      const fmtColor = FORMAT_MAP[inv?.format]?.color
+                      const fmtLabel = FORMAT_MAP[inv?.format]?.label ?? inv?.format ?? '—'
+                      const listPx = item.rate ?? 0
+                      const clientPx = Math.round(listPx * (1 - discount / 100))
+                      return (
+                        <div key={item.id ?? i} className="rounded-lg bg-surface-800 px-3 py-2.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-medium text-white truncate">{inv?.name ?? '—'}</p>
+                            <span className="shrink-0 text-sm font-bold text-brand">{formatCurrency(clientPx)}</span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {inv?.address && <p className="text-xs text-slate-500 truncate flex-1">{inv.address}</p>}
+                            <span className="shrink-0 text-xs font-medium" style={{ color: fmtColor ?? '#94a3b8' }}>
+                              {fmtLabel}
+                            </span>
+                          </div>
+                          {listPx > 0 && discount > 0 && (
+                            <p className="text-xs text-slate-600 mt-0.5">Lista: {formatCurrency(listPx)}</p>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {items.length === 0 && (
+                <p className="text-xs text-slate-600 py-2 text-center">Sin carteles registrados</p>
+              )}
             </div>
-          )}
-          {showPrint && <PrintMeasuresModal campaign={campaign} onClose={() => setShowPrint(false)} />}
-
-          {/* Carteles — DOOH */}
-          {doohItems.length > 0 && (
-            <div>
-              <p className="mb-2 text-xs font-semibold text-blue-400 uppercase tracking-wide flex items-center gap-1.5">
-                📺 Digital (DOOH) · {doohItems.length} pantalla{doohItems.length > 1 ? 's' : ''}
-              </p>
-              <div className="space-y-1.5">
-                {doohItems.map((item, i) => {
-                  const inv = item.site ?? null
-                  const listPx = item.rate ?? 0
-                  const clientPx = Math.round(listPx * (1 - discount / 100))
-                  return (
-                    <div key={item.id ?? i} className="rounded-lg bg-surface-800 px-3 py-2.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-medium text-white truncate">{inv?.name ?? '—'}</p>
-                        <span className="shrink-0 text-sm font-bold text-brand">{formatCurrency(clientPx)}</span>
-                      </div>
-                      {inv?.address && <p className="text-xs text-slate-500 truncate mt-0.5">{inv.address}</p>}
-                      {listPx > 0 && discount > 0 && (
-                        <p className="text-xs text-slate-600 mt-0.5">Lista: {formatCurrency(listPx)}</p>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Carteles — OFF */}
-          {offItems.length > 0 && (
-            <div>
-              <p className="mb-2 text-xs font-semibold text-orange-400 uppercase tracking-wide flex items-center gap-1.5">
-                🏙️ Vía Pública (OFF) · {offItems.length} soporte{offItems.length > 1 ? 's' : ''}
-              </p>
-              <div className="space-y-1.5">
-                {offItems.map((item, i) => {
-                  const inv = item.site ?? null
-                  const fmtColor = FORMAT_MAP[inv?.format]?.color
-                  const fmtLabel = FORMAT_MAP[inv?.format]?.label ?? inv?.format ?? '—'
-                  const listPx = item.rate ?? 0
-                  const clientPx = Math.round(listPx * (1 - discount / 100))
-                  return (
-                    <div key={item.id ?? i} className="rounded-lg bg-surface-800 px-3 py-2.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-medium text-white truncate">{inv?.name ?? '—'}</p>
-                        <span className="shrink-0 text-sm font-bold text-brand">{formatCurrency(clientPx)}</span>
-                      </div>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {inv?.address && <p className="text-xs text-slate-500 truncate flex-1">{inv.address}</p>}
-                        <span className="shrink-0 text-xs font-medium" style={{ color: fmtColor ?? '#94a3b8' }}>
-                          {fmtLabel}
-                        </span>
-                      </div>
-                      {listPx > 0 && discount > 0 && (
-                        <p className="text-xs text-slate-600 mt-0.5">Lista: {formatCurrency(listPx)}</p>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
-          {items.length === 0 && (
-            <p className="text-xs text-slate-600 py-2 text-center">Sin carteles registrados</p>
-          )}
+          </div>
         </div>
+        {showPrint && <PrintMeasuresModal campaign={campaign} onClose={() => setShowPrint(false)} />}
       </div>
     </div>
   )
@@ -352,13 +383,12 @@ function CampaignModal({ campaign, onClose }) {
 
 function CampaignCard({ proposal, canAdvance, canJump, onStatusChange, onAdvance, onOpen, advancing }) {
   const [showMeasures, setShowMeasures] = useState(false)
-  const days      = getDaysRemaining(proposal.valid_until)
-  const isExpired = days !== null && days < 0
-  const next      = getNextStatus(proposal.workflow_status)
+  const timeStatus = getCampaignTimeStatus(proposal)
+  const next       = getNextStatus(proposal.workflow_status)
 
   return (
     <div
-      className="card p-3 hover:border-brand/30 transition-colors cursor-pointer"
+      className="card p-2.5 hover:border-brand/30 transition-colors cursor-pointer"
       onClick={onOpen}
     >
       {/* Header */}
@@ -367,18 +397,10 @@ function CampaignCard({ proposal, canAdvance, canJump, onStatusChange, onAdvance
           <p className="font-semibold text-white truncate">{proposal.title}</p>
           <p className="mt-0.5 text-sm text-slate-500">{proposal.client_name}</p>
         </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          {/* Days badge */}
-          {isExpired ? (
-            <span className="rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-bold text-red-400">
-              VENCIDA
-            </span>
-          ) : days !== null && days >= 0 ? (
-            <span className="rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-400">
-              {days}d restantes
-            </span>
-          ) : null}
+        <div className="shrink-0">
+          <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${BADGE_COLORS[timeStatus.color]}`}>
+            {timeStatus.label}
+          </span>
         </div>
       </div>
 
@@ -422,7 +444,7 @@ function CampaignCard({ proposal, canAdvance, canJump, onStatusChange, onAdvance
       )}
 
       {/* Stepper */}
-      <div className="mt-3" onClick={e => e.stopPropagation()}>
+      <div className="mt-2" onClick={e => e.stopPropagation()}>
         <WorkflowStepper
           status={proposal.workflow_status}
           onChange={(newStatus) => onStatusChange(proposal.id, newStatus)}
@@ -432,7 +454,8 @@ function CampaignCard({ proposal, canAdvance, canJump, onStatusChange, onAdvance
 
       {/* Siguiente paso button */}
       {canAdvance && next && (
-        <div className="mt-2 flex justify-end" onClick={e => e.stopPropagation()}>
+        <div className="mt-1.5 flex items-center justify-end gap-2" onClick={e => e.stopPropagation()}>
+          <span className="text-xs text-slate-500">Paso siguiente:</span>
           <button
             type="button"
             onClick={() => onAdvance(proposal)}

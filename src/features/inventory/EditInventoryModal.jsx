@@ -92,7 +92,6 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
       cost_print_per_m2:        item.cost_print_per_m2 ?? 0,
       cost_colocation:        item.cost_colocation ?? 0,
       cost_design:              item.cost_design ?? 0,
-      cost_seller_commission_pct: item.cost_seller_commission_pct ?? 5,
       cost_agency_commission_pct: item.cost_agency_commission_pct ?? 0,
       // Medidas de impresión
       print_width_cm:           item.print_width_cm ?? null,
@@ -203,7 +202,6 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
         cost_print_per_m2:        form.cost_print_per_m2,
         cost_colocation:        form.cost_colocation,
         cost_design:              form.cost_design,
-        cost_seller_commission_pct: form.cost_seller_commission_pct,
         cost_agency_commission_pct: form.cost_agency_commission_pct,
         print_width_cm:           form.print_width_cm ? Number(form.print_width_cm) : null,
         print_height_cm:          form.print_height_cm ? Number(form.print_height_cm) : null,
@@ -222,7 +220,7 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
 
       {/* Modal */}
-      <div className="relative z-10 flex h-[90vh] w-full max-w-2xl flex-col rounded-2xl border border-surface-700 bg-surface-900 shadow-2xl">
+      <div className="relative z-10 flex h-[90vh] w-full md:max-w-4xl xl:max-w-5xl flex-col rounded-2xl border border-surface-700 bg-surface-900 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-surface-700 px-5 py-4">
           <div>
@@ -255,125 +253,136 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
         <div className="flex-1 overflow-y-auto p-5">
           {/* ── TAB 1: Datos básicos ── */}
           {tab === 'basic' && (
-            <div className="space-y-4">
-              {/* Photo */}
-              <div>
-                <Label>Foto del cartel</Label>
-                {form.photo_url ? (
-                  <div className="relative inline-block">
-                    <img src={form.photo_url} alt="Foto" className="h-32 w-auto rounded-xl object-cover border border-surface-700" />
-                    <button type="button" onClick={() => set('photo_url', '')}
-                      className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white">
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                ) : (
-                  <button type="button" onClick={() => fileRef.current?.click()}
-                    disabled={uploading}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-surface-700 py-6 text-sm text-slate-500 hover:border-brand/50 hover:text-slate-300 transition-colors">
-                    <Upload className="h-4 w-4" />
-                    {uploading ? 'Subiendo...' : 'Subir foto (sin anuncio)'}
-                  </button>
-                )}
-                <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <FieldRow label="Nombre *">
-                  <input className="input-field" value={form.name} onChange={e => set('name', e.target.value)} />
+              {/* ── Columna izquierda — Datos identificatorios ── */}
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <FieldRow label="Nombre *">
+                    <input className="input-field" value={form.name} onChange={e => set('name', e.target.value)} />
+                  </FieldRow>
+                  <FieldRow label="Ciudad">
+                    <input className="input-field" value={form.city} onChange={e => set('city', e.target.value)} />
+                  </FieldRow>
+                </div>
+
+                <FieldRow label="Dirección">
+                  <input className="input-field" value={form.address} onChange={e => set('address', e.target.value)} />
                 </FieldRow>
-                <FieldRow label="Ciudad">
-                  <input className="input-field" value={form.city} onChange={e => set('city', e.target.value)} />
-                </FieldRow>
-              </div>
 
-              <FieldRow label="Dirección">
-                <input className="input-field" value={form.address} onChange={e => set('address', e.target.value)} />
-              </FieldRow>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <FieldRow label="Formato">
-                  {formats.length > 0 ? (
-                    <select className="input-field appearance-none"
-                      value={form.format_id ?? ''}
-                      onChange={e => {
-                        const f = formats.find(x => x.id === e.target.value)
-                        set('format_id', e.target.value || null)
-                        if (f) set('format', f.type)
-                      }}>
-                      <option value="">Seleccioná un formato</option>
-                      {formats.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                <div className="grid grid-cols-2 gap-4">
+                  <FieldRow label="Formato">
+                    {formats.length > 0 ? (
+                      <select className="input-field appearance-none"
+                        value={form.format_id ?? ''}
+                        onChange={e => {
+                          const f = formats.find(x => x.id === e.target.value)
+                          set('format_id', e.target.value || null)
+                          if (f) set('format', f.type)
+                        }}>
+                        <option value="">Seleccioná un formato</option>
+                        {formats.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                      </select>
+                    ) : (
+                      <select className="input-field appearance-none"
+                        value={form.format}
+                        onChange={e => set('format', e.target.value)}>
+                        {Object.entries(FORMAT_MAP).map(([id, { label }]) => (
+                          <option key={id} value={id}>{label}</option>
+                        ))}
+                      </select>
+                    )}
+                  </FieldRow>
+                  <FieldRow label="Tipo de propiedad">
+                    <select className="input-field appearance-none" value={form.owner_type} onChange={e => set('owner_type', e.target.value)}>
+                      <option value="owned">Propio</option>
+                      <option value="rented">Alquilado</option>
                     </select>
+                  </FieldRow>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <NumericField label="Ancho (m)" value={form.width_ft} onChange={v => set('width_ft', v)} step="0.1" />
+                  <NumericField label="Alto (m)" value={form.height_ft} onChange={v => set('height_ft', v)} step="0.1" />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label>Latitud</Label>
+                    <div className="relative">
+                      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+                      <input className="input-field pl-9" type="number" step="0.000001" value={form.latitude} onChange={e => set('latitude', e.target.value)} />
+                    </div>
+                  </div>
+                  <div>
+                    <Label>Longitud</Label>
+                    <input className="input-field" type="number" step="0.000001" value={form.longitude} onChange={e => set('longitude', e.target.value)} />
+                  </div>
+                </div>
+              </div>
+
+              {/* ── Columna derecha — Foto, medidas, toggles ── */}
+              <div className="space-y-4">
+                {/* Photo */}
+                <div>
+                  <Label>Foto del cartel</Label>
+                  {form.photo_url ? (
+                    <div className="relative inline-block">
+                      <img src={form.photo_url} alt="Foto" className="h-32 w-auto rounded-xl object-cover border border-surface-700" />
+                      <button type="button" onClick={() => set('photo_url', '')}
+                        className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white">
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
                   ) : (
-                    <select className="input-field appearance-none"
-                      value={form.format}
-                      onChange={e => set('format', e.target.value)}>
-                      {Object.entries(FORMAT_MAP).map(([id, { label }]) => (
-                        <option key={id} value={id}>{label}</option>
-                      ))}
-                    </select>
+                    <button type="button" onClick={() => fileRef.current?.click()}
+                      disabled={uploading}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-surface-700 py-6 text-sm text-slate-500 hover:border-brand/50 hover:text-slate-300 transition-colors">
+                      <Upload className="h-4 w-4" />
+                      {uploading ? 'Subiendo...' : 'Subir foto (sin anuncio)'}
+                    </button>
                   )}
-                </FieldRow>
-                <FieldRow label="Tipo de propiedad">
-                  <select className="input-field appearance-none" value={form.owner_type} onChange={e => set('owner_type', e.target.value)}>
-                    <option value="owned">Propio</option>
-                    <option value="rented">Alquilado</option>
-                  </select>
-                </FieldRow>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <NumericField label="Ancho (m)" value={form.width_ft} onChange={v => set('width_ft', v)} step="0.1" />
-                <NumericField label="Alto (m)" value={form.height_ft} onChange={v => set('height_ft', v)} step="0.1" />
-              </div>
-
-              {/* Medidas de impresión (tela/afiche) */}
-              <div>
-                <p className="text-xs font-medium text-slate-500 mb-3">Medidas de impresión (tela/afiche)</p>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <NumericField label="Ancho impresión (cm)" value={form.print_width_cm} onChange={v => set('print_width_cm', v)} step="0.1" />
-                  <NumericField label="Alto impresión (cm)" value={form.print_height_cm} onChange={v => set('print_height_cm', v)} step="0.1" />
+                  <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} />
                 </div>
-              </div>
 
-              {/* Toggles */}
-              <div className="flex gap-4 flex-wrap">
-                {[
-                  { field: 'illuminated',  label: 'Iluminado' },
-                  { field: 'is_available', label: 'Disponible' },
-                  { field: 'banda_negativa', label: 'Banda negativa' },
-                ].map(({ field, label }) => (
-                  <button key={field} type="button"
-                    onClick={() => set(field, !form[field])}
-                    className={`rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors ${
-                      form[field]
-                        ? 'border-brand bg-brand/10 text-brand'
-                        : 'border-surface-700 text-slate-400 hover:border-slate-500'
-                    }`}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-
-              {form.banda_negativa && (
-                <div className="grid gap-4 sm:grid-cols-2 rounded-xl border border-surface-700 p-4">
-                  <NumericField label="Tarifa banda negativa (ARS/mes)" value={form.banda_negativa_rate} onChange={v => set('banda_negativa_rate', v)} prefix="$" />
-                  <NumericField label="Meses mínimos" value={form.banda_negativa_min_months} onChange={v => set('banda_negativa_min_months', v)} step="1" />
-                </div>
-              )}
-
-              <div className="grid gap-4 sm:grid-cols-2">
+                {/* Medidas de impresión */}
                 <div>
-                  <Label>Latitud</Label>
-                  <div className="relative">
-                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
-                    <input className="input-field pl-9" type="number" step="0.000001" value={form.latitude} onChange={e => set('latitude', e.target.value)} />
+                  <p className="text-xs font-medium text-slate-500 mb-3">Medidas de impresión (tela/afiche)</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <NumericField label="Ancho impresión (cm)" value={form.print_width_cm} onChange={v => set('print_width_cm', v)} step="0.1" />
+                    <NumericField label="Alto impresión (cm)" value={form.print_height_cm} onChange={v => set('print_height_cm', v)} step="0.1" />
                   </div>
                 </div>
+
+                {/* Toggles */}
                 <div>
-                  <Label>Longitud</Label>
-                  <input className="input-field" type="number" step="0.000001" value={form.longitude} onChange={e => set('longitude', e.target.value)} />
+                  <p className="text-xs font-medium text-slate-500 mb-2">Opciones</p>
+                  <div className="flex gap-3 flex-wrap">
+                    {[
+                      { field: 'illuminated',  label: 'Iluminado' },
+                      { field: 'is_available', label: 'Disponible' },
+                      { field: 'banda_negativa', label: 'Banda negativa' },
+                    ].map(({ field, label }) => (
+                      <button key={field} type="button"
+                        onClick={() => set(field, !form[field])}
+                        className={`rounded-lg border px-3.5 py-2 text-sm font-medium transition-colors ${
+                          form[field]
+                            ? 'border-brand bg-brand/10 text-brand'
+                            : 'border-surface-700 text-slate-400 hover:border-slate-500'
+                        }`}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
+
+                {/* Banda negativa config */}
+                {form.banda_negativa && (
+                  <div className="grid grid-cols-2 gap-4 rounded-xl border border-surface-700 p-4">
+                    <NumericField label="Tarifa banda negativa (ARS/mes)" value={form.banda_negativa_rate} onChange={v => set('banda_negativa_rate', v)} prefix="$" />
+                    <NumericField label="Meses mínimos" value={form.banda_negativa_min_months} onChange={v => set('banda_negativa_min_months', v)} step="1" />
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -444,7 +453,6 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
                 <NumericField label="Impresión de lona (por m²)" value={form.cost_print_per_m2} onChange={v => set('cost_print_per_m2', v)} prefix="$" />
                 <NumericField label="Colocación de lona" value={form.cost_colocation} onChange={v => set('cost_colocation', v)} prefix="$" />
                 <NumericField label="Diseño gráfico" value={form.cost_design} onChange={v => set('cost_design', v)} prefix="$" />
-                <NumericField label="Comisión vendedor" value={form.cost_seller_commission_pct} onChange={v => set('cost_seller_commission_pct', v)} suffix="%" />
                 <NumericField label="Comisión agencia" value={form.cost_agency_commission_pct} onChange={v => set('cost_agency_commission_pct', v)} suffix="%" />
               </div>
 

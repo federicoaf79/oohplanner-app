@@ -286,7 +286,9 @@ export default function Proposals() {
 
   async function handleStatusChange(p, newStatus) {
     setStatusChanging(p.id + newStatus)
-    const { error } = await supabase.from('proposals').update({ status: newStatus }).eq('id', p.id)
+    const patch = { status: newStatus }
+    if (newStatus === 'accepted') patch.accepted_at = new Date().toISOString()
+    const { error } = await supabase.from('proposals').update(patch).eq('id', p.id)
     if (!error) {
       setProposals(prev => prev.map(x => x.id === p.id ? { ...x, status: newStatus } : x))
       if (newStatus === 'accepted') {

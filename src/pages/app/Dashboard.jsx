@@ -28,12 +28,12 @@ function shortDate(str) {
   return new Date(str).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
 }
 function periodBounds(offset = 0) {
-  const d = new Date()
-  d.setDate(1)
-  d.setMonth(d.getMonth() + offset)
+  const now = new Date()
+  const year = now.getUTCFullYear()
+  const month = now.getUTCMonth() + offset
   return {
-    start: new Date(d.getFullYear(), d.getMonth(), 1),
-    end:   new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59),
+    start: new Date(Date.UTC(year, month, 1)),
+    end:   new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999)),
   }
 }
 
@@ -120,6 +120,12 @@ function computeDerived(
   const invById = {}
   inventory.forEach(i => { invById[i.id] = i })
 
+  // ── Propuestas creadas en el período (para KPI "Propuestas del período") ──
+  const periodCreated = proposals.filter(p => {
+    const d = new Date(p.created_at)
+    return p.status !== 'draft' && d >= pS && d <= pE
+  })
+
   // ── Propuestas aceptadas en el período (por accepted_at) ──
   const periodProps = proposals.filter(p => {
     const d = new Date(p.accepted_at ?? p.created_at)
@@ -173,7 +179,7 @@ function computeDerived(
     }
 
     // 3. Rechazada/descartada en el período — sin valores de lost en este sistema
-    const lostStatuses = []
+    const lostStatuses = ['rejected']
     if (lostStatuses.includes(p.status) && updated && updated >= pS && updated <= pE) {
       pipelineIds.add(p.id)
       return
@@ -319,7 +325,7 @@ function computeDerived(
 
   return {
     revenue, prevRevenue, revDelta,
-    totalProposals: periodProps.length,
+    totalProposals: periodCreated.length,
     closeRate,
     workflowCounts,
     formatMix,
@@ -472,15 +478,23 @@ export default function Dashboard() {
             <div className="card p-4">
               <p className="text-xs text-slate-500 mb-1">Revenue período</p>
               <p className="text-xl font-bold text-white">{fmtARS(derived.revenue)}</p>
-              {derived.revDelta != null ? (
-                <div className={`flex items-center gap-1 mt-1.5 text-xs ${derived.revDelta >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {derived.revDelta >= 0
-                    ? <TrendingUp className="h-3 w-3" />
-                    : <TrendingDown className="h-3 w-3" />}
-                  <span>{derived.revDelta >= 0 ? '+' : ''}{fmtPct(derived.revDelta)} vs mes anterior</span>
-                </div>
+              {derived.revenue > 0 ? (
+                derived.revDelta != null ? (
+                  <div className={`flex items-center gap-1 mt-1.5 text-xs ${derived.revDelta >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {derived.revDelta >= 0
+                      ? <TrendingUp className="h-3 w-3" />
+                      : <TrendingDown className="h-3 w-3" />}
+                    <span>{derived.revDelta >= 0 ? '+' : ''}{fmtPct(derived.revDelta)} vs mes anterior</span>
+                  </div>
+                ) : (
+                  <p className="mt-1.5 text-xs text-slate-600">Sin datos período anterior</p>
+                )
+              ) : derived.totalProposals > 0 ? (
+                <p className="mt-1.5 text-xs text-slate-500">
+                  Sin ventas cerradas · {derived.totalProposals} propuesta{derived.totalProposals === 1 ? '' : 's'} creada{derived.totalProposals === 1 ? '' : 's'}
+                </p>
               ) : (
-                <p className="mt-1.5 text-xs text-slate-600">Sin datos período anterior</p>
+                <p className="mt-1.5 text-xs text-slate-600">Sin actividad este período</p>
               )}
             </div>
 
