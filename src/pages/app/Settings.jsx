@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react'
+import { useState, useRef, useEffect, useMemo, Fragment } from 'react'
 import { validateArtwork } from '../../lib/validateArtwork'
 import { Shield, Lock, Eye, Building2, Upload, X, Loader2, ChevronRight, MoreVertical } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
@@ -326,6 +326,20 @@ export default function Settings() {
     [teamMembers]
   )
 
+  const groupedMembers = useMemo(() => {
+    const owners      = teamMembers.filter(m => m.role === 'owner')
+    const managers    = teamMembers.filter(m => m.role === 'manager')
+    const supervisors = teamMembers.filter(m => m.role === 'salesperson' && m.is_supervisor)
+    const salespeople = teamMembers.filter(m => m.role === 'salesperson' && !m.is_supervisor)
+    const groupedSalespeople = {}
+    salespeople.forEach(s => {
+      const key = s.supervisor_id || 'unassigned'
+      if (!groupedSalespeople[key]) groupedSalespeople[key] = []
+      groupedSalespeople[key].push(s)
+    })
+    return { owners, managers, supervisors, salespeople, groupedSalespeople }
+  }, [teamMembers])
+
   async function handleSupervisorChange(userId, newSupervisorId) {
     setTeamMembers(prev => prev.map(m =>
       m.id === userId ? { ...m, supervisor_id: newSupervisorId || null } : m
@@ -476,6 +490,92 @@ export default function Settings() {
     await supabase.from('contacts').delete().eq('id', contact.id)
     setConfirmDeleteConfidential(null)
     loadConfidentialContacts()
+  }
+
+  const renderTeamRow = (member) => {
+    const isSaving = savingMember === member.id
+    const isSaved  = savedMember  === member.id
+    const isOwnerRow = member.role === 'owner'
+    const supervisorOptions = potentialSupervisors.filter(s => s.id !== member.id)
+    return (
+      <tr key={member.id} className="hover:bg-surface-800/40 transition-colors">
+        {/* Nombre */}
+        <td className="px-3 py-3 font-medium text-slate-200 whitespace-nowrap">
+          {member.full_name || <span className="text-slate-500">—</span>}
+        </td>
+        {/* % Comisión */}
+        <td className="px-3 py-3">
+          {isOwnerRow ? (
+            <span className="text-slate-600 text-xs">—</span>
+          ) : (
+            <div className="relative w-20">
+              <input
+                type="number" min="0" max="100" step="0.5"
+                value={member.commission_pct ?? 0}
+                onChange={e => handleCommissionChange(member.id, e.target.value)}
+                className="input-field w-full text-right pr-6"
+              />
+              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500">%</span>
+            </div>
+          )}
+        </td>
+        {/* Reporta a */}
+        <td className="px-3 py-3">
+          {isOwnerRow ? (
+            <span className="text-xs text-slate-600">—</span>
+          ) : supervisorOptions.length === 0 ? (
+            <span className="text-xs italic text-slate-600">Sin supervisores</span>
+          ) : (
+            <select
+              className="input-field text-sm"
+              value={member.supervisor_id ?? ''}
+              onChange={e => handleSupervisorChange(member.id, e.target.value)}
+            >
+              <option value="">— Ninguno —</option>
+              {supervisorOptions.map(s => (
+                <option key={s.id} value={s.id}>{s.full_name}</option>
+              ))}
+            </select>
+          )}
+        </td>
+        {/* Supervisa */}
+        <td className="px-3 py-3">
+          {member.is_supervisor ? (
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => handleIsSupervisorChange(member.id, false)}
+                className="rounded-full bg-brand/20 px-2 py-0.5 text-xs font-medium text-brand hover:bg-brand/30 transition-colors"
+              >
+                ✓ Sí
+              </button>
+              <div className="relative w-14">
+                <input
+                  type="number" min="0" max="100" step="0.5"
+                  value={member.supervisor_commission_pct ?? 0}
+                  onChange={e => handleSupervisorCommissionChange(member.id, e.target.value)}
+                  className="input-field w-full text-right pr-5"
+                />
+                <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-xs text-slate-500">%</span>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => handleIsSupervisorChange(member.id, true)}
+              className="text-xs text-slate-600 hover:text-slate-400 transition-colors"
+            >
+              —
+            </button>
+          )}
+        </td>
+        {/* Status */}
+        <td className="px-3 py-3 text-right whitespace-nowrap">
+          {isSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-500 inline" />}
+          {isSaved  && <span className="text-xs text-brand">✓ Guardado</span>}
+        </td>
+      </tr>
+    )
   }
 
   function fmtDate(str) {
@@ -819,120 +919,102 @@ export default function Settings() {
                     <thead>
                       <tr className="border-b border-surface-700">
                         <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">Nombre</th>
-                        <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">Rol</th>
                         <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">% Comisión</th>
-                        <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">Supervisor</th>
-                        <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">Es sup.</th>
-                        <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">% Override</th>
+                        <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">Reporta a</th>
+                        <th className="px-3 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-400" title="Cobra un % override por ventas de su equipo">Supervisa</th>
                         <th className="w-20 px-3 py-2.5" />
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-surface-700">
-                      {teamMembers.map(member => {
-                        const isOwnerRow = member.role === 'owner'
-                        const isSaving   = savingMember === member.id
-                        const isSaved    = savedMember  === member.id
-                        const supervisorOptions = potentialSupervisors.filter(s => s.id !== member.id)
-                        return (
-                          <tr key={member.id} className="hover:bg-surface-800/40 transition-colors">
 
-                            {/* Nombre */}
-                            <td className="px-3 py-3 font-medium text-slate-200 whitespace-nowrap">
-                              {member.full_name || <span className="text-slate-500">—</span>}
-                            </td>
-
-                            {/* Rol */}
-                            <td className="px-3 py-3">
-                              <RoleBadge role={member.role} />
-                            </td>
-
-                            {/* % Comisión */}
-                            <td className="px-3 py-3">
-                              {isOwnerRow ? (
-                                <span className="text-slate-500 text-xs" title="El owner no recibe comisiones">—</span>
-                              ) : (
-                                <div className="relative w-24">
-                                  <input
-                                    type="number" min="0" max="100" step="0.5"
-                                    value={member.commission_pct ?? 0}
-                                    onChange={e => handleCommissionChange(member.id, e.target.value)}
-                                    className="input-field pr-7 w-full"
-                                  />
-                                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-500">%</span>
-                                </div>
-                              )}
-                            </td>
-
-                            {/* Supervisor */}
-                            <td className="px-3 py-3">
-                              {isOwnerRow ? (
-                                <span className="text-xs text-slate-600">—</span>
-                              ) : supervisorOptions.length === 0 ? (
-                                <span className="text-xs italic text-slate-600">Sin supervisores</span>
-                              ) : (
-                                <select
-                                  className="input-field text-sm"
-                                  value={member.supervisor_id ?? ''}
-                                  onChange={e => handleSupervisorChange(member.id, e.target.value)}
-                                >
-                                  <option value="">— Sin supervisor —</option>
-                                  {supervisorOptions.map(s => (
-                                    <option key={s.id} value={s.id}>{s.full_name}</option>
-                                  ))}
-                                </select>
-                              )}
-                            </td>
-
-                            {/* Es supervisor */}
-                            <td className="px-3 py-3">
-                              <button
-                                type="button"
-                                role="switch"
-                                aria-checked={member.is_supervisor ?? false}
-                                onClick={() => handleIsSupervisorChange(member.id, !member.is_supervisor)}
-                                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                                  member.is_supervisor ? 'bg-brand' : 'bg-surface-700'
-                                }`}
-                              >
-                                <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${
-                                  member.is_supervisor ? 'translate-x-[18px]' : 'translate-x-1'
-                                }`} />
-                              </button>
-                            </td>
-
-                            {/* % Override */}
-                            <td className="px-3 py-3">
-                              {member.is_supervisor ? (
-                                <div className="relative w-20">
-                                  <input
-                                    type="number" min="0" max="100" step="0.5"
-                                    value={member.supervisor_commission_pct ?? 0}
-                                    onChange={e => handleSupervisorCommissionChange(member.id, e.target.value)}
-                                    className="input-field pr-7 w-full"
-                                  />
-                                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-500">%</span>
-                                </div>
-                              ) : (
-                                <span className="text-slate-600">—</span>
-                              )}
-                            </td>
-
-                            {/* Estado guardado */}
-                            <td className="px-3 py-3 text-right whitespace-nowrap">
-                              {isSaving && <Loader2 className="h-3.5 w-3.5 animate-spin text-slate-500 inline" />}
-                              {isSaved  && <span className="text-xs text-brand">✓ Guardado</span>}
+                      {/* DUEÑOS */}
+                      {groupedMembers.owners.length > 0 && (
+                        <>
+                          <tr className="bg-surface-900/60">
+                            <td colSpan={5} className="px-3 py-2">
+                              <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">Dueños</span>
+                              <span className="ml-1.5 text-[11px] text-slate-600">({groupedMembers.owners.length})</span>
                             </td>
                           </tr>
-                        )
-                      })}
+                          {groupedMembers.owners.map(m => renderTeamRow(m))}
+                        </>
+                      )}
+
+                      {/* GERENTES */}
+                      {groupedMembers.managers.length > 0 && (
+                        <>
+                          <tr className="bg-surface-900/60">
+                            <td colSpan={5} className="px-3 py-2">
+                              <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">Gerentes</span>
+                              <span className="ml-1.5 text-[11px] text-slate-600">({groupedMembers.managers.length})</span>
+                            </td>
+                          </tr>
+                          {groupedMembers.managers.map(m => renderTeamRow(m))}
+                        </>
+                      )}
+
+                      {/* SUPERVISORES (salesperson + is_supervisor) */}
+                      {groupedMembers.supervisors.length > 0 && (
+                        <>
+                          <tr className="bg-surface-900/60">
+                            <td colSpan={5} className="px-3 py-2">
+                              <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">Supervisores</span>
+                              <span className="ml-1.5 text-[11px] text-slate-600">({groupedMembers.supervisors.length})</span>
+                            </td>
+                          </tr>
+                          {groupedMembers.supervisors.map(m => renderTeamRow(m))}
+                        </>
+                      )}
+
+                      {/* VENDEDORES */}
+                      {groupedMembers.salespeople.length > 0 && (
+                        <>
+                          <tr className="bg-surface-900/60">
+                            <td colSpan={5} className="px-3 py-2">
+                              <span className="text-[11px] font-semibold uppercase tracking-widest text-slate-500">Vendedores</span>
+                              <span className="ml-1.5 text-[11px] text-slate-600">({groupedMembers.salespeople.length})</span>
+                            </td>
+                          </tr>
+                          {Object.entries(groupedMembers.groupedSalespeople)
+                            .filter(([key]) => key !== 'unassigned')
+                            .map(([supId, members]) => {
+                              const supName = teamMembers.find(m => m.id === supId)?.full_name ?? 'Supervisor'
+                              return (
+                                <Fragment key={supId}>
+                                  <tr>
+                                    <td colSpan={5} className="px-3 pb-1 pt-3">
+                                      <p className="border-l-2 border-surface-600 pl-2 text-xs text-slate-500">
+                                        Equipo de {supName} ({members.length})
+                                      </p>
+                                    </td>
+                                  </tr>
+                                  {members.map(m => renderTeamRow(m))}
+                                </Fragment>
+                              )
+                            })}
+                          {groupedMembers.groupedSalespeople.unassigned?.length > 0 && (
+                            <>
+                              <tr>
+                                <td colSpan={5} className="px-3 pb-1 pt-3">
+                                  <p className="border-l-2 border-surface-600 pl-2 text-xs text-slate-500">
+                                    Sin equipo asignado ({groupedMembers.groupedSalespeople.unassigned.length})
+                                  </p>
+                                </td>
+                              </tr>
+                              {groupedMembers.groupedSalespeople.unassigned.map(m => renderTeamRow(m))}
+                            </>
+                          )}
+                        </>
+                      )}
+
                     </tbody>
                   </table>
                 </div>
               )}
               <p className="mt-4 text-xs text-slate-500 leading-relaxed">
                 El <strong className="text-slate-400">% comisión</strong> se aplica al monto neto de cada propuesta que el vendedor acepte. Se congela al aceptar la venta — cambios futuros no afectan ventas ya cerradas.{' '}
-                <strong className="text-slate-400">Supervisor</strong>: reporta a un manager o jefe que cobra override sobre sus ventas.{' '}
-                <strong className="text-slate-400">Es supervisor / % Override</strong>: declaralo si este usuario supervisa a otros y cobra un % adicional por las ventas de su equipo.
+                <strong className="text-slate-400">Reporta a</strong>: asigna un supervisor que cobra override sobre las ventas de este miembro.{' '}
+                <strong className="text-slate-400">Supervisa</strong>: declaralo si este miembro supervisa a otros y cobra un % adicional por las ventas de su equipo.
               </p>
             </Card>
 
