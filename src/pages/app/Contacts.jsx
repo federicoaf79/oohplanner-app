@@ -248,33 +248,45 @@ export default function Contacts() {
 
                     {/* Contacto: email + phone */}
                     <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
-                      <div className="flex flex-col gap-1">
-                        {contact.email ? (
-                          <a
-                            href={`mailto:${contact.email}`}
-                            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors"
-                          >
-                            <Mail className="h-3 w-3 shrink-0 text-slate-600" />
-                            <span className="truncate max-w-[180px]">{contact.email}</span>
-                          </a>
-                        ) : (
-                          <span className="text-xs text-slate-500">—</span>
-                        )}
-                        {contact.phone && (
-                          <a
-                            href={`tel:${contact.phone}`}
-                            className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors"
-                          >
-                            <Phone className="h-3 w-3 shrink-0 text-slate-600" />
-                            <span>{contact.phone}</span>
-                          </a>
-                        )}
-                      </div>
+                      {contact.visibility === 'owner_only' ? (
+                        <span
+                          className="text-xs text-slate-600 cursor-default"
+                          title="Datos confidenciales · abrir contacto para ver"
+                        >
+                          •••
+                        </span>
+                      ) : (
+                        <div className="flex flex-col gap-1">
+                          {contact.email ? (
+                            <a
+                              href={`mailto:${contact.email}`}
+                              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors"
+                            >
+                              <Mail className="h-3 w-3 shrink-0 text-slate-600" />
+                              <span className="truncate max-w-[180px]">{contact.email}</span>
+                            </a>
+                          ) : (
+                            <span className="text-xs text-slate-500">—</span>
+                          )}
+                          {contact.phone && (
+                            <a
+                              href={`tel:${contact.phone}`}
+                              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors"
+                            >
+                              <Phone className="h-3 w-3 shrink-0 text-slate-600" />
+                              <span>{contact.phone}</span>
+                            </a>
+                          )}
+                        </div>
+                      )}
                     </td>
 
                     {/* CUIT — hidden mobile */}
                     <td className="hidden md:table-cell px-4 py-3 font-mono text-xs text-slate-400">
-                      {contact.tax_id || <span className="font-sans text-slate-500">—</span>}
+                      {contact.visibility === 'owner_only'
+                        ? <span className="font-sans text-slate-600" title="Datos confidenciales · abrir contacto para ver">•••</span>
+                        : (contact.tax_id || <span className="font-sans text-slate-500">—</span>)
+                      }
                     </td>
 
                     {/* Acciones */}
