@@ -48,6 +48,9 @@ export default function ProposalNew() {
   const [saving, setSaving]             = useState(false)
   const [loadingEdit, setLoadingEdit]   = useState(isEditing)
   const [existingProposal, setExistingProposal] = useState(null)
+  // ID del draft auto-guardado al recibir el resultado del LLM. Se usa en handleSave
+  // para hacer UPDATE en lugar de INSERT y así no crear propuestas duplicadas.
+  const [draftProposalId, setDraftProposalId] = useState(null)
 
   // ── Load existing proposal for editing ─────────────────────
   useEffect(() => {
@@ -64,6 +67,7 @@ export default function ProposalNew() {
           return
         }
         setExistingProposal(data)
+        setDraftProposalId(data.id)  // para que el resave haga UPDATE
         const b = data.brief_data ?? {}
         setFormData({
           clientName:       data.client_name ?? '',
@@ -145,6 +149,60 @@ export default function ProposalNew() {
         throw new Error('La IA no devolvió propuestas válidas. Intentá de nuevo.')
       }
 
+      // ── AUTO-SAVE del borrador con ambas opciones embebidas ──
+      // Evita perder la propuesta si el vendedor descarga el PDF pero olvida "guardar".
+      // En modo edit NO se crea nuevo: se reusa el draftProposalId existente.
+      if (!isEditing && !draftProposalId && profile?.org_id) {
+        const autoSaveBrief = {
+          objective:        formData.objective,
+          formats:          formData.formats,
+          digitalFrequency: formData.digitalFrequency,
+          spotDurationSec:  formData.spotDurationSec ?? 10,
+          dailySpots:       formData.dailySpots ?? 540,
+          operatingHours:   formData.operatingHours ?? '07:00-02:00',
+          provinces:        formData.provinces,
+          cities:           formData.cities,
+          corridorId:       formData.corridorId,
+          corridorName:     formData.corridorName,
+          fixedBillboards:  formData.fixedBillboards,
+          budget:           formData.budget,
+          discountPct:      formData.discountPct ?? 0,
+          startDate:        formData.startDate,
+          endDate:          formData.endDate,
+          audience:         formData.audience,
+          selectedOption:   null,   // todavía no eligió A ni B
+        }
+        const locationLabel = (formData.cities ?? []).join(', ') || 'Argentina'
+        const draftTitle = `Pauta ${formData.clientName || 'sin cliente'} — ${locationLabel} [borrador]`
+
+        const { data: draft, error: draftErr } = await supabase
+          .from('proposals')
+          .insert({
+            org_id:        profile.org_id,
+            title:         draftTitle,
+            client_name:   formData.clientName,
+            client_email:  formData.clientEmail || null,
+            status:        'draft',
+            total_value:   0,  // se actualiza cuando elige una opción
+            discount_pct:  formData.discountPct ?? 0,
+            valid_until:   formData.endDate || null,
+            created_by:    profile.id,
+            brief_data:    autoSaveBrief,
+            option_a_data: data.optionA ?? null,
+            option_b_data: data.optionB ?? null,
+          })
+          .select()
+          .single()
+
+        if (draftErr) {
+          // Si falla el auto-save (ej: columnas option_*_data no existen todavía),
+          // no rompemos el flujo — solo logueamos y el usuario seguirá con el comportamiento viejo.
+          console.warn('Auto-save draft falló:', draftErr.message)
+        } else if (draft?.id) {
+          setDraftProposalId(draft.id)
+        }
+      }
+
       setResults(data)
       setStep(3)
 
@@ -197,14 +255,25 @@ export default function ProposalNew() {
     }
 
     try {
-      if (isEditing && existingProposal) {
+      // CASO 1: Estamos actualizando una propuesta existente (draft auto-guardado O edit de una
+      // propuesta ya confirmada). Siempre hacemos UPDATE + reemplazo de items.
+      if (draftProposalId) {
+        const baseProposal = existingProposal ?? { status: 'draft', client_name: null, client_email: null, total_value: null, valid_until: null }
+
         const updates = {
           title,
           client_name:  formData.clientName,
           client_email: formData.clientEmail || null,
           total_value:  totalValue,
           discount_pct: discountPct,
-          status:       needsApproval ? 'pending_approval' : (existingProposal.status === 'pending_approval' ? 'draft' : existingProposal.status),
+          // Si ya estaba aceptada u otro estado terminal, no lo tocamos.
+          // Si estaba 'pending_approval' y ya no necesita approval, vuelve a draft.
+          // Si era 'draft' (autosave), pasa a draft/pending_approval según discount.
+          status:
+            needsApproval ? 'pending_approval'
+            : baseProposal.status === 'pending_approval' ? 'draft'
+            : baseProposal.status === 'draft' ? 'draft'
+            : baseProposal.status,
           valid_until:  formData.endDate || null,
           brief_data:   briefData,
         }
@@ -212,39 +281,73 @@ export default function ProposalNew() {
         let { error: upErr } = await supabase
           .from('proposals')
           .update(updates)
-          .eq('id', existingProposal.id)
+          .eq('id', draftProposalId)
 
         if (upErr && isMissingColumnError(upErr)) {
           const { title: t, client_name, client_email, total_value, valid_until, brief_data } = updates
           const { error: upErr2 } = await supabase
             .from('proposals')
             .update({ title: t, client_name, client_email, total_value, valid_until, brief_data, status: 'draft' })
-            .eq('id', existingProposal.id)
+            .eq('id', draftProposalId)
           upErr = upErr2
         }
 
         if (upErr) throw upErr
 
-        const trackFields = {
-          client_name:  [existingProposal.client_name,               formData.clientName],
-          client_email: [existingProposal.client_email ?? '',        formData.clientEmail],
-          total_value:  [String(existingProposal.total_value ?? ''), String(totalValue)],
-          valid_until:  [existingProposal.valid_until ?? '',         formData.endDate],
-        }
-        const historyRows = Object.entries(trackFields)
-          .filter(([, [oldVal, newVal]]) => String(oldVal) !== String(newVal))
-          .map(([field, [oldVal, newVal]]) => ({
-            proposal_id:   existingProposal.id,
-            edited_by:     profile.id,
-            field_changed: field,
-            old_value:     String(oldVal ?? ''),
-            new_value:     String(newVal ?? ''),
-          }))
+        // Historial (solo si existe baseProposal con data previa, i.e. edit de algo ya guardado)
+        if (existingProposal) {
+          const trackFields = {
+            client_name:  [existingProposal.client_name,               formData.clientName],
+            client_email: [existingProposal.client_email ?? '',        formData.clientEmail],
+            total_value:  [String(existingProposal.total_value ?? ''), String(totalValue)],
+            valid_until:  [existingProposal.valid_until ?? '',         formData.endDate],
+          }
+          const historyRows = Object.entries(trackFields)
+            .filter(([, [oldVal, newVal]]) => String(oldVal) !== String(newVal))
+            .map(([field, [oldVal, newVal]]) => ({
+              proposal_id:   draftProposalId,
+              edited_by:     profile.id,
+              field_changed: field,
+              old_value:     String(oldVal ?? ''),
+              new_value:     String(newVal ?? ''),
+            }))
 
-        if (historyRows.length > 0) {
-          await supabase.from('proposal_history').insert(historyRows)
+          if (historyRows.length > 0) {
+            await supabase.from('proposal_history').insert(historyRows)
+          }
         }
 
+        // REEMPLAZAR items: borrar los existentes y recrear con la opción elegida.
+        // Esto permite que el usuario cambie de opción A → B sin crear propuesta duplicada.
+        const { error: delErr } = await supabase
+          .from('proposal_items')
+          .delete()
+          .eq('proposal_id', draftProposalId)
+        if (delErr) console.warn('proposal_items delete error:', delErr.message)
+
+        const items = (option.sites ?? [])
+          .filter(s => s.id && !s.id.startsWith('mock-'))
+          .map(s => {
+            const partial = partialSelections[s.id]
+            return {
+              proposal_id: draftProposalId,
+              site_id:     s.id,
+              org_id:      profile.org_id,
+              rate:        partial ? partial.listPrice : (s.list_price ?? null),
+              notes:       s.justification ?? null,
+              start_date:  partial ? partial.startDate : (formData.startDate || null),
+              end_date:    formData.endDate || null,
+              discount_pct: formData.discountPct ?? 0,
+            }
+          })
+
+        if (items.length > 0) {
+          const { error: itemErr } = await supabase.from('proposal_items').insert(items)
+          if (itemErr) console.warn('proposal_items insert error:', itemErr.message)
+        }
+
+      // CASO 2: Fallback — no hay draftProposalId (auto-save falló o columnas option_*_data no existen).
+      // Se crea la propuesta de cero con el flujo viejo.
       } else {
         const fullInsert = {
           org_id:       profile.org_id,
@@ -277,6 +380,9 @@ export default function ProposalNew() {
         }
 
         if (propErr) throw propErr
+
+        // Recordar el id para futuros re-saves en la misma sesión
+        if (proposal?.id) setDraftProposalId(proposal.id)
 
         const items = (option.sites ?? [])
           .filter(s => s.id && !s.id.startsWith('mock-'))
