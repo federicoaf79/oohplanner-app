@@ -151,7 +151,7 @@ export default function OnboardingTutorial() {
 
             {/* LEFT — Image */}
             <div
-              className="w-full bg-slate-950"
+              className="w-full bg-slate-950 md:self-start"
               style={{ aspectRatio: '1920/864' }}
             >
               {!imgError ? (
