@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Search, MapPin, List, LayoutGrid, ChevronDown, ChevronUp, Save, Pencil, RefreshCw, Download, Image, Sparkles, X } from 'lucide-react'
+import { Search, MapPin, List, LayoutGrid, ChevronDown, ChevronUp, Save, Pencil, RefreshCw, Download, Image, Sparkles, X, AlertCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { formatCurrency, formatDate } from '../../lib/utils'
@@ -139,6 +139,12 @@ function InventoryRow({ item, onEdit }) {
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-semibold text-white truncate">{item.name}</p>
             <span className="text-[11px] text-slate-600">{item.code}</span>
+            {item.is_complete === false && (
+              <span className="ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20">
+                <AlertCircle className="h-3 w-3" />
+                Completar datos
+              </span>
+            )}
           </div>
           <div className="mt-0.5 flex items-center gap-1 text-[11px] text-slate-500">
             <MapPin className="h-3 w-3 shrink-0" />
@@ -318,6 +324,12 @@ function InventoryCard({ item, onEdit }) {
           <div className="min-w-0">
             <p className="font-semibold text-white truncate">{item.name}</p>
             <p className="text-xs text-slate-500">{item.code}</p>
+            {item.is_complete === false && (
+              <span className="mt-1 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20">
+                <AlertCircle className="h-3 w-3" />
+                Completar datos
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             <AvailabilityBadge item={item} />
