@@ -135,7 +135,7 @@ export default function OnboardingTutorial() {
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm">
       <div className="flex min-h-full items-center justify-center p-4">
-        <div className="relative w-full max-w-5xl overflow-hidden rounded-2xl bg-surface-900 ring-1 ring-white/10 shadow-2xl">
+        <div className="relative w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-2xl bg-surface-900 ring-1 ring-white/10 shadow-2xl">
 
           {/* Close button */}
           <button
@@ -147,7 +147,7 @@ export default function OnboardingTutorial() {
           </button>
 
           {/* 2-column grid: 60% image / 40% content */}
-          <div className="grid md:grid-cols-[3fr_2fr]">
+          <div className="grid max-h-[90vh] md:grid-cols-[3fr_2fr]">
 
             {/* LEFT — Image */}
             <div
@@ -173,7 +173,7 @@ export default function OnboardingTutorial() {
             </div>
 
             {/* RIGHT — Content */}
-            <div className="flex flex-col justify-between p-6 md:p-8">
+            <div className="flex flex-col justify-between overflow-y-auto p-6 md:p-8">
 
               <div>
                 {/* Icon + step counter */}
