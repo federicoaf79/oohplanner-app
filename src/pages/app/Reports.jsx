@@ -10,6 +10,7 @@ import {
 import { supabase } from '../../lib/supabase'
 import { FORMAT_MAP } from '../../lib/constants'
 import { useAuth } from '../../context/AuthContext'
+import { calculateHistoricalCloseRate } from '../../lib/closeRate'
 import Spinner from '../../components/ui/Spinner'
 
 // ─── format helpers ──────────────────────────────────────────────────────────
@@ -278,18 +279,13 @@ export default function Reports() {
     // Propuestas activas: filtradas por período
     const activeCount = filteredProposals.filter(p => p.status === 'accepted').length
 
-    // Tasa de cierre: métrica global histórica, sin filtro de fecha
-    const { from, to } = getDateBounds(dateRange, customStart, customEnd)
-    const periodAllNonDraft = proposals.filter(p => {
-      if (p.status === 'draft') return false
-      const d = new Date(p.accepted_at ?? p.created_at)
-      if (from && d < from) return false
-      if (to   && d > to)   return false
-      return true
-    }).length
-    const closureRate = periodAllNonDraft > 0
-      ? filteredProposals.length / periodAllNonDraft * 100
-      : 0
+    // Tasa de cierre: histórica acumulada hasta el final del rango seleccionado
+    // Excluye drafts del denominador (una propuesta no enviada no es oportunidad real)
+    const { to } = getDateBounds(dateRange, customStart, customEnd)
+    const closureRateResult = calculateHistoricalCloseRate(proposals, {
+      asOfDate: to ?? new Date(),
+    })
+    const closureRate = closureRateResult?.rate ?? 0
 
     // Carteles ocupados: solapamiento real con el período, solo físicos
     const DIGITAL_FORMATS = new Set(['digital', 'urban_furniture_digital'])
@@ -317,7 +313,7 @@ export default function Reports() {
       ? occupiedSiteIds.size / physicalInventory.length * 100
       : 0
 
-    return { revenue, activeCount, closureRate, occupancyPct, physicalSiteCount: physicalInventory.length }
+    return { revenue, activeCount, closureRate, closureRateDetail: closureRateResult, occupancyPct, physicalSiteCount: physicalInventory.length }
   }, [proposals, filteredProposals, filteredItems, propItems, inventory, dateRange, customStart, customEnd])
 
   // ── trend chart (always last 6 months) ───────────────────────────────────
@@ -382,6 +378,9 @@ export default function Reports() {
     const map = {}
 
     filteredProposals.forEach(p => {
+      // Excluir drafts: no son oportunidades reales
+      if (p.status === 'draft') return
+
       const sid = p.seller_id ?? '__none__'
       if (!map[sid]) {
         const prof = profiles.find(pr => pr.id === sid)
@@ -583,8 +582,10 @@ export default function Reports() {
         <KPICard
           icon={Target}
           label="Tasa de cierre"
-          value={fmtPct(kpis.closureRate)}
-          sub="Propuestas ganadas / total histórico"
+          value={kpis.closureRateDetail != null ? fmtPct(kpis.closureRate) : '—'}
+          sub={kpis.closureRateDetail != null
+            ? `${kpis.closureRateDetail.won} / ${kpis.closureRateDetail.total} acumulado`
+            : 'Sin histórico todavía'}
           color="text-amber-400"
         />
         <KPICard
