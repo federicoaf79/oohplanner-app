@@ -553,7 +553,7 @@ function PriceBreakdown({ formData, option, onAddNextBillboard }) {
   )
 }
 
-export default function WizardStep3Results({ results, formData, onSave, saving }) {
+export default function WizardStep3Results({ results, setResults, formData, onSave, saving }) {
   const { profile, org, user } = useAuth()
   const [activeTab, setActiveTab] = useState('A')
   const [saved, setSaved] = useState(false)
@@ -678,17 +678,27 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
           const caras = Array.isArray(inv.caras) ? inv.caras : []
           photoMap[inv.id] = caras[0]?.photo_url ?? inv.photo_url ?? inv.image_url ?? null
         }
-        for (const opt of [results.optionA, results.optionB]) {
-          if (!opt?.sites) continue
-          for (const site of opt.sites) {
-            if (site.id && photoMap[site.id] && !site.photo_url) {
-              site.photo_url = photoMap[site.id]
-            }
+        // Fix: clonar en lugar de mutar, para evitar que optionA y optionB
+        // compartan referencias de sites y se pisen entre sí.
+        const enrich = (opt) => {
+          if (!opt?.sites) return opt
+          return {
+            ...opt,
+            sites: opt.sites.map(site =>
+              site.id && photoMap[site.id] && !site.photo_url
+                ? { ...site, photo_url: photoMap[site.id] }
+                : site
+            ),
           }
         }
+        setResults(prev => prev ? {
+          ...prev,
+          optionA: enrich(prev.optionA),
+          optionB: enrich(prev.optionB),
+        } : prev)
         setPhotoEnriched(prev => prev + 1)
       })
-  }, [results])
+  }, [results?.optionA?.sites?.length, results?.optionB?.sites?.length])
 
   const activeOption = activeTab === 'A' ? results?.optionA : results?.optionB
   const audienceNote = results?.audience_mode === 'geographic_only' ? results?.audience_note : null
@@ -721,15 +731,22 @@ export default function WizardStep3Results({ results, formData, onSave, saving }
     const discount = formData.discountPct ?? 0
     const newSite = { id: inv.id, name: inv.name, address: inv.address, city: inv.city, format: inv.format, latitude: inv.latitude, longitude: inv.longitude, monthly_impacts: inv.daily_traffic ? inv.daily_traffic * 30 : 0, list_price: inv.base_rate ?? 0, client_price: Math.round((inv.base_rate ?? 0) * (1 - discount / 100)), justification: 'Agregado manualmente', illuminated: inv.illuminated, audience_score: null, is_mandatory: false }
     const optKey = activeTab === 'A' ? 'optionA' : 'optionB'
-    const opt = results[optKey]
-    if (!opt) return
-    opt.sites = [...(opt.sites ?? []), newSite]
-    opt.total_client_price = (opt.total_client_price ?? 0) + newSite.client_price
-    opt.total_list_price = (opt.total_list_price ?? 0) + newSite.list_price
-    opt.budget_remaining = (opt.budget_remaining ?? 0) - newSite.client_price
-    opt.next_billboard_id = null
-    opt.next_billboard_name = null
-    opt.next_billboard_gap = 0
+    // Fix: clonar en lugar de mutar directamente results[optKey]
+    setResults(prev => {
+      if (!prev?.[optKey]) return prev
+      const currentOpt = prev[optKey]
+      const newOpt = {
+        ...currentOpt,
+        sites: [...(currentOpt.sites ?? []), newSite],
+        total_client_price: (currentOpt.total_client_price ?? 0) + newSite.client_price,
+        total_list_price: (currentOpt.total_list_price ?? 0) + newSite.list_price,
+        budget_remaining: (currentOpt.budget_remaining ?? 0) - newSite.client_price,
+        next_billboard_id: null,
+        next_billboard_name: null,
+        next_billboard_gap: 0,
+      }
+      return { ...prev, [optKey]: newOpt }
+    })
     setPhotoEnriched(prev => prev + 1)
   }
 

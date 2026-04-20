@@ -493,6 +493,7 @@ export default function ProposalNew() {
       {step === 3 && results && (
         <WizardStep3Results
           results={results}
+          setResults={setResults}
           formData={formData}
           onSave={handleSave}
           saving={saving}
