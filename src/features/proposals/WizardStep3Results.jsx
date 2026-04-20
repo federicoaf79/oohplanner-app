@@ -143,6 +143,11 @@ function BillboardCard({ site, availabilityInfo, discountPct = 0, partialSelecti
               )}
             </p>
             <FormatBadge format={site.format} />
+            {site.justification === 'Agregado manualmente' && (
+              <span className="rounded-full bg-amber-500/15 text-amber-300 ring-1 ring-amber-500/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                + Agregado
+              </span>
+            )}
             {site.audience_score != null && (
               <span className="ml-auto shrink-0 text-xs font-semibold"
                 style={{ color: site.audience_score >= 80 ? '#14b8a6' : site.audience_score >= 60 ? '#f97316' : '#ef4444' }}>
@@ -461,6 +466,12 @@ function PriceBreakdown({ formData, option, onAddNextBillboard }) {
 
   if (!listTotal) return null
 
+  // ── Detección de overrun: total cliente excede el presupuesto inicial ──
+  // (Pasa cuando el vendedor agrega carteles extra acordados con el cliente)
+  const isOverrun = budgetRaw > 0 && clientTotal > budgetRaw
+  const overrunAmount = isOverrun ? clientTotal - budgetRaw : 0
+  const addedCount = (option?.sites ?? []).filter(s => s.justification === 'Agregado manualmente').length
+
   return (
     <div className="card p-4">
       <div className="flex items-center gap-2 mb-3">
@@ -490,13 +501,26 @@ function PriceBreakdown({ formData, option, onAddNextBillboard }) {
           <span>Total cliente</span>
           <span className="text-lg">{formatCurrency(clientTotal)}</span>
         </div>
-        {remaining > 0 && (
+        {remaining > 0 && !isOverrun && (
           <div className="flex justify-between items-center text-xs text-slate-500 border-t border-surface-700/50 pt-1.5">
             <span>Presupuesto restante</span>
             <span className="text-slate-400">{formatCurrency(remaining)}</span>
           </div>
         )}
       </div>
+      {isOverrun && (
+        <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 flex items-start gap-2">
+          <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+          <p className="text-xs text-amber-300 leading-relaxed">
+            <span className="font-semibold">Inversión {formatCurrency(overrunAmount)} sobre el presupuesto inicial</span>
+            {addedCount > 0 && (
+              <>
+                {' '}— incluye {addedCount === 1 ? '1 cartel agregado posteriormente' : `${addedCount} carteles agregados posteriormente`}
+              </>
+            )}
+          </p>
+        </div>
+      )}
       {gap > 0 && nextName && (
         <div className="mt-3 rounded-lg border border-brand/20 bg-brand/5 px-3 py-2.5 space-y-2">
           <p className="text-xs text-brand">

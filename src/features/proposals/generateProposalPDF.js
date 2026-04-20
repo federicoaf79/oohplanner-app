@@ -525,6 +525,13 @@ async function renderStrategy(doc, {
           frr(doc, mX, tY - 3, 24, 5, 1, C.mandBg)
           fnt(doc, 'bold', 5); tc(doc, C.amber); doc.text('OBLIGATORIO', mX + 1, tY + 0.5)
         }
+        if (site.justification === 'Agregado manualmente') {
+          // Badge "+ AGREGADO" — diferenciado del "OBLIGATORIO" para indicar que es un cartel
+          // sumado posteriormente al brief original (típicamente fuera del presupuesto inicial)
+          const aX = 192 - 22 - (fmt ? 35 : 0) - (site.is_mandatory ? 26 : 0)
+          frr(doc, aX, tY - 3, 20, 5, 1, C.mandBg)
+          fnt(doc, 'bold', 5); tc(doc, C.amber); doc.text('+ AGREGADO', aX + 1, tY + 0.5)
+        }
         tY += 5.5
 
         fnt(doc, 'normal', 7.5); tc(doc, C.light)
@@ -601,6 +608,12 @@ async function renderStrategy(doc, {
           frr(doc, 148, y + 2, 26, 6, 1, C.mandBg)
           fnt(doc, 'bold', 6); tc(doc, C.amber); doc.text('OBLIGATORIO', 149, y + 6.5)
         }
+        if (site.justification === 'Agregado manualmente') {
+          // Posición: corrida hacia la izquierda si hay OBLIGATORIO, sino misma posición que él
+          const aXBase = site.is_mandatory ? 120 : 148
+          frr(doc, aXBase, y + 2, 26, 6, 1, C.mandBg)
+          fnt(doc, 'bold', 6); tc(doc, C.amber); doc.text('+ AGREGADO', aXBase + 1, y + 6.5)
+        }
         const fmt = FORMAT_MAP[site.format]
         if (fmt) { fnt(doc, 'normal', 7); tc(doc, C.light); doc.text(fmt.label, 192, y + 7, { align: 'right' }) }
         fnt(doc, 'normal', 7.5); tc(doc, C.light)
@@ -663,9 +676,14 @@ function renderClosing(doc, { formData, profile, org, results, activeOption, occ
   const totalClient = availSites.reduce((s, x) => s + (x.client_price ?? 0), 0)
   const budget      = Number(formData.budget ?? 0)
   const remaining   = Math.max(0, budget - totalClient)
+  // Overrun: total cliente excede presupuesto inicial (por carteles agregados manualmente acordados con el cliente)
+  const isOverrun     = budget > 0 && totalClient > budget
+  const overrunAmount = isOverrun ? totalClient - budget : 0
+  const addedCount    = availSites.filter(s => s.justification === 'Agregado manualmente').length
 
-  // Resumen financiero
-  frr(doc, 14, y, 182, 50, 2, C.surface)
+  // Resumen financiero — alto dinámico según haya overrun (necesita una línea extra de aviso)
+  const summaryHeight = isOverrun ? 60 : 50
+  frr(doc, 14, y, 182, summaryHeight, 2, C.surface)
   fnt(doc, 'bold', 10); tc(doc, C.light)
   doc.text('Resumen financiero', 18, y + 9)
 
@@ -673,15 +691,29 @@ function renderClosing(doc, { formData, profile, org, results, activeOption, occ
   fnt(doc, 'bold');         tc(doc, C.white);  doc.text(peso(budget), 192, y + 18, { align: 'right' })
 
   fnt(doc, 'normal', 8.5); tc(doc, C.light);  doc.text('Inversion en pauta:', 18, y + 27)
-  fnt(doc, 'bold');         tc(doc, C.green);  doc.text(peso(totalClient), 192, y + 27, { align: 'right' })
+  fnt(doc, 'bold');         tc(doc, isOverrun ? C.amber : C.green);  doc.text(peso(totalClient), 192, y + 27, { align: 'right' })
 
-  fnt(doc, 'normal', 8.5); tc(doc, C.light);  doc.text('Presupuesto disponible:', 18, y + 36)
-  fnt(doc, 'bold');         tc(doc, remaining > 0 ? C.amber : C.green)
-  doc.text(peso(remaining), 192, y + 36, { align: 'right' })
-
-  fnt(doc, 'normal', 7.5); tc(doc, C.light)
-  doc.text(`${availSites.length} soporte${availSites.length !== 1 ? 's' : ''} seleccionado${availSites.length !== 1 ? 's' : ''}`, 18, y + 44)
-  y += 58
+  if (isOverrun) {
+    // Mostrar el monto sobre presupuesto y la nota explicativa
+    fnt(doc, 'normal', 8.5); tc(doc, C.light);  doc.text('Sobre presupuesto:', 18, y + 36)
+    fnt(doc, 'bold');         tc(doc, C.amber);  doc.text(`+${peso(overrunAmount)}`, 192, y + 36, { align: 'right' })
+    fnt(doc, 'normal', 7.5); tc(doc, C.amber)
+    const overrunNote = addedCount > 0
+      ? (addedCount === 1
+          ? 'Incluye 1 cartel agregado posteriormente acordado con el cliente'
+          : `Incluye ${addedCount} carteles agregados posteriormente acordados con el cliente`)
+      : 'Excede el presupuesto inicial acordado con el cliente'
+    doc.text(overrunNote, 18, y + 45)
+    fnt(doc, 'normal', 7.5); tc(doc, C.light)
+    doc.text(`${availSites.length} soporte${availSites.length !== 1 ? 's' : ''} seleccionado${availSites.length !== 1 ? 's' : ''}`, 18, y + 54)
+  } else {
+    fnt(doc, 'normal', 8.5); tc(doc, C.light);  doc.text('Presupuesto disponible:', 18, y + 36)
+    fnt(doc, 'bold');         tc(doc, remaining > 0 ? C.amber : C.green)
+    doc.text(peso(remaining), 192, y + 36, { align: 'right' })
+    fnt(doc, 'normal', 7.5); tc(doc, C.light)
+    doc.text(`${availSites.length} soporte${availSites.length !== 1 ? 's' : ''} seleccionado${availSites.length !== 1 ? 's' : ''}`, 18, y + 44)
+  }
+  y += summaryHeight + 8
 
   // CTA
   frr(doc, 14, y, 182, 28, 3, C.accent)
