@@ -63,7 +63,7 @@ export default function WizardStep2Loading() {
             }`}
           >
             <div className={`h-2 w-2 rounded-full shrink-0 ${
-              i < stepIdx  ? 'bg-emerald-500' :
+              i < stepIdx  ? 'bg-teal-500' :
               i === stepIdx ? 'bg-brand animate-pulse' :
               'bg-surface-700'
             }`} />

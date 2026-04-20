@@ -16,7 +16,7 @@ function SaveRow({ loading, saved, children }) {
   return (
     <div className="flex items-center gap-3">
       <Button type="submit" loading={loading}>{children ?? 'Guardar cambios'}</Button>
-      {saved && <span className="text-sm text-emerald-400">✓ Guardado</span>}
+      {saved && <span className="text-sm text-teal-400">✓ Guardado</span>}
     </div>
   )
 }
@@ -712,7 +712,7 @@ export default function Settings() {
                     Ver tutorial nuevamente
                   </Button>
                   {tutorialReset && (
-                    <span className="text-xs text-emerald-400">✓ Se mostrará al recargar</span>
+                    <span className="text-xs text-teal-400">✓ Se mostrará al recargar</span>
                   )}
                 </div>
               </div>
@@ -1450,7 +1450,7 @@ export default function Settings() {
             <CardHeader
               title="Privacidad y seguridad"
               action={
-                <div className="flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-400">
+                <div className="flex items-center gap-1.5 rounded-full border border-teal-500/30 bg-teal-500/10 px-2.5 py-1 text-xs font-medium text-teal-400">
                   <Shield className="h-3 w-3" />
                   Protegido
                 </div>
@@ -1483,7 +1483,7 @@ function SecurityItem({ icon: Icon, color, title, children }) {
   const colors = {
     blue:   'bg-blue-500/10 text-blue-400',
     purple: 'bg-purple-500/10 text-purple-400',
-    emerald: 'bg-emerald-500/10 text-emerald-400',
+    emerald: 'bg-teal-500/10 text-teal-400',
   }
   return (
     <div className="flex gap-3">

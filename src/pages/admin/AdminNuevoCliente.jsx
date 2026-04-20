@@ -177,7 +177,7 @@ export default function AdminNuevoCliente() {
         <Card>
           <CardHeader title="¡Empresa creada exitosamente!" />
           <div className="space-y-4">
-            <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-3 text-sm text-emerald-400">
+            <div className="rounded-lg bg-teal-500/10 border border-teal-500/30 p-3 text-sm text-teal-400">
               Organización <strong>{result.orgName}</strong> creada. Plan: {result.planName} — Trial: {result.trialDays} días.
             </div>
             {emailSent && (
@@ -200,7 +200,7 @@ export default function AdminNuevoCliente() {
                   className="shrink-0 flex items-center gap-1 px-2.5 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors text-xs"
                 >
                   {copied === 'email'
-                    ? <Check className="h-3.5 w-3.5 text-emerald-400" />
+                    ? <Check className="h-3.5 w-3.5 text-teal-400" />
                     : <Copy className="h-3.5 w-3.5" />}
                 </button>
               </div>
@@ -221,7 +221,7 @@ export default function AdminNuevoCliente() {
                 className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs transition-colors"
               >
                 {copied === 'mail'
-                  ? <><Check className="h-3.5 w-3.5 text-emerald-400" /> Copiado</>
+                  ? <><Check className="h-3.5 w-3.5 text-teal-400" /> Copiado</>
                   : <><Copy className="h-3.5 w-3.5" /> Copiar template</>}
               </button>
             </div>

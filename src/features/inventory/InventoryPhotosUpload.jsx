@@ -197,9 +197,9 @@ export default function InventoryPhotosUpload({ items, orgId, onDone, onClose })
           {status === 'done' && result && (
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 text-center">
-                  <CheckCircle className="h-6 w-6 text-emerald-400 mx-auto mb-1" />
-                  <p className="text-2xl font-bold text-emerald-400">{result.assigned}</p>
+                <div className="rounded-xl border border-teal-500/20 bg-teal-500/5 p-4 text-center">
+                  <CheckCircle className="h-6 w-6 text-teal-400 mx-auto mb-1" />
+                  <p className="text-2xl font-bold text-teal-400">{result.assigned}</p>
                   <p className="text-xs text-slate-500">Fotos asignadas</p>
                 </div>
                 <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4 text-center">

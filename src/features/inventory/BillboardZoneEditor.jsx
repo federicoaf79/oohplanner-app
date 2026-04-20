@@ -484,9 +484,9 @@ export default function BillboardZoneEditor({ item, caraIndex: initialCaraIndex 
 
             {/* Success */}
             {saved && (
-              <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2">
-                <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0" />
-                <p className="text-xs text-emerald-400">Zona guardada</p>
+              <div className="flex items-center gap-2 rounded-lg border border-teal-500/30 bg-teal-500/10 px-3 py-2">
+                <CheckCircle className="h-4 w-4 text-teal-400 shrink-0" />
+                <p className="text-xs text-teal-400">Zona guardada</p>
               </div>
             )}
           </div>

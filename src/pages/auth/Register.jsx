@@ -50,8 +50,8 @@ export default function Register() {
       <div className="flex min-h-svh flex-col items-center justify-center bg-surface-900 px-4">
         <div className="w-full max-w-md text-center animate-slide-up">
           <div className="mb-4 flex justify-center">
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/20">
-              <svg className="h-8 w-8 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-teal-500/20">
+              <svg className="h-8 w-8 text-teal-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>

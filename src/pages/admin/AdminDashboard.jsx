@@ -10,7 +10,7 @@ import Spinner from '../../components/ui/Spinner'
 function MetricCard({ icon: Icon, label, value, color = 'brand' }) {
   const colors = {
     brand:  'bg-brand/10 text-brand',
-    green:  'bg-emerald-500/10 text-emerald-400',
+    green:  'bg-teal-500/10 text-teal-400',
     amber:  'bg-amber-500/10 text-amber-400',
     red:    'bg-red-500/10 text-red-400',
     slate:  'bg-slate-500/10 text-slate-400',

@@ -6,7 +6,7 @@ import {
 
 const FEATURES = [
   { icon: Megaphone, title: 'Gestión de Campañas', desc: 'Crea, monitorea y optimiza campañas OOH con visibilidad total en tiempo real.', color: 'bg-blue-500/10 text-blue-400' },
-  { icon: MapPin, title: 'Inventario Inteligente', desc: 'Administra tu cartera de espacios publicitarios con geoposicionamiento y métricas de tráfico.', color: 'bg-emerald-500/10 text-emerald-400' },
+  { icon: MapPin, title: 'Inventario Inteligente', desc: 'Administra tu cartera de espacios publicitarios con geoposicionamiento y métricas de tráfico.', color: 'bg-teal-500/10 text-teal-400' },
   { icon: FileText, title: 'Propuestas Profesionales', desc: 'Genera propuestas impactantes en minutos y envíalas directamente al cliente.', color: 'bg-purple-500/10 text-purple-400' },
   { icon: BarChart2, title: 'Reportes y Analytics', desc: 'Visualiza el desempeño de tus campañas con dashboards ejecutivos y reportes automáticos.', color: 'bg-amber-500/10 text-amber-400' },
   { icon: Users, title: 'Multi-rol y Equipos', desc: 'Colabora con tu equipo: owners, managers y vendedores con permisos diferenciados.', color: 'bg-rose-500/10 text-rose-400' },
@@ -55,20 +55,20 @@ function IllustrationDigital() {
 function IllustrationMedianera() {
   return (
     <svg viewBox="0 0 120 80" className="w-full h-20" fill="none">
-      <rect x="15" y="10" width="90" height="68" rx="2" fill="#064e3b" stroke="#10b981" strokeWidth="1"/>
+      <rect x="15" y="10" width="90" height="68" rx="2" fill="#042f2e" stroke="#14b8a6" strokeWidth="1"/>
       {[25,40,55,70,85].map((x, i) => (
         <g key={i}>
-          <rect x={x} y="15" width="10" height="8" rx="1" fill="#065f46"/>
-          <rect x={x} y="30" width="10" height="8" rx="1" fill="#065f46"/>
+          <rect x={x} y="15" width="10" height="8" rx="1" fill="#134e4a"/>
+          <rect x={x} y="30" width="10" height="8" rx="1" fill="#134e4a"/>
         </g>
       ))}
-      <rect x="18" y="42" width="84" height="30" rx="1" fill="#065f46" stroke="#34d399" strokeWidth="1"/>
+      <rect x="18" y="42" width="84" height="30" rx="1" fill="#134e4a" stroke="#2dd4bf" strokeWidth="1"/>
       <rect x="21" y="45" width="78" height="24" rx="1" fill="#022c22"/>
-      <rect x="24" y="48" width="35" height="4" rx="1" fill="#34d399"/>
-      <rect x="24" y="55" width="25" height="3" rx="1" fill="#10b981" opacity="0.6"/>
-      <rect x="62" y="47" width="34" height="18" rx="1" fill="#065f46"/>
-      <circle cx="79" cy="56" r="6" fill="#10b981" opacity="0.3"/>
-      <circle cx="79" cy="56" r="3" fill="#34d399" opacity="0.7"/>
+      <rect x="24" y="48" width="35" height="4" rx="1" fill="#2dd4bf"/>
+      <rect x="24" y="55" width="25" height="3" rx="1" fill="#14b8a6" opacity="0.6"/>
+      <rect x="62" y="47" width="34" height="18" rx="1" fill="#134e4a"/>
+      <circle cx="79" cy="56" r="6" fill="#14b8a6" opacity="0.3"/>
+      <circle cx="79" cy="56" r="3" fill="#2dd4bf" opacity="0.7"/>
     </svg>
   )
 }
@@ -137,7 +137,7 @@ function IllustrationMovil() {
 const FORMATS = [
   { name: 'Espectaculares', desc: 'Carteles de gran formato iluminados en rutas y avenidas principales. Máximo impacto visual.', color: 'from-blue-900/40 to-blue-950/20 border-blue-500/30', badge: 'bg-blue-500/20 text-blue-300', Illustration: IllustrationEspectacular },
   { name: 'Digitales LED', desc: 'Pantallas electrónicas con rotación de spots. Contenido dinámico y actualización en tiempo real.', color: 'from-purple-900/40 to-purple-950/20 border-purple-500/30', badge: 'bg-purple-500/20 text-purple-300', Illustration: IllustrationDigital },
-  { name: 'Medianeras', desc: 'Carteles pintados o impresos en paredes de edificios. Alta permanencia y visibilidad urbana.', color: 'from-emerald-900/40 to-emerald-950/20 border-emerald-500/30', badge: 'bg-emerald-500/20 text-emerald-300', Illustration: IllustrationMedianera },
+  { name: 'Medianeras', desc: 'Carteles pintados o impresos en paredes de edificios. Alta permanencia y visibilidad urbana.', color: 'from-teal-900/40 to-teal-950/20 border-teal-500/30', badge: 'bg-teal-500/20 text-teal-300', Illustration: IllustrationMedianera },
   { name: 'Afiches', desc: 'Cartelería de papel en soportes urbanos. Alta frecuencia de impacto en zonas peatonales.', color: 'from-amber-900/40 to-amber-950/20 border-amber-500/30', badge: 'bg-amber-500/20 text-amber-300', Illustration: IllustrationAfiche },
   { name: 'Mobiliario Urbano', desc: 'Paradas de colectivo, kioscos y refugios. Contacto directo con el peatón en su recorrido diario.', color: 'from-rose-900/40 to-rose-950/20 border-rose-500/30', badge: 'bg-rose-500/20 text-rose-300', Illustration: IllustrationMobiliario },
   { name: 'Pantallas Móviles', desc: 'Pantallas digitales en movimiento posicionadas en zonas de calor según la audiencia objetivo.', color: 'from-teal-900/40 to-teal-950/20 border-teal-500/30', badge: 'bg-teal-500/20 text-teal-300', Illustration: IllustrationMovil },
@@ -267,7 +267,7 @@ export default function Landing() {
       <section className="px-4 py-16 lg:px-8 bg-surface-800/20">
         <div className="mx-auto max-w-5xl">
           <div className="mb-10 text-center">
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-1.5 text-sm text-emerald-400">
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-teal-500/30 bg-teal-500/10 px-4 py-1.5 text-sm text-teal-400">
               <Shield className="h-3.5 w-3.5" />
               Seguridad y privacidad
             </div>
@@ -352,7 +352,7 @@ export default function Landing() {
                 <ul className="mb-6 space-y-3">
                   {features.map(f => (
                     <li key={f} className="flex items-center gap-2.5 text-sm text-slate-300">
-                      <CheckCircle className="h-4 w-4 shrink-0 text-emerald-400" />
+                      <CheckCircle className="h-4 w-4 shrink-0 text-teal-400" />
                       {f}
                     </li>
                   ))}

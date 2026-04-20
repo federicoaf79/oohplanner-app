@@ -127,7 +127,7 @@ function PlanCard({ plan, saving, onChange, onSave }) {
           onClick={() => onChange('is_active', !plan.is_active)}
           title={plan.is_active ? 'Activo — click para desactivar' : 'Inactivo — click para activar'}
           className={`shrink-0 mt-1 transition-colors ${
-            plan.is_active ? 'text-emerald-400 hover:text-emerald-300' : 'text-slate-600 hover:text-slate-400'
+            plan.is_active ? 'text-teal-400 hover:text-teal-300' : 'text-slate-600 hover:text-slate-400'
           }`}
         >
           {plan.is_active

@@ -71,7 +71,7 @@ export default function Team() {
                   </td>
                   <td className="px-5 py-4 hidden md:table-cell">
                     <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      m.is_active ? 'bg-emerald-500/10 text-emerald-400' : 'bg-slate-500/10 text-slate-400'
+                      m.is_active ? 'bg-teal-500/10 text-teal-400' : 'bg-slate-500/10 text-slate-400'
                     }`}>
                       {m.is_active ? 'Activo' : 'Inactivo'}
                     </span>

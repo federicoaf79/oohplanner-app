@@ -41,7 +41,7 @@ export function generateInvoiceHTML({ invoice, org }) {
   .payment-text { font-size: 13px; color: #1e40af; line-height: 1.6; }
   .footer { background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 20px 40px; text-align: center; }
   .footer-text { font-size: 12px; color: #94a3b8; line-height: 1.6; }
-  .badge { display: inline-block; background: #dcfce7; color: #16a34a; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; text-transform: uppercase; letter-spacing: .5px; }
+  .badge { display: inline-block; background: #ccfbf1; color: #0d9488; font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; text-transform: uppercase; letter-spacing: .5px; }
 </style>
 </head>
 <body>
@@ -120,7 +120,7 @@ export function invoiceStatusClass(status) {
   return {
     pending: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
     sent:    'bg-blue-500/20 text-blue-400 border-blue-500/30',
-    paid:    'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+    paid:    'bg-teal-500/20 text-teal-400 border-teal-500/30',
     overdue: 'bg-red-500/20 text-red-400 border-red-500/30',
   }[status] ?? 'bg-slate-500/20 text-slate-400 border-slate-500/30'
 }

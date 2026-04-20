@@ -47,7 +47,7 @@ function AvailabilityBadge({ item }) {
   return (
     <span className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
       item.is_available
-        ? 'bg-emerald-500/10 text-emerald-400'
+        ? 'bg-teal-500/10 text-teal-400'
         : 'bg-red-500/10 text-red-400'
     }`}>
       {item.is_available ? 'Disponible' : 'Ocupado'}
@@ -414,7 +414,7 @@ function InventoryCard({ item, onEdit }) {
             {item.base_rate && (
               <div className="flex justify-between text-xs border-t border-brand/10 pt-1.5">
                 <span className="text-slate-400 font-medium">Margen estimado</span>
-                <span className="font-bold text-emerald-400">
+                <span className="font-bold text-teal-400">
                   {formatCurrency(item.base_rate - totalCosts)}
                 </span>
               </div>

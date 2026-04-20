@@ -751,8 +751,8 @@ export default function InventoryImportExport({ items, orgName, orgId, onImporte
               {result && (
                 <div className="space-y-3">
                   <div className="grid grid-cols-3 gap-3 text-center">
-                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
-                      <p className="text-xl font-bold text-emerald-400">{result.updated}</p>
+                    <div className="rounded-xl border border-teal-500/20 bg-teal-500/5 p-3">
+                      <p className="text-xl font-bold text-teal-400">{result.updated}</p>
                       <p className="text-xs text-slate-500">Actualizados</p>
                     </div>
                     <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-3">

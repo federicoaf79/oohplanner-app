@@ -77,10 +77,10 @@ export const OOH_FORMATS = [
     label: 'Medianera',
     desc: 'Carteles pintados o impresos en paredes de edificios',
     icon: '🏢',
-    color: '#22c55e',
-    colorClass: 'text-green-400',
-    bgClass:    'bg-green-500/10',
-    borderClass: 'border-green-500/50',
+    color: '#14b8a6',
+    colorClass: 'text-teal-400',
+    bgClass:    'bg-teal-500/10',
+    borderClass: 'border-teal-500/50',
   },
   {
     id: 'poster',
@@ -127,7 +127,7 @@ export const OOH_FORMATS = [
 export const FORMAT_MAP = {
   billboard:               { label: 'Espectacular',        color: '#f97316' },
   digital:                 { label: 'Digital LED',         color: '#3b82f6' },
-  ambient:                 { label: 'Medianera',           color: '#22c55e' },
+  ambient:                 { label: 'Medianera',           color: '#14b8a6' },
   poster:                  { label: 'Afiche papel',        color: '#eab308' },
   urban_furniture:         { label: 'Mob. urbano',         color: '#8b5cf6' },
   urban_furniture_digital: { label: 'Mob. digital',        color: '#06b6d4' },
@@ -174,10 +174,10 @@ export const DIGITAL_FREQUENCIES = [
 ]
 
 export const WORKFLOW_STATUSES = [
-  { id: 'approved',     label: 'Aprobada',    color: '#22c55e' },
+  { id: 'approved',     label: 'Aprobada',    color: '#14b8a6' },
   { id: 'printing',     label: 'Impresión',   color: '#f59e0b' },
   { id: 'colocation', label: 'Colocación', color: '#3b82f6' },
-  { id: 'active',       label: 'Activa',      color: '#10b981' },
+  { id: 'active',       label: 'Activa',      color: '#14b8a6' },
   { id: 'withdraw',     label: 'Retirar',     color: '#f97316' },
   { id: 'renew',        label: 'Renovar',     color: '#a855f7' },
 ]

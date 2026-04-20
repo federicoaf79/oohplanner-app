@@ -578,7 +578,7 @@ export default function Reports() {
           label="Propuestas activas"
           value={fmtNum(kpis.activeCount)}
           sub="Aceptadas en el período"
-          color="text-emerald-400"
+          color="text-teal-400"
         />
         <KPICard
           icon={Target}
@@ -740,7 +740,7 @@ export default function Reports() {
                               <div className="flex-1 h-1.5 bg-surface-700 rounded-full overflow-hidden">
                                 <div
                                   className={`h-full rounded-full transition-all ${
-                                    targetPct >= 100 ? 'bg-emerald-500' :
+                                    targetPct >= 100 ? 'bg-teal-500' :
                                     targetPct >= 60  ? 'bg-amber-400' : 'bg-red-400'
                                   }`}
                                   style={{ width: `${targetPct}%` }}
@@ -757,7 +757,7 @@ export default function Reports() {
                         <td className="py-3 text-right text-slate-300">{fmtARS(commission)}</td>
                         <td className="py-3 text-right">
                           <span className={`font-medium ${
-                            closure >= 50 ? 'text-emerald-400' :
+                            closure >= 50 ? 'text-teal-400' :
                             closure >= 25 ? 'text-amber-400' : 'text-red-400'
                           }`}>
                             {fmtPct(closure)}
@@ -795,7 +795,7 @@ export default function Reports() {
                       <td className="py-3 text-right text-slate-300">{f.occupiedCount}</td>
                       <td className="py-3 text-right">
                         <span className={`font-medium ${
-                          f.occupancyPct >= 70 ? 'text-emerald-400' :
+                          f.occupancyPct >= 70 ? 'text-teal-400' :
                           f.occupancyPct >= 40 ? 'text-amber-400' : 'text-slate-400'
                         }`}>
                           {fmtPct(f.occupancyPct)}
@@ -868,7 +868,7 @@ export default function Reports() {
                         <td className="py-3 text-right">
                           {site.margin !== null ? (
                             <span className={`font-medium ${
-                              site.margin >= 50 ? 'text-emerald-400' :
+                              site.margin >= 50 ? 'text-teal-400' :
                               site.margin >= 20 ? 'text-amber-400' : 'text-red-400'
                             }`}>
                               {fmtPct(site.margin)}
@@ -881,7 +881,7 @@ export default function Reports() {
                           {(() => {
                             const { from, to } = getDateBounds(dateRange, customStart, customEnd)
                             if (!from || !to) {
-                              return <span className="text-xs text-emerald-400 font-medium">Disponible</span>
+                              return <span className="text-xs text-teal-400 font-medium">Disponible</span>
                             }
                             const activeCampaigns = propItems.filter(pi => {
                               if (pi.site_id !== site.id) return false
@@ -892,7 +892,7 @@ export default function Reports() {
                               return piStart <= to && piEnd >= from && pStatus === 'accepted'
                             })
                             if (activeCampaigns.length === 0) {
-                              return <span className="text-xs text-emerald-400 font-medium">Disponible</span>
+                              return <span className="text-xs text-teal-400 font-medium">Disponible</span>
                             }
                             const earliest = activeCampaigns.reduce((a, b) =>
                               new Date(a.start_date) < new Date(b.start_date) ? a : b)
@@ -1013,14 +1013,14 @@ export default function Reports() {
                                   <span className="text-slate-300">− {fmtARS(site.totalComm)}</span>
                                 </div>
                                 <div className={`flex justify-between text-sm pt-2 border-t border-surface-700 font-bold ${
-                                  site.netProfit >= 0 ? 'text-emerald-400' : 'text-red-400'
+                                  site.netProfit >= 0 ? 'text-teal-400' : 'text-red-400'
                                 }`}>
                                   <span>Utilidad neta</span>
                                   <span>{fmtARS(site.netProfit)}</span>
                                 </div>
                                 {site.roi !== null && (
                                   <div className={`flex justify-between text-sm font-medium ${
-                                    site.roi >= 0 ? 'text-emerald-400/80' : 'text-red-400/80'
+                                    site.roi >= 0 ? 'text-teal-400/80' : 'text-red-400/80'
                                   }`}>
                                     <span>ROI</span>
                                     <span>{fmtPct(site.roi)}</span>

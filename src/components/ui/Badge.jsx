@@ -9,12 +9,12 @@ const roleClass = {
 
 const statusClass = {
   draft:     'bg-slate-500/10 text-slate-400 ring-slate-500/20',
-  active:    'bg-emerald-500/10 text-emerald-400 ring-emerald-500/20',
+  active:    'bg-teal-500/10 text-teal-400 ring-teal-500/20',
   paused:    'bg-amber-500/10 text-amber-400 ring-amber-500/20',
   completed: 'bg-blue-500/10 text-blue-400 ring-blue-500/20',
   cancelled: 'bg-red-500/10 text-red-400 ring-red-500/20',
   sent:      'bg-blue-500/10 text-blue-400 ring-blue-500/20',
-  accepted:  'bg-emerald-500/10 text-emerald-400 ring-emerald-500/20',
+  accepted:  'bg-teal-500/10 text-teal-400 ring-teal-500/20',
   rejected:  'bg-red-500/10 text-red-400 ring-red-500/20',
 }
 

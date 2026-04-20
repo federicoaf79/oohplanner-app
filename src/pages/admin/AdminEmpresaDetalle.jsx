@@ -219,7 +219,7 @@ export default function AdminEmpresaDetalle() {
             <Save className="h-4 w-4 mr-1.5" />
             Guardar notas
           </Button>
-          {savedNotes && <span className="text-sm text-emerald-400">✓ Guardado</span>}
+          {savedNotes && <span className="text-sm text-teal-400">✓ Guardado</span>}
         </div>
       </Card>
     </div>
@@ -249,7 +249,7 @@ function TicketStatusBadge({ status }) {
   const colors = {
     open:        'bg-blue-500/20 text-blue-400',
     in_progress: 'bg-amber-500/20 text-amber-400',
-    resolved:    'bg-emerald-500/20 text-emerald-400',
+    resolved:    'bg-teal-500/20 text-teal-400',
     closed:      'bg-slate-500/20 text-slate-400',
   }
   const labels = { open: 'Abierto', in_progress: 'En proceso', resolved: 'Resuelto', closed: 'Cerrado' }

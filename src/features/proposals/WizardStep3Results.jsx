@@ -58,7 +58,7 @@ function FormatBadge({ format }) {
 }
 
 function ScoreBar({ score }) {
-  const color = score >= 80 ? '#22c55e' : score >= 60 ? '#f97316' : '#ef4444'
+  const color = score >= 80 ? '#14b8a6' : score >= 60 ? '#f97316' : '#ef4444'
   return (
     <div className="flex items-center gap-2">
       <div className="flex-1 h-1.5 rounded-full bg-surface-700 overflow-hidden">
@@ -145,7 +145,7 @@ function BillboardCard({ site, availabilityInfo, discountPct = 0, partialSelecti
             <FormatBadge format={site.format} />
             {site.audience_score != null && (
               <span className="ml-auto shrink-0 text-xs font-semibold"
-                style={{ color: site.audience_score >= 80 ? '#22c55e' : site.audience_score >= 60 ? '#f97316' : '#ef4444' }}>
+                style={{ color: site.audience_score >= 80 ? '#14b8a6' : site.audience_score >= 60 ? '#f97316' : '#ef4444' }}>
                 {site.audience_score}% match
               </span>
             )}

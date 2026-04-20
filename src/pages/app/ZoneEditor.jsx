@@ -157,7 +157,7 @@ export default function ZoneEditor() {
         {!loading && !error && filtered.length > 0 && (() => {
           const StatusBadge = ({ status }) => (
             <span className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
-              status === 'ready'    ? 'bg-emerald-500 text-white' :
+              status === 'ready'    ? 'bg-teal-500 text-white' :
               status === 'no_zone' ? 'bg-amber-500/20 text-amber-400' :
                                      'bg-surface-700 text-slate-500'
             }`}>

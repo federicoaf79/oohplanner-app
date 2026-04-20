@@ -27,7 +27,7 @@ export function StatusBadge({ status, trialEndsAt }) {
       label: `Trial (${daysLeft}d)`,
     },
     active: {
-      cls: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+      cls: 'bg-teal-500/20 text-teal-400 border-teal-500/30',
       label: 'Activa',
     },
     expired: {

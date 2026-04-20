@@ -41,10 +41,10 @@ const DIGITAL = new Set(['digital', 'urban_furniture_digital'])
 
 // Orden de display para el semáforo
 const WF_PILLS = [
-  { key: 'active',       label: 'Activas',        color: '#10b981' },
+  { key: 'active',       label: 'Activas',        color: '#14b8a6' },
   { key: 'colocation', label: 'En colocación', color: '#3b82f6' },
   { key: 'printing',     label: 'En impresión',   color: '#f59e0b' },
-  { key: 'approved',     label: 'Aprobadas',      color: '#22c55e' },
+  { key: 'approved',     label: 'Aprobadas',      color: '#14b8a6' },
   { key: 'renew',        label: 'Renovadas',      color: '#a855f7' },
   { key: 'withdraw',     label: 'Retiradas',      color: '#f97316' },
   { key: 'pending',      label: 'Sin activar',    color: '#64748b' },
@@ -480,7 +480,7 @@ export default function Dashboard() {
               <p className="text-xl font-bold text-white">{fmtARS(derived.revenue)}</p>
               {derived.revenue > 0 ? (
                 derived.revDelta != null ? (
-                  <div className={`flex items-center gap-1 mt-1.5 text-xs ${derived.revDelta >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  <div className={`flex items-center gap-1 mt-1.5 text-xs ${derived.revDelta >= 0 ? 'text-teal-400' : 'text-red-400'}`}>
                     {derived.revDelta >= 0
                       ? <TrendingUp className="h-3 w-3" />
                       : <TrendingDown className="h-3 w-3" />}
@@ -680,7 +680,7 @@ export default function Dashboard() {
             value={derived.myClosed}
             sub="Aceptadas este período"
             icon={CheckCircle}
-            color="text-emerald-400" bg="bg-emerald-500/10"
+            color="text-teal-400" bg="bg-teal-500/10"
           />
           <KpiCard
             label="Comisión estimada"
@@ -726,7 +726,7 @@ export default function Dashboard() {
                   {derived.opportunities.map((opp, i) => {
                     const isLast = i === derived.opportunities.length - 1
                     const badge = opp.marginPct > 60
-                      ? { label: 'Alta',    cls: 'bg-emerald-500/15 text-emerald-400' }
+                      ? { label: 'Alta',    cls: 'bg-teal-500/15 text-teal-400' }
                       : opp.marginPct >= 40
                         ? { label: 'Buena',  cls: 'bg-amber-500/15 text-amber-400' }
                         : { label: 'Normal', cls: 'bg-slate-500/15 text-slate-400' }
@@ -751,7 +751,7 @@ export default function Dashboard() {
                         <td className="px-4 py-3 text-right font-medium text-slate-200">
                           {fmtARS(opp.base_rate)}
                         </td>
-                        <td className="px-4 py-3 text-right font-semibold text-emerald-400">
+                        <td className="px-4 py-3 text-right font-semibold text-teal-400">
                           {fmtARS(opp.margin)}
                         </td>
                         <td className="px-4 py-3 text-center">
@@ -804,7 +804,7 @@ export default function Dashboard() {
                       ? 'bg-red-500/15 text-red-400'
                       : c.daysLeft <= 30
                         ? 'bg-amber-500/15 text-amber-400'
-                        : 'bg-emerald-500/15 text-emerald-400'
+                        : 'bg-teal-500/15 text-teal-400'
                     return (
                       <tr
                         key={c.id}

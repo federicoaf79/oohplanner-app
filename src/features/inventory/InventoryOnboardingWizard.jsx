@@ -1107,7 +1107,7 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
                     step === s.id
                       ? 'text-brand'
                       : savedSteps.has(s.id)
-                      ? 'text-emerald-400'
+                      ? 'text-teal-400'
                       : 'text-slate-600 hover:text-slate-400'
                   }`}
                 >
@@ -1115,7 +1115,7 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
                     step === s.id
                       ? 'border-brand bg-brand/10 text-brand'
                       : savedSteps.has(s.id)
-                      ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
+                      ? 'border-teal-500 bg-teal-500/10 text-teal-400'
                       : 'border-slate-700 text-slate-600'
                   }`}>
                     {savedSteps.has(s.id) ? '✓' : s.id}
@@ -1124,7 +1124,7 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
                 </button>
                 {i < STEPS.length - 1 && (
                   <div className={`flex-1 mx-1.5 h-px transition-colors ${
-                    savedSteps.has(s.id) ? 'bg-emerald-500/40' : 'bg-surface-700'
+                    savedSteps.has(s.id) ? 'bg-teal-500/40' : 'bg-surface-700'
                   }`} />
                 )}
               </div>
@@ -1142,8 +1142,8 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
             <>
               {/* Estado: importación exitosa */}
               {importedCount !== null && (
-                <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-10 text-center space-y-3">
-                  <CheckCircle className="mx-auto h-12 w-12 text-emerald-400" />
+                <div className="rounded-2xl border border-teal-500/30 bg-teal-500/10 p-10 text-center space-y-3">
+                  <CheckCircle className="mx-auto h-12 w-12 text-teal-400" />
                   <h3 className="text-lg font-semibold text-white">
                     ¡{importedCount} cartel{importedCount !== 1 ? 'es' : ''} importado{importedCount !== 1 ? 's' : ''}!
                   </h3>
@@ -1164,8 +1164,8 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
                       </h3>
                       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1.5">
                         {okCount > 0 && (
-                          <span className="flex items-center gap-1.5 text-xs text-emerald-400">
-                            <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-400" />
+                          <span className="flex items-center gap-1.5 text-xs text-teal-400">
+                            <span className="h-2 w-2 shrink-0 rounded-full bg-teal-400" />
                             {okCount} completo{okCount !== 1 ? 's' : ''}
                           </span>
                         )}
@@ -1225,7 +1225,7 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
                               {/* Semáforo */}
                               <td className="px-2 py-1.5 text-center">
                                 <span className={`inline-block h-2 w-2 rounded-full ${
-                                  st === 'ok'      ? 'bg-emerald-400' :
+                                  st === 'ok'      ? 'bg-teal-400' :
                                   st === 'warning' ? 'bg-amber-400'   : 'bg-red-400'
                                 }`} />
                               </td>
@@ -1414,7 +1414,7 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
                     <p className="text-xs font-medium text-slate-400">Semáforo de validación por fila</p>
                     <div className="space-y-1.5 text-xs text-slate-500">
                       <span className="flex items-center gap-2">
-                        <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-400" />
+                        <span className="h-2 w-2 shrink-0 rounded-full bg-teal-400" />
                         Verde — tiene código, nombre y dirección
                       </span>
                       <span className="flex items-center gap-2">
@@ -1470,8 +1470,8 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
 
               {/* Subida exitosa */}
               {photosUploaded && (
-                <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-10 text-center space-y-3">
-                  <CheckCircle className="mx-auto h-12 w-12 text-emerald-400" />
+                <div className="rounded-2xl border border-teal-500/30 bg-teal-500/10 p-10 text-center space-y-3">
+                  <CheckCircle className="mx-auto h-12 w-12 text-teal-400" />
                   <h3 className="text-lg font-semibold text-white">¡Fotos subidas al inventario!</h3>
                   <p className="text-sm text-slate-400">Las imágenes ya están asociadas a cada cartel.</p>
                 </div>
@@ -1584,8 +1584,8 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
               )}
 
               {costsUploaded && (
-                <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-10 text-center space-y-3">
-                  <CheckCircle className="mx-auto h-12 w-12 text-emerald-400" />
+                <div className="rounded-2xl border border-teal-500/30 bg-teal-500/10 p-10 text-center space-y-3">
+                  <CheckCircle className="mx-auto h-12 w-12 text-teal-400" />
                   <h3 className="text-lg font-semibold text-white">¡Costos actualizados!</h3>
                   <p className="text-sm text-slate-400">Las tarifas ya están guardadas en tu inventario.</p>
                 </div>
@@ -1699,8 +1699,8 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
               )}
 
               {availUploaded && (
-                <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-10 text-center space-y-3">
-                  <CheckCircle className="mx-auto h-12 w-12 text-emerald-400" />
+                <div className="rounded-2xl border border-teal-500/30 bg-teal-500/10 p-10 text-center space-y-3">
+                  <CheckCircle className="mx-auto h-12 w-12 text-teal-400" />
                   <h3 className="text-lg font-semibold text-white">¡Disponibilidad actualizada!</h3>
                   <p className="text-sm text-slate-400">El estado de ocupación ya está guardado.</p>
                 </div>
@@ -1739,7 +1739,7 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
                             <td className="px-3 py-1.5 text-center">
                               <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
                                 r.is_available
-                                  ? 'bg-emerald-500/15 text-emerald-400'
+                                  ? 'bg-teal-500/15 text-teal-400'
                                   : 'bg-red-500/15 text-red-400'
                               }`}>
                                 {r.is_available ? 'Disponible' : 'Ocupado'}
@@ -1810,8 +1810,8 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
               )}
 
               {audienceUploaded && (
-                <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-10 text-center space-y-3">
-                  <CheckCircle className="mx-auto h-12 w-12 text-emerald-400" />
+                <div className="rounded-2xl border border-teal-500/30 bg-teal-500/10 p-10 text-center space-y-3">
+                  <CheckCircle className="mx-auto h-12 w-12 text-teal-400" />
                   <h3 className="text-lg font-semibold text-white">¡Audiencias actualizadas!</h3>
                   <p className="text-sm text-slate-400">Los datos de tráfico ya están guardados en tu inventario.</p>
                 </div>
@@ -1902,8 +1902,8 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
           {/* ──── PASO 6: Resumen ──── */}
           {step === 6 && (
             <div className="space-y-4">
-              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-6 text-center space-y-2">
-                <CheckCircle className="h-10 w-10 text-emerald-400 mx-auto" />
+              <div className="rounded-xl border border-teal-500/20 bg-teal-500/5 p-6 text-center space-y-2">
+                <CheckCircle className="h-10 w-10 text-teal-400 mx-auto" />
                 <p className="text-base font-semibold text-white">¡Inventario cargado!</p>
                 <p className="text-sm text-slate-400">Tu inventario base está listo para usar el planificador.</p>
               </div>
