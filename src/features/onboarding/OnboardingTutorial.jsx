@@ -106,7 +106,6 @@ export default function OnboardingTutorial() {
   const Icon    = current.icon
   const isLast  = step === STEPS.length - 1
 
-  // Prevent background scroll while modal is open
   useEffect(() => {
     document.body.style.overflow = 'hidden'
     return () => { document.body.style.overflow = '' }
@@ -134,12 +133,9 @@ export default function OnboardingTutorial() {
   }
 
   return (
-    // Backdrop — fullscreen, never clips, scrollable if dialog exceeds viewport
     <div className="fixed inset-0 z-50 overflow-y-auto bg-black/80 backdrop-blur-sm">
-      {/* Centering wrapper */}
       <div className="flex min-h-full items-center justify-center p-4">
-        {/* Dialog — max-h + overflow-hidden so rounded corners stay intact */}
-        <div className="relative w-full max-w-4xl overflow-hidden rounded-2xl bg-surface-900 ring-1 ring-white/10 shadow-2xl">
+        <div className="relative w-full max-w-5xl overflow-hidden rounded-2xl bg-surface-900 ring-1 ring-white/10 shadow-2xl">
 
           {/* Close button */}
           <button
@@ -150,12 +146,12 @@ export default function OnboardingTutorial() {
             <X className="h-4 w-4" />
           </button>
 
-          {/* Scrollable content — scrolls inside the rounded dialog on short screens */}
-          <div className="flex max-h-[90vh] flex-col overflow-y-auto">
+          {/* 2-column grid: 60% image / 40% content */}
+          <div className="grid md:grid-cols-[3fr_2fr]">
 
-            {/* Image — aspect ratio matches 1920×864 captures exactly */}
+            {/* LEFT — Image */}
             <div
-              className="w-full shrink-0 overflow-hidden bg-slate-950 ring-1 ring-white/10"
+              className="w-full bg-slate-950"
               style={{ aspectRatio: '1920/864' }}
             >
               {!imgError ? (
@@ -176,47 +172,40 @@ export default function OnboardingTutorial() {
               )}
             </div>
 
-            {/* Text content */}
-            <div className="px-6 pb-6 pt-6 md:px-8 md:pb-8">
+            {/* RIGHT — Content */}
+            <div className="flex flex-col justify-between p-6 md:p-8">
 
-              {/* Icon + step counter */}
-              <div className="flex items-center gap-2.5">
-                <Icon className="h-5 w-5 shrink-0 text-brand" />
-                <p className="text-xs font-medium text-slate-500">
-                  Paso {step + 1} de {STEPS.length}
-                </p>
+              <div>
+                {/* Icon + step counter */}
+                <div className="flex items-center gap-2.5">
+                  <Icon className="h-5 w-5 shrink-0 text-brand" />
+                  <p className="text-xs font-medium text-slate-500">
+                    Paso {step + 1} de {STEPS.length}
+                  </p>
+                </div>
+
+                {/* Title + description */}
+                <h2 className="mt-3 text-xl font-semibold text-white">{current.title}</h2>
+                <p className="mt-2 text-sm leading-relaxed text-slate-300">{current.description}</p>
+
+                {/* Bullets */}
+                <ul className="mt-4 space-y-2">
+                  {current.bullets.map((b, i) => (
+                    <li key={i} className="flex items-start gap-2 text-sm text-slate-400">
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
+                      {b}
+                    </li>
+                  ))}
+                </ul>
+
+                {current.footer && (
+                  <p className="mt-3 text-xs italic text-slate-500">{current.footer}</p>
+                )}
               </div>
 
-              {/* Title + description */}
-              <h2 className="mt-3 text-2xl font-semibold text-white">{current.title}</h2>
-              <p className="mt-3 text-base leading-relaxed text-slate-300">{current.description}</p>
-
-              {/* Bullets */}
-              <ul className="mt-4 space-y-2">
-                {current.bullets.map((b, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm text-slate-400">
-                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
-                    {b}
-                  </li>
-                ))}
-              </ul>
-
-              {current.footer && (
-                <p className="mt-3 text-xs italic text-slate-500">{current.footer}</p>
-              )}
-
-              {/* Progress dots + navigation */}
-              <div className="mt-8 flex items-center justify-between gap-4">
-
-                {step > 0 ? (
-                  <Button variant="ghost" onClick={handleBack} size="sm">
-                    ← Atrás
-                  </Button>
-                ) : (
-                  <div />
-                )}
-
-                <div className="flex flex-1 gap-1.5">
+              {/* Footer: progress dots + navigation */}
+              <div className="mt-6">
+                <div className="flex gap-1.5">
                   {STEPS.map((_, i) => (
                     <div
                       key={i}
@@ -227,21 +216,31 @@ export default function OnboardingTutorial() {
                   ))}
                 </div>
 
-                <div className="flex gap-2">
-                  {!isLast && (
-                    <Button variant="ghost" onClick={dismiss} size="sm">
-                      Saltar
+                <div className="mt-4 flex items-center justify-between gap-3">
+                  {step > 0 ? (
+                    <Button variant="ghost" onClick={handleBack} size="sm">
+                      ← Atrás
                     </Button>
+                  ) : (
+                    <div />
                   )}
-                  <Button onClick={handleNext} disabled={closing} size="sm">
-                    {isLast ? 'Empezar a usar OOH Planner' : 'Siguiente →'}
-                  </Button>
+
+                  <div className="flex gap-2">
+                    {!isLast && (
+                      <Button variant="ghost" onClick={dismiss} size="sm">
+                        Saltar
+                      </Button>
+                    )}
+                    <Button onClick={handleNext} disabled={closing} size="sm">
+                      {isLast ? 'Empezar' : 'Siguiente →'}
+                    </Button>
+                  </div>
                 </div>
-
               </div>
-            </div>
 
+            </div>
           </div>
+
         </div>
       </div>
     </div>
