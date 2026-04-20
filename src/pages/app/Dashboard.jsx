@@ -10,6 +10,7 @@ import {
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { FORMAT_MAP } from '../../lib/constants'
+import { calculateMonthCloseRate, calculateHistoricalCloseRate } from '../../lib/closeRate'
 import Spinner from '../../components/ui/Spinner'
 import ProposalMap from '../../features/proposals/ProposalMap'
 
@@ -155,47 +156,26 @@ function computeDerived(
   }
   const currItems = overlap(pS, pE)
 
-  // ── Tasa de cierre = conversión del pipeline del mes ──
-  // Numerador: propuestas aceptadas en el período (por accepted_at)
-  // Denominador: universo único de propuestas con actividad en el período
-  const pipelineIds = new Set()
-  proposals.forEach(p => {
-    if (p.status === 'draft') return
-
-    const created  = new Date(p.created_at)
-    const accepted = p.accepted_at ? new Date(p.accepted_at) : null
-    const updated  = p.updated_at  ? new Date(p.updated_at)  : null
-
-    // 1. Creada en el período
-    if (created >= pS && created <= pE) {
-      pipelineIds.add(p.id)
-      return
-    }
-
-    // 2. Aceptada en el período (aunque creada antes)
-    if (p.status === 'accepted' && accepted && accepted >= pS && accepted <= pE) {
-      pipelineIds.add(p.id)
-      return
-    }
-
-    // 3. Rechazada/descartada en el período — sin valores de lost en este sistema
-    const lostStatuses = ['rejected']
-    if (lostStatuses.includes(p.status) && updated && updated >= pS && updated <= pE) {
-      pipelineIds.add(p.id)
-      return
-    }
-
-    // 4. Todavía abierta al final del período y creada antes/durante
-    const openStatuses = ['sent', 'pending_approval']
-    if (openStatuses.includes(p.status) && created <= pE) {
-      pipelineIds.add(p.id)
-      return
-    }
+  // ── Tasa de cierre del MES: propuestas cerradas en el período / creadas en el período ──
+  // Usa allProposals para contemplar todas (KPI empresa ve todo, salesperson ve solo las suyas)
+  const scopeProposals = isCompany ? allProposals : proposals
+  const monthRateResult = calculateMonthCloseRate(scopeProposals, {
+    monthStart: pS,
+    monthEnd:   pE,
   })
-  const pipelineCount = pipelineIds.size
-  const closeRate = pipelineCount > 0
-    ? periodProps.length / pipelineCount * 100
-    : null
+
+  // ── Tasa HISTÓRICA: acumulada hasta el último día del mes ANTERIOR al período seleccionado ──
+  // (Nunca incluye el mes en curso/parcial — solo meses cerrados)
+  const historicalCutoff = new Date(Date.UTC(
+    pS.getUTCFullYear(),
+    pS.getUTCMonth(),    // mes del período seleccionado
+    0,                   // día 0 = último día del mes anterior
+    23, 59, 59, 999,
+  ))
+  const historicalRateResult = calculateHistoricalCloseRate(scopeProposals, {
+    asOfDate: historicalCutoff,
+  })
+
 
   // ── Semáforo de campañas por workflow_status (propuestas aceptadas en el período) ──
   const workflowCounts = {}
@@ -326,7 +306,8 @@ function computeDerived(
   return {
     revenue, prevRevenue, revDelta,
     totalProposals: periodCreated.length,
-    closeRate,
+    monthRate:      monthRateResult,
+    historicalRate: historicalRateResult,
     workflowCounts,
     formatMix,
     physTotal, physOccupied, physPct, occByFormat, doohActivity,
@@ -471,8 +452,8 @@ export default function Dashboard() {
         <div className="rounded-2xl border border-slate-700/50 bg-surface-800/60 p-5 space-y-5">
           <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">Empresa</p>
 
-          {/* Métricas empresa — 3 números pequeños */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {/* Métricas empresa — 4 KPIs */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
 
             {/* Revenue */}
             <div className="card p-4">
@@ -505,13 +486,30 @@ export default function Dashboard() {
               <p className="mt-1.5 text-xs text-slate-600">Creadas en el mes</p>
             </div>
 
-            {/* Tasa de cierre global */}
+            {/* Tasa de cierre DEL MES */}
             <div className="card p-4">
-              <p className="text-xs text-slate-500 mb-1">Tasa de cierre</p>
+              <p className="text-xs text-slate-500 mb-1">Tasa del mes</p>
               <p className="text-xl font-bold text-white">
-                {derived.closeRate != null ? fmtPct(derived.closeRate) : '—'}
+                {derived.monthRate != null ? fmtPct(derived.monthRate.rate) : '—'}
               </p>
-              <p className="mt-1.5 text-xs text-slate-600">Aprobadas / total del período</p>
+              <p className="mt-1.5 text-xs text-slate-600">
+                {derived.monthRate != null
+                  ? `${derived.monthRate.won} / ${derived.monthRate.total} en el mes`
+                  : 'Sin oportunidades en el mes'}
+              </p>
+            </div>
+
+            {/* Tasa de cierre HISTÓRICA (meses cerrados) */}
+            <div className="card p-4">
+              <p className="text-xs text-slate-500 mb-1">Tasa histórica</p>
+              <p className="text-xl font-bold text-white">
+                {derived.historicalRate != null ? fmtPct(derived.historicalRate.rate) : '—'}
+              </p>
+              <p className="mt-1.5 text-xs text-slate-600">
+                {derived.historicalRate != null
+                  ? `${derived.historicalRate.won} / ${derived.historicalRate.total} acumulado`
+                  : 'Sin histórico todavía'}
+              </p>
             </div>
 
           </div>
