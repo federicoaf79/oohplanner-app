@@ -483,6 +483,18 @@ export default function Inventory() {
 
       clearTimeout(timer)
 
+      console.log('📦 Inventory data loaded:', data?.length, 'items')
+      if (data?.[0]) {
+        console.log('First item sample:', {
+          name: data[0].name,
+          has_photo_url: !!data[0].photo_url,
+          has_image_url: !!data[0].image_url,
+          has_caras: !!data[0].caras,
+          caras_type: typeof data[0].caras,
+          caras_value: data[0].caras,
+        })
+      }
+
       if (error) throw error
       setItems(data ?? [])
     } catch (err) {
