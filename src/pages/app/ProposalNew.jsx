@@ -4,6 +4,7 @@ import { ArrowLeft, AlertTriangle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import WizardStep1Form    from '../../features/proposals/WizardStep1Form'
+import WizardStep2Strategy from '../../features/proposals/WizardStep2Strategy'
 import WizardStep2Loading from '../../features/proposals/WizardStep2Loading'
 import WizardStep3Results from '../../features/proposals/WizardStep3Results'
 import { MOCK_RESPONSE, mockDelay } from '../../lib/mockPlanData'
@@ -48,8 +49,9 @@ export default function ProposalNew() {
   const [saving, setSaving]             = useState(false)
   const [loadingEdit, setLoadingEdit]   = useState(isEditing)
   const [existingProposal, setExistingProposal] = useState(null)
-  // ID del draft auto-guardado al recibir el resultado del LLM. Se usa en handleSave
-  // para hacer UPDATE en lugar de INSERT y así no crear propuestas duplicadas.
+  // Estrategia elegida en paso 2 antes de generar: 'A' = Máximo Alcance, 'B' = Máximo Impacto
+  const [selectedStrategy, setSelectedStrategy] = useState('A')
+  // ID del draft auto-guardado al recibir el resultado del LLM.
   const [draftProposalId, setDraftProposalId] = useState(null)
 
   // ── Load existing proposal for editing ─────────────────────
@@ -94,10 +96,12 @@ export default function ProposalNew() {
       })
   }, [editId, isEditing])
 
-  // ── Step 1 → 2 → 3 ─────────────────────────────────────────
-  async function handleFormSubmit() {
+  // ── Step 1 → 2 (strategy) → 3 (loading) → 4 (results) ────────────────────
+  async function handleFormSubmit(strategy) {
+    const chosenStrategy = strategy ?? selectedStrategy ?? 'A'
+    setSelectedStrategy(chosenStrategy)
     setError('')
-    setStep(2)
+    setStep(3)  // Loading
 
     try {
       let data
@@ -106,7 +110,6 @@ export default function ProposalNew() {
         await mockDelay()
         data = MOCK_RESPONSE
       } else {
-        // Obtener token de sesión actual
         const { data: { session } } = await supabase.auth.getSession()
         if (!session?.access_token) throw new Error('No hay sesión activa. Volvé a iniciar sesión.')
 
@@ -134,13 +137,10 @@ export default function ProposalNew() {
             },
             orgId: profile.org_id,
           },
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-          },
+          headers: { Authorization: `Bearer ${session.access_token}` },
         })
 
-        if (fnError) throw new Error(fnError.message || 'Error al llamar a la Edge Function. ¿Está desplegada?')
-
+        if (fnError) throw new Error(fnError.message || 'Error al llamar a la Edge Function.')
         if (fnData?.error) throw new Error(fnData.error)
         data = fnData
       }
@@ -149,66 +149,50 @@ export default function ProposalNew() {
         throw new Error('La IA no devolvió propuestas válidas. Intentá de nuevo.')
       }
 
-      // ── AUTO-SAVE del borrador con ambas opciones embebidas ──
-      // Evita perder la propuesta si el vendedor descarga el PDF pero olvida "guardar".
-      // En modo edit NO se crea nuevo: se reusa el draftProposalId existente.
-      if (!isEditing && !draftProposalId && profile?.org_id) {
-        const autoSaveBrief = {
-          objective:        formData.objective,
-          formats:          formData.formats,
-          digitalFrequency: formData.digitalFrequency,
-          spotDurationSec:  formData.spotDurationSec ?? 10,
-          dailySpots:       formData.dailySpots ?? 540,
-          operatingHours:   formData.operatingHours ?? '07:00-02:00',
-          provinces:        formData.provinces,
-          cities:           formData.cities,
-          corridorId:       formData.corridorId,
-          corridorName:     formData.corridorName,
-          fixedBillboards:  formData.fixedBillboards,
-          budget:           formData.budget,
-          discountPct:      formData.discountPct ?? 0,
-          startDate:        formData.startDate,
-          endDate:          formData.endDate,
-          audience:         formData.audience,
-          selectedOption:   null,   // todavía no eligió A ni B
-        }
-        const locationLabel = (formData.cities ?? []).join(', ') || 'Argentina'
-        const draftTitle = `Pauta ${formData.clientName || 'sin cliente'} — ${locationLabel} [borrador]`
+      // Elegir la opción según la estrategia seleccionada en paso 2
+      const chosenOption = chosenStrategy === 'B' ? (data.optionB ?? data.optionA) : (data.optionA ?? data.optionB)
 
+      // ── AUTO-SAVE del borrador ─────────────────────────────────────────────
+      if (!isEditing && !draftProposalId && profile?.org_id) {
+        const locationLabel = (formData.cities ?? []).join(', ') || 'Argentina'
+        const strategyLabel = chosenStrategy === 'B' ? 'Máximo Impacto' : 'Máximo Alcance'
+        const draftTitle = `Pauta ${formData.clientName || 'sin cliente'} — ${locationLabel} [borrador]`
+        const autoSaveBrief = {
+          objective: formData.objective, formats: formData.formats,
+          digitalFrequency: formData.digitalFrequency, spotDurationSec: formData.spotDurationSec ?? 10,
+          dailySpots: formData.dailySpots ?? 540, operatingHours: formData.operatingHours ?? '07:00-02:00',
+          provinces: formData.provinces, cities: formData.cities,
+          corridorId: formData.corridorId, corridorName: formData.corridorName,
+          fixedBillboards: formData.fixedBillboards, budget: formData.budget,
+          discountPct: formData.discountPct ?? 0, startDate: formData.startDate,
+          endDate: formData.endDate, audience: formData.audience,
+          selectedOption: strategyLabel, strategy: chosenStrategy,
+        }
         const { data: draft, error: draftErr } = await supabase
           .from('proposals')
           .insert({
-            org_id:        profile.org_id,
-            title:         draftTitle,
-            client_name:   formData.clientName,
-            client_email:  formData.clientEmail || null,
-            status:        'draft',
-            total_value:   0,  // se actualiza cuando elige una opción
-            discount_pct:  formData.discountPct ?? 0,
-            valid_until:   formData.endDate || null,
-            created_by:    profile.id,
-            brief_data:    autoSaveBrief,
-            option_a_data: data.optionA ?? null,
-            option_b_data: data.optionB ?? null,
+            org_id: profile.org_id, title: draftTitle,
+            client_name: formData.clientName, client_email: formData.clientEmail || null,
+            status: 'draft', total_value: 0,
+            discount_pct: formData.discountPct ?? 0,
+            valid_until: formData.endDate || null,
+            created_by: profile.id, brief_data: autoSaveBrief,
           })
-          .select()
-          .single()
+          .select().single()
 
         if (draftErr) {
-          // Si falla el auto-save (ej: columnas option_*_data no existen todavía),
-          // no rompemos el flujo — solo logueamos y el usuario seguirá con el comportamiento viejo.
           console.warn('Auto-save draft falló:', draftErr.message)
         } else if (draft?.id) {
           setDraftProposalId(draft.id)
         }
       }
 
-      setResults(data)
-      setStep(3)
+      setResults(chosenOption)
+      setStep(4)
 
     } catch (err) {
       setError(err.message ?? 'Error desconocido')
-      setStep(1)
+      setStep(2)  // Volver a estrategia para reintentar
     }
   }
 
@@ -417,9 +401,12 @@ export default function ProposalNew() {
 
   const steps = [
     { n: 1, label: 'Brief' },
-    { n: 2, label: 'Procesando' },
+    { n: 2, label: 'Estrategia' },
     { n: 3, label: 'Resultado' },
   ]
+
+  // Mapeo: paso interno → paso visual para el indicador
+  const visualStep = step === 1 ? 1 : step === 2 ? 2 : step === 3 ? 2 : 3
 
   if (loadingEdit) {
     return (
@@ -436,24 +423,24 @@ export default function ProposalNew() {
         <button onClick={() => step === 3 ? setStep(1) : navigate('/app/proposals')}
           className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-200 transition-colors">
           <ArrowLeft className="h-4 w-4" />
-          {step === 3 ? 'Editar brief' : 'Propuestas'}
+          {step === 4 ? 'Editar brief' : 'Propuestas'}
         </button>
 
         <div className="flex items-center gap-2 ml-auto">
           {steps.map((s, i) => (
             <div key={s.n} className="flex items-center gap-2">
               {i > 0 && (
-                <div className={`h-px w-8 transition-colors ${step > i ? 'bg-brand' : 'bg-surface-700'}`} />
+                <div className={`h-px w-8 transition-colors ${visualStep > i ? 'bg-brand' : 'bg-surface-700'}`} />
               )}
               <div className="flex items-center gap-1.5">
                 <div className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold transition-all ${
-                  step === s.n ? 'bg-brand text-white' :
-                  step > s.n  ? 'bg-brand/30 text-brand' :
+                  visualStep === s.n ? 'bg-brand text-white' :
+                  visualStep > s.n  ? 'bg-brand/30 text-brand' :
                   'bg-surface-700 text-slate-500'
                 }`}>
-                  {step > s.n ? '✓' : s.n}
+                  {visualStep > s.n ? '✓' : s.n}
                 </div>
-                <span className={`hidden sm:block text-xs ${step === s.n ? 'text-white font-medium' : 'text-slate-500'}`}>
+                <span className={`hidden sm:block text-xs ${visualStep === s.n ? 'text-white font-medium' : 'text-slate-500'}`}>
                   {s.label}
                 </span>
               </div>
@@ -484,13 +471,20 @@ export default function ProposalNew() {
         <WizardStep1Form
           formData={formData}
           setFormData={setFormData}
-          onSubmit={handleFormSubmit}
+          onSubmit={() => setStep(2)}
         />
       )}
 
-      {step === 2 && <WizardStep2Loading />}
+      {step === 2 && (
+        <WizardStep2Strategy
+          onSelect={(strategy) => handleFormSubmit(strategy)}
+          onBack={() => setStep(1)}
+        />
+      )}
 
-      {step === 3 && results && (
+      {step === 3 && <WizardStep2Loading />}
+
+      {step === 4 && results && (
         <WizardStep3Results
           results={results}
           setResults={setResults}

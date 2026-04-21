@@ -555,12 +555,10 @@ function PriceBreakdown({ formData, option, onAddNextBillboard }) {
 
 export default function WizardStep3Results({ results, setResults, formData, onSave, saving }) {
   const { profile, org, user } = useAuth()
-  const [activeTab, setActiveTab] = useState('A')
   const [saved, setSaved] = useState(false)
   const [generatingPDF, setGeneratingPDF] = useState(false)
-  const [showRationale, setShowRationale] = useState(null) // 'A' | 'B' | null
-  const mapARef = useRef(null)
-  const mapBRef = useRef(null)
+  const [showRationale, setShowRationale] = useState(false)
+  const mapRef = useRef(null)
 
   const [availability, setAvailability] = useState({})
   const [checkingAvailability, setCheckingAvailability] = useState(false)
@@ -618,11 +616,7 @@ export default function WizardStep3Results({ results, setResults, formData, onSa
   const hasAnyOrgArt = !!(org?.artwork_h_url || org?.artwork_v_url || org?.artwork_sq_url)
 
   useEffect(() => {
-    const allSites = [
-      ...(results?.optionA?.sites ?? []),
-      ...(results?.optionB?.sites ?? []),
-    ]
-    const physicalSites = allSites.filter(s => !DIGITAL_FORMATS.has(s.format))
+    const physicalSites = (results?.sites ?? []).filter(s => !DIGITAL_FORMATS.has(s.format))
     const uniqueIds = [...new Set(physicalSites.map(s => s.id).filter(Boolean))]
     if (!uniqueIds.length || !formData.startDate || !formData.endDate) return
 
@@ -659,12 +653,8 @@ export default function WizardStep3Results({ results, setResults, formData, onSa
 
   // Enriquecer sites con fotos del inventario para la vista previa
   useEffect(() => {
-    if (!results) return
-    const allSites = [
-      ...(results.optionA?.sites ?? []),
-      ...(results.optionB?.sites ?? []),
-    ]
-    const siteIds = [...new Set(allSites.map(s => s.id).filter(Boolean))]
+    if (!results?.sites?.length) return
+    const siteIds = [...new Set(results.sites.map(s => s.id).filter(Boolean))]
     if (!siteIds.length) return
 
     supabase
@@ -678,29 +668,22 @@ export default function WizardStep3Results({ results, setResults, formData, onSa
           const caras = Array.isArray(inv.caras) ? inv.caras : []
           photoMap[inv.id] = caras[0]?.photo_url ?? inv.photo_url ?? inv.image_url ?? null
         }
-        // Fix: clonar en lugar de mutar, para evitar que optionA y optionB
-        // compartan referencias de sites y se pisen entre sí.
-        const enrich = (opt) => {
-          if (!opt?.sites) return opt
+        setResults(prev => {
+          if (!prev?.sites) return prev
           return {
-            ...opt,
-            sites: opt.sites.map(site =>
+            ...prev,
+            sites: prev.sites.map(site =>
               site.id && photoMap[site.id] && !site.photo_url
                 ? { ...site, photo_url: photoMap[site.id] }
                 : site
             ),
           }
-        }
-        setResults(prev => prev ? {
-          ...prev,
-          optionA: enrich(prev.optionA),
-          optionB: enrich(prev.optionB),
-        } : prev)
+        })
         setPhotoEnriched(prev => prev + 1)
       })
-  }, [results?.optionA?.sites?.length, results?.optionB?.sites?.length])
+  }, [results?.sites?.length])
 
-  const activeOption = activeTab === 'A' ? results?.optionA : results?.optionB
+  const activeOption = results
   const audienceNote = results?.audience_mode === 'geographic_only' ? results?.audience_note : null
 
   const locationLabel = (formData.cities ?? []).join(', ') || formData.city || '—'
@@ -713,7 +696,7 @@ export default function WizardStep3Results({ results, setResults, formData, onSa
       `Objetivo: ${formData.objective}`,
       `Zona: ${locationLabel}`,
       ``,
-      `*${activeOption.title ?? activeTab}*`,
+      `*${activeOption.title ?? 'Propuesta'}*`,
       `• ${sites.length} carteles seleccionados`,
       `• Impactos/mes: ~${((activeOption.total_impacts ?? 0) / 1000).toFixed(0)}k`,
       `• CPM estimado: $${activeOption.cpm ?? '—'}`,
@@ -730,11 +713,10 @@ export default function WizardStep3Results({ results, setResults, formData, onSa
     if (!inv) return
     const discount = formData.discountPct ?? 0
     const newSite = { id: inv.id, name: inv.name, address: inv.address, city: inv.city, format: inv.format, latitude: inv.latitude, longitude: inv.longitude, monthly_impacts: inv.daily_traffic ? inv.daily_traffic * 30 : 0, list_price: inv.base_rate ?? 0, client_price: Math.round((inv.base_rate ?? 0) * (1 - discount / 100)), justification: 'Agregado manualmente', illuminated: inv.illuminated, audience_score: null, is_mandatory: false }
-    const optKey = activeTab === 'A' ? 'optionA' : 'optionB'
-    // Fix: clonar en lugar de mutar directamente results[optKey]
+    // Clonar inmutablemente para evitar mutaciones directas
     setResults(prev => {
-      if (!prev?.[optKey]) return prev
-      const currentOpt = prev[optKey]
+      if (!prev) return prev
+      const currentOpt = prev
       const newOpt = {
         ...currentOpt,
         sites: [...(currentOpt.sites ?? []), newSite],
@@ -745,13 +727,13 @@ export default function WizardStep3Results({ results, setResults, formData, onSa
         next_billboard_name: null,
         next_billboard_gap: 0,
       }
-      return { ...prev, [optKey]: newOpt }
+      return newOpt
     })
     setPhotoEnriched(prev => prev + 1)
   }
 
   async function handleSave() {
-    await onSave(activeOption, activeTab, partialSelections)
+    await onSave(activeOption, activeOption?.title ?? 'Propuesta', partialSelections)
     setSaved(true)
   }
 
@@ -807,7 +789,7 @@ export default function WizardStep3Results({ results, setResults, formData, onSa
 
       // Capturar mapa Leaflet con html2canvas
       let mapBase64 = null
-      const activeMapRef = activeTab === 'A' ? mapARef : mapBRef
+      const activeMapRef = mapRef
       if (activeMapRef?.current) {
         try {
           const html2canvas = (await import('html2canvas')).default
@@ -865,7 +847,7 @@ export default function WizardStep3Results({ results, setResults, formData, onSa
         profile: { ...profile, email: user?.email },
         org,
         mapImage: mapBase64,
-        activeOption: activeTab,
+        activeOption: 'A',
         occupiedSiteIds,
         artworkMap,
         formatToArt: FORMAT_TO_ART,
@@ -1058,45 +1040,27 @@ export default function WizardStep3Results({ results, setResults, formData, onSa
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 rounded-xl border border-surface-700 bg-surface-800 p-1">
-        {[
-          { key: 'A', label: results?.optionA?.title ?? 'Máximo Alcance', rationale: results?.optionA?.rationale },
-          { key: 'B', label: results?.optionB?.title ?? 'Máximo Impacto', rationale: results?.optionB?.rationale },
-        ].map(tab => (
-          <div key={tab.key} className="flex-1 relative">
-            <div className={`flex items-center rounded-lg transition-all ${
-              activeTab === tab.key ? 'bg-brand shadow-sm' : ''
-            }`}>
-              <button
-                onClick={() => { setActiveTab(tab.key); setSaved(false) }}
-                className={`flex-1 px-4 py-2.5 text-sm font-semibold text-left transition-colors ${
-                  activeTab === tab.key ? 'text-white' : 'text-slate-400 hover:text-slate-200'
-                }`}>
-                <span className="font-bold mr-1.5">{tab.key === 'A' ? '⚡' : '🎯'}</span>
-                {tab.label}
-              </button>
-              {tab.rationale && (
-                <button
-                  onClick={e => { e.stopPropagation(); setShowRationale(showRationale === tab.key ? null : tab.key) }}
-                  className={`pr-3 pl-1 py-2.5 transition-colors ${
-                    activeTab === tab.key ? 'text-white/60 hover:text-white' : 'text-slate-600 hover:text-slate-400'
-                  }`}
-                  title="Ver estrategia"
-                >
-                  <Info className="h-3.5 w-3.5" />
-                </button>
-              )}
-            </div>
-            {showRationale === tab.key && tab.rationale && (
-              <div className="absolute top-full left-0 right-0 z-20 mt-1 rounded-xl border border-brand/20 bg-surface-800 shadow-xl p-3">
-                <p className="text-xs text-slate-300 leading-relaxed">{tab.rationale}</p>
-                <button onClick={() => setShowRationale(null)} className="mt-2 text-[10px] text-slate-500 hover:text-slate-300">Cerrar</button>
-              </div>
+      {/* Estrategia seleccionada */}
+      {results?.title && (
+        <div className="flex items-center gap-3 rounded-xl border border-surface-700 bg-surface-800/50 px-4 py-3">
+          <span className="text-lg">{results.title === 'Máximo Impacto' ? '🎯' : '⚡'}</span>
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-white">{results.title}</p>
+            {results.rationale && showRationale && (
+              <p className="text-xs text-slate-400 mt-1 leading-relaxed">{results.rationale}</p>
             )}
           </div>
-        ))}
-      </div>
+          {results.rationale && (
+            <button
+              onClick={() => setShowRationale(v => !v)}
+              className="text-slate-500 hover:text-slate-300 transition-colors"
+              title="Ver estrategia"
+            >
+              <Info className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Verificando disponibilidad */}
       {checkingAvailability && (
@@ -1110,15 +1074,7 @@ export default function WizardStep3Results({ results, setResults, formData, onSa
       <PriceBreakdown formData={formData} option={activeOption} onAddNextBillboard={handleAddNextBillboard} />
 
       {/* Active option content */}
-      <OptionPanel option={activeOption} formData={formData} audienceNote={audienceNote} mapRef={activeTab === 'A' ? mapARef : mapBRef} availability={availability} partialSelections={partialSelections} onSelectPartial={handleSelectPartial} />
-
-      {/* Hidden panels para captura de ambos mapas */}
-      <div style={{ position: 'absolute', left: '-9999px', top: 0, width: '600px', height: '300px', pointerEvents: 'none' }}>
-        <OptionPanel option={results?.optionA} formData={formData} audienceNote={null} mapRef={mapARef} />
-      </div>
-      <div style={{ position: 'absolute', left: '-9999px', top: 0, width: '600px', height: '300px', pointerEvents: 'none' }}>
-        <OptionPanel option={results?.optionB} formData={formData} audienceNote={null} mapRef={mapBRef} />
-      </div>
+      <OptionPanel option={activeOption} formData={formData} audienceNote={audienceNote} mapRef={mapRef} availability={availability} partialSelections={partialSelections} onSelectPartial={handleSelectPartial} />
     </div>
   )
 }

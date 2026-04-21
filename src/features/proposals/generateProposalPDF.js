@@ -670,7 +670,7 @@ function renderClosing(doc, { formData, profile, org, results, activeOption, occ
   doc.text('Proximos pasos', 18, y + 10)
   y += 22
 
-  const selectedOpt = activeOption === 'B' ? results?.optionB : results?.optionA
+  const selectedOpt = results
   const DIGITAL_FMT = new Set(['digital', 'urban_furniture_digital'])
   const availSites  = (selectedOpt?.sites ?? []).filter(s => !occupiedSiteIds.has(s.id))
   const totalClient = availSites.reduce((s, x) => s + (x.client_price ?? 0), 0)
@@ -790,7 +790,7 @@ export async function generateProposalPDF({
   const logoB64 = await toB64(org?.logo_url)
 
   // Calcular summaryData para KPIs en portada
-  const selectedOpt  = activeOption === 'B' ? results?.optionB : results?.optionA
+  const selectedOpt  = results
   const DIGITAL_SET  = new Set(['digital', 'urban_furniture_digital'])
   const coverSites   = (selectedOpt?.sites ?? []).filter(s => !occupiedSiteIds.has(s.id))
   const coverDigital  = coverSites.filter(s =>  DIGITAL_SET.has(s.format))
