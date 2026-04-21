@@ -145,12 +145,12 @@ const FORMATS = [
 
 const PLANS = [
   {
-    name: 'Starter', price: '$200', desc: 'Perfecto para agencias pequeñas',
+    name: 'Starter', price: '$ARS 400.000', desc: 'Perfecto para dueños con inventario pequeño-mediano',
     features: ['Hasta 5 usuarios', '50 espacios en inventario', '20 propuestas/mes', 'Soporte por email'],
     highlighted: false, cta: 'Comenzar',
   },
   {
-    name: 'Pro', price: '$450', desc: 'Para equipos en crecimiento',
+    name: 'Pro', price: '$ARS 780.000', desc: 'Para equipos en crecimiento',
     features: ['Hasta 15 usuarios', '200 espacios en inventario', '100 propuestas/mes', 'Reportes avanzados', 'Soporte prioritario'],
     highlighted: true, cta: 'Comenzar',
   },
@@ -206,7 +206,7 @@ export default function Landing() {
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-slate-400">
             Gestiona campañas, inventario y propuestas de publicidad exterior en una sola plataforma.
-            Más ventas, menos tiempo operativo, clientes más satisfechos.
+            Vendé más de tu inventario, controlá costos y maximizá rentabilidad por cartel.
           </p>
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             <Link to="/register" className="btn-primary text-base px-6 py-3">
@@ -223,7 +223,7 @@ export default function Landing() {
         <div className="mx-auto max-w-7xl">
           <div className="mb-16 text-center">
             <h2 className="text-3xl font-bold text-white lg:text-4xl">Todo lo que necesitas, en un solo lugar</h2>
-            <p className="mt-4 text-slate-400">Diseñado específicamente para agencias y operadores de publicidad exterior.</p>
+            <p className="mt-4 text-slate-400">Diseñado para dueños de inventario y operadores de vía pública.</p>
           </div>
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {FEATURES.map(({ icon: Icon, title, desc, color }) => (
@@ -294,7 +294,7 @@ export default function Landing() {
       {/* Social proof */}
       <section className="border-y border-surface-700 bg-surface-800/50 px-4 py-12 lg:px-8">
         <div className="mx-auto max-w-5xl text-center">
-          <p className="text-sm font-medium text-slate-500 uppercase tracking-widest mb-8">Utilizado por agencias líderes</p>
+          <p className="text-sm font-medium text-slate-500 uppercase tracking-widest mb-8">Utilizado por operadores líderes de OOH</p>
           <div className="flex flex-wrap items-center justify-center gap-8 lg:gap-16">
             {['MediaGroup', 'OutdoorPro', 'UrbanAds', 'MediosMX', 'SignalOOH'].map(name => (
               <span key={name} className="text-lg font-bold text-slate-600">{name}</span>
@@ -346,7 +346,7 @@ export default function Landing() {
                   <p className="mt-1 text-sm text-slate-500">{desc}</p>
                   <div className="mt-4 flex items-end gap-1">
                     <span className="text-4xl font-extrabold text-white">{price}</span>
-                    {price !== 'A medida' && <span className="text-slate-500 mb-1">/mes USD</span>}
+                    {price !== 'A medida' && <span className="text-slate-500 mb-1">/mes</span>}
                   </div>
                 </div>
                 <ul className="mb-6 space-y-3">
@@ -373,8 +373,8 @@ export default function Landing() {
       <section className="px-4 py-20 lg:px-8">
         <div className="mx-auto max-w-3xl text-center">
           <div className="rounded-2xl border border-brand/20 bg-brand/5 p-10">
-            <h2 className="text-3xl font-bold text-white">Transformá tu agencia hoy mismo</h2>
-            <p className="mt-4 text-slate-400">Únete a más de 200 agencias que ya gestionan su operación OOH con nosotros.</p>
+            <h2 className="text-3xl font-bold text-white">Transformá tu operación OOH hoy mismo</h2>
+            <p className="mt-4 text-slate-400">Únete a más de 50 operadores que ya gestionan su inventario con OOH Planner.</p>
             <a href="mailto:hola@oohplanner.net" className="btn-primary mt-8 inline-flex text-base px-8 py-3">
               Contactanos
               <ArrowRight className="h-4 w-4" />
