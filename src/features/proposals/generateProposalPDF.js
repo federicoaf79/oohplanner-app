@@ -657,6 +657,163 @@ async function renderStrategy(doc, {
 }
 
 // ── Página de cierre ──────────────────────────────────────────
+// ── Audiencia ─────────────────────────────────────────────────
+function calculateWeightedDemographics(billboards) {
+  const list = Array.isArray(billboards) ? billboards : []
+  const totalReach = list.reduce((s, b) => s + (b.filtered_daily_reach || 0), 0)
+  const weighted = {
+    age: { '18_24': 0, '25_34': 0, '35_44': 0, '45_54': 0, '55_plus': 0 },
+    nse: { abc1: 0, c2: 0, c3: 0 },
+    interests: {},
+  }
+  if (totalReach <= 0) return weighted
+
+  for (const b of list) {
+    const weight = (b.filtered_daily_reach || 0) / totalReach
+    const age       = b.demographic_breakdown?.age  || {}
+    const nse       = b.demographic_breakdown?.nse  || {}
+    const interests = b.interest_scores             || {}
+    for (const [k, v] of Object.entries(age))       weighted.age[k]       = (weighted.age[k]       || 0) + v * weight
+    for (const [k, v] of Object.entries(nse))       weighted.nse[k]       = (weighted.nse[k]       || 0) + v * weight
+    for (const [k, v] of Object.entries(interests)) weighted.interests[k] = (weighted.interests[k] || 0) + v * weight
+  }
+  return weighted
+}
+
+function renderAudience(doc, { audienceData, orgName }) {
+  pageBg(doc)
+  pageHeader(doc, orgName, 'Alcance de audiencia')
+
+  const agg  = audienceData.aggregate
+  const demo = calculateWeightedDemographics(audienceData.by_billboard)
+
+  let y = 24
+
+  // Título
+  frr(doc, 14, y, 182, 14, 2, C.accent)
+  fnt(doc, 'bold', 13); tc(doc, C.white)
+  doc.text('Alcance de audiencia', 18, y + 10)
+  y += 18
+
+  // Subtítulo
+  fnt(doc, 'normal', 8.5); tc(doc, C.light)
+  doc.text(san('Estimacion basada en datos de Censo 2022 y patrones de movilidad urbana'), 18, y)
+  y += 10
+
+  // 3 metric cards
+  const cardGap = 6
+  const cardW   = (182 - 2 * cardGap) / 3
+  const cardH   = 32
+  const metrics = [
+    { label: 'Alcance semanal',     value: impStr(agg.unique_weekly_reach),              sub: 'personas unicas'   },
+    { label: 'Frecuencia promedio', value: Number(agg.avg_frequency || 0).toFixed(1),    sub: 'veces por persona' },
+    { label: 'Impresiones totales', value: impStr(agg.total_impressions),                sub: 'visualizaciones'   },
+  ]
+  metrics.forEach((m, i) => {
+    const x = 14 + i * (cardW + cardGap)
+    frr(doc, x, y, cardW, cardH, 2, C.surface)
+    fnt(doc, 'bold', 15);    tc(doc, C.accent); doc.text(String(m.value), x + cardW / 2, y + 13, { align: 'center' })
+    fnt(doc, 'normal', 8);   tc(doc, C.white);  doc.text(san(m.label),    x + cardW / 2, y + 22, { align: 'center' })
+    fnt(doc, 'normal', 7);   tc(doc, C.light);  doc.text(san(m.sub),      x + cardW / 2, y + 28, { align: 'center' })
+  })
+  y += cardH + 12
+
+  // Composición
+  fnt(doc, 'bold', 11); tc(doc, C.white)
+  doc.text('Composicion de audiencia', 14, y)
+  y += 8
+
+  // Distribución por edad
+  fnt(doc, 'bold', 9); tc(doc, C.light)
+  doc.text('Distribucion por edad', 14, y)
+  y += 6
+
+  const AGE_LABELS = { '18_24': '18-24 anios', '25_34': '25-34 anios', '35_44': '35-44 anios', '45_54': '45-54 anios', '55_plus': '55+ anios' }
+  const AGE_ORDER  = ['55_plus', '25_34', '35_44', '45_54', '18_24']
+  const barH       = 5
+  const barGap     = 2
+  const labelW     = 32
+  const pctW       = 14
+  const trackX     = 14 + labelW
+  const trackW     = 196 - pctW - trackX
+  const BLUE       = [59, 130, 246]
+  AGE_ORDER.forEach(k => {
+    const pct = Math.max(0, Math.min(100, demo.age[k] || 0))
+    fnt(doc, 'normal', 7.5); tc(doc, C.light); doc.text(AGE_LABELS[k], 14, y + 3.5)
+    fr(doc, trackX, y, trackW, barH, C.muted)
+    if (pct > 0) fr(doc, trackX, y, (pct / 100) * trackW, barH, BLUE)
+    fnt(doc, 'bold', 7.5); tc(doc, C.white); doc.text(`${pct.toFixed(1)}%`, 196, y + 3.5, { align: 'right' })
+    y += barH + barGap
+  })
+  y += 6
+
+  // NSE pills
+  fnt(doc, 'bold', 9); tc(doc, C.light)
+  doc.text('Nivel socioeconomico', 14, y)
+  y += 6
+
+  const TEAL  = [13, 148, 136]
+  const nseList = [
+    { label: 'ABC1', value: demo.nse.abc1 || 0, color: TEAL },
+    { label: 'C2',   value: demo.nse.c2   || 0, color: BLUE },
+    { label: 'C3',   value: demo.nse.c3   || 0, color: C.amber },
+  ]
+  const pillGap = 6
+  const pillW   = (182 - 2 * pillGap) / 3
+  const pillH   = 18
+  nseList.forEach((n, i) => {
+    const x = 14 + i * (pillW + pillGap)
+    // Fondo tintado: 25% color + 75% bg (simula opacidad sobre panel oscuro)
+    const bg = n.color.map((c, idx) => Math.round(c * 0.25 + C.bg[idx] * 0.75))
+    frr(doc, x, y, pillW, pillH, 2, bg)
+    doc.setDrawColor(...n.color); doc.setLineWidth(0.6)
+    doc.roundedRect(x, y, pillW, pillH, 2, 2, 'S')
+    fnt(doc, 'bold', 8);  tc(doc, n.color); doc.text(n.label,                   x + pillW / 2, y + 7,  { align: 'center' })
+    fnt(doc, 'bold', 11); tc(doc, n.color); doc.text(`${n.value.toFixed(1)}%`, x + pillW / 2, y + 14, { align: 'center' })
+  })
+  y += pillH + 10
+
+  // Afinidad con intereses (top 5)
+  fnt(doc, 'bold', 9); tc(doc, C.light)
+  doc.text('Afinidad con intereses seleccionados', 14, y)
+  y += 6
+
+  const INTEREST_LABELS = {
+    tecnologia:      'Tecnologia',
+    gastronomia:     'Gastronomia',
+    salud_bienestar: 'Salud y bienestar',
+    retail:          'Retail y consumo',
+    automovilismo:   'Automovilismo',
+    finanzas:        'Finanzas',
+    moda:            'Moda y estilo',
+    entretenimiento: 'Entretenimiento',
+  }
+  const topInterests = Object.entries(demo.interests)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+
+  const intLabelW = 48
+  const intTrackX = 14 + intLabelW
+  const intTrackW = 196 - 20 - intTrackX
+  topInterests.forEach(([k, score]) => {
+    const s = Math.max(0, Math.min(1, Number(score) || 0))
+    const level      = s >= 0.7 ? 'Alta'    : s >= 0.5 ? 'Media' : 'Baja'
+    const levelColor = s >= 0.7 ? C.orange  : s >= 0.5 ? BLUE    : C.light
+    fnt(doc, 'normal', 7.5); tc(doc, C.light); doc.text(san(INTEREST_LABELS[k] || k), 14, y + 3.5)
+    fr(doc, intTrackX, y, intTrackW, barH, C.muted)
+    if (s > 0) fr(doc, intTrackX, y, s * intTrackW, barH, C.orange)
+    fnt(doc, 'bold', 7.5); tc(doc, levelColor); doc.text(level, 196, y + 3.5, { align: 'right' })
+    y += barH + barGap
+  })
+  y += 8
+
+  // Footer note
+  const totalBillboards = agg.total_billboards ?? (audienceData.by_billboard?.length ?? 0)
+  fnt(doc, 'normal', 7); tc(doc, C.light)
+  doc.text(`${totalBillboards} cartel${totalBillboards !== 1 ? 'es' : ''} analizados`, 14, y + 4)
+  doc.text('Factor deduplicacion: 15%', 196, y + 4, { align: 'right' })
+}
+
 function renderClosing(doc, { formData, profile, org, results, activeOption, occupiedSiteIds }) {
   pageBg(doc)
   const orgName    = san(org?.name ?? 'OOH Planner')
@@ -769,6 +926,7 @@ export async function generateProposalPDF({
   mapImage        = null,
   // eslint-disable-next-line no-unused-vars
   mapA, mapB, formatToArt, pdfTheme,
+  audienceData    = null,
 }) {
   const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true })
@@ -822,6 +980,12 @@ export async function generateProposalPDF({
     mockupMap,
     siteCarasMap,
   })
+
+  // Página de audiencia (si hay datos)
+  if (audienceData?.aggregate) {
+    doc.addPage()
+    renderAudience(doc, { audienceData, orgName })
+  }
 
   // Página de cierre
   doc.addPage()

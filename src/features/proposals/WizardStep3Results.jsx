@@ -14,6 +14,7 @@ import { generateProposalPDF, fetchStaticMap } from './generateProposalPDF'
 import { generateMockup } from '../../lib/generateMockup'
 import { validateArtwork } from '../../lib/validateArtwork'
 import { supabase } from '../../lib/supabase'
+import AudienceMetrics from '../../components/AudienceMetrics'
 
 const DIGITAL_FORMATS = new Set(['digital', 'urban_furniture_digital'])
 
@@ -565,6 +566,10 @@ export default function WizardStep3Results({ results, setResults, formData, onSa
   const [photoEnriched, setPhotoEnriched] = useState(0)
   const [partialSelections, setPartialSelections] = useState({})
 
+  // Estados para métricas de audiencia
+  const [audienceData, setAudienceData] = useState(null)
+  const [loadingAudience, setLoadingAudience] = useState(false)
+
   function handleSelectPartial(siteId, data) {
     setPartialSelections(prev => {
       if (!data) { const n = { ...prev }; delete n[siteId]; return n }
@@ -682,6 +687,72 @@ export default function WizardStep3Results({ results, setResults, formData, onSa
         setPhotoEnriched(prev => prev + 1)
       })
   }, [results?.sites?.length])
+
+  // Calcular métricas de audiencia cuando haya resultados
+  useEffect(() => {
+    async function fetchAudienceData() {
+      console.log('🔍 fetchAudienceData iniciado')
+      console.log('results?.sites:', results?.sites)
+      console.log('formData:', formData)
+      
+      if (!results?.sites || results.sites.length === 0 || !formData) {
+        console.log('❌ Saliendo: no hay sites o formData')
+        return
+      }
+
+      setLoadingAudience(true)
+      
+      try {
+        const siteIds = results.sites
+          .filter(s => s.id && !s.id.startsWith('mock-'))
+          .map(s => s.id)
+
+        console.log('📊 Site IDs filtrados:', siteIds)
+
+        if (siteIds.length === 0) {
+          console.log('❌ No hay site IDs válidos (todos son mock o sin ID)')
+          setLoadingAudience(false)
+          return
+        }
+
+        const payload = {
+          inventory_ids: siteIds,
+          filters: {
+            age_min: formData.audience?.ageMin || 18,
+            age_max: formData.audience?.ageMax || 55,
+            gender: formData.audience?.gender === 'all' ? 'Todos' :
+                    formData.audience?.gender === 'male' ? 'Hombres' : 
+                    formData.audience?.gender === 'female' ? 'Mujeres' : 'Todos',
+            nse: formData.audience?.nse || [],
+            interests: formData.audience?.interests || []
+          }
+        }
+
+        console.log('📤 Llamando a Edge Function con payload:', payload)
+
+        const { data, error } = await supabase.functions.invoke(
+          'calculate-audience-reach',
+          { body: payload }
+        )
+        
+        console.log('📥 Respuesta Edge Function:', { data, error })
+        
+        if (!error && data) {
+          console.log('✅ audienceData actualizado:', data)
+          setAudienceData(data)
+        } else if (error) {
+          console.error('❌ Error calculando audiencia:', error)
+        }
+      } catch (err) {
+        console.error('❌ Error en calculateAudience:', err)
+      } finally {
+        setLoadingAudience(false)
+        console.log('✅ fetchAudienceData finalizado')
+      }
+    }
+
+    fetchAudienceData()
+  }, [results?.sites?.length, formData?.audience])
 
   const activeOption = results
   const audienceNote = results?.audience_mode === 'geographic_only' ? results?.audience_note : null
@@ -854,6 +925,7 @@ export default function WizardStep3Results({ results, setResults, formData, onSa
         mockupMap,
         siteCarasMap,
         pdfTheme,
+        audienceData,
       })
     } catch (err) {
       console.error('PDF generation error:', err)
@@ -1072,6 +1144,14 @@ export default function WizardStep3Results({ results, setResults, formData, onSa
 
       {/* Price breakdown */}
       <PriceBreakdown formData={formData} option={activeOption} onAddNextBillboard={handleAddNextBillboard} />
+
+      {/* Métricas de Audiencia */}
+      {audienceData && (
+        <AudienceMetrics 
+          data={audienceData} 
+          loading={loadingAudience}
+        />
+      )}
 
       {/* Active option content */}
       <OptionPanel option={activeOption} formData={formData} audienceNote={audienceNote} mapRef={mapRef} availability={availability} partialSelections={partialSelections} onSelectPartial={handleSelectPartial} />
