@@ -281,7 +281,7 @@ export default function Reports() {
 
     // Tasa de cierre: histórica acumulada hasta el final del rango seleccionado
     // Excluye drafts del denominador (una propuesta no enviada no es oportunidad real)
-    const { to } = getDateBounds(dateRange, customStart, customEnd)
+    const { from, to } = getDateBounds(dateRange, customStart, customEnd)
     const closureRateResult = calculateHistoricalCloseRate(proposals, {
       asOfDate: to ?? new Date(),
     })
