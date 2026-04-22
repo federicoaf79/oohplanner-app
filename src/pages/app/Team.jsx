@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { UserPlus, Users } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -6,21 +6,29 @@ import Button from '../../components/ui/Button'
 import { RoleBadge } from '../../components/ui/Badge'
 import { getInitials } from '../../lib/utils'
 import Spinner from '../../components/ui/Spinner'
+import InviteMemberModal from '../../components/InviteMemberModal'
 
 export default function Team() {
   const { profile } = useAuth()
   const [members, setMembers] = useState([])
   const [loading, setLoading] = useState(false)
+  const [showInviteModal, setShowInviteModal] = useState(false)
 
-  useEffect(() => {
+  const canInvite = profile?.role === 'owner' || profile?.role === 'manager'
+
+  const loadTeamMembers = useCallback(async () => {
     if (!profile?.org_id) return
-    supabase
+    setLoading(true)
+    const { data } = await supabase
       .from('profiles')
       .select('*')
       .eq('org_id', profile.org_id)
       .order('created_at', { ascending: true })
-      .then(({ data }) => { setMembers(data ?? []); setLoading(false) })
+    setMembers(data ?? [])
+    setLoading(false)
   }, [profile?.org_id])
+
+  useEffect(() => { loadTeamMembers() }, [loadTeamMembers])
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -29,10 +37,12 @@ export default function Team() {
           <h2 className="text-lg font-bold text-white">Equipo</h2>
           <p className="text-sm text-slate-500">{members.length} miembros</p>
         </div>
-        <Button size="sm">
-          <UserPlus className="h-4 w-4" />
-          Invitar miembro
-        </Button>
+        {canInvite && (
+          <Button size="sm" onClick={() => setShowInviteModal(true)}>
+            <UserPlus className="h-4 w-4" />
+            Invitar miembro
+          </Button>
+        )}
       </div>
 
       {loading ? (
@@ -82,6 +92,12 @@ export default function Team() {
           </table>
         </div>
       )}
+
+      <InviteMemberModal
+        open={showInviteModal}
+        onClose={() => setShowInviteModal(false)}
+        onSuccess={loadTeamMembers}
+      />
     </div>
   )
 }
