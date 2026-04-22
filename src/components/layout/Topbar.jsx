@@ -3,17 +3,24 @@ import { useNavigate } from 'react-router-dom'
 import { Menu, Bell, LogOut, User, ChevronDown } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { RoleBadge } from '../ui/Badge'
+import NotificationDropdown from '../NotificationDropdown'
 
 export default function Topbar({ onMenuClick, title }) {
   const { profile, role, signOut } = useAuth()
   const navigate = useNavigate()
-  const [menuOpen, setMenuOpen] = useState(false)
-  const menuRef = useRef(null)
+  const [menuOpen, setMenuOpen]   = useState(false)
+  const [notifOpen, setNotifOpen] = useState(false)
+  const [notifCount, setNotifCount] = useState(0)
+  const menuRef  = useRef(null)
+  const notifRef = useRef(null)
 
   useEffect(() => {
     function handleClickOutside(e) {
       if (menuRef.current && !menuRef.current.contains(e.target)) {
         setMenuOpen(false)
+      }
+      if (notifRef.current && !notifRef.current.contains(e.target)) {
+        setNotifOpen(false)
       }
     }
     document.addEventListener('mousedown', handleClickOutside)
@@ -38,9 +45,26 @@ export default function Topbar({ onMenuClick, title }) {
       </div>
 
       <div className="flex items-center gap-2">
-        <button className="p-2 rounded-md text-slate-400 hover:text-slate-200 hover:bg-surface-800 relative">
-          <Bell className="h-5 w-5" />
-        </button>
+        <div className="relative" ref={notifRef}>
+          <button
+            onClick={() => setNotifOpen(v => !v)}
+            className="p-2 rounded-md text-slate-400 hover:text-slate-200 hover:bg-surface-800 relative"
+            aria-label="Notificaciones"
+          >
+            <Bell className="h-5 w-5" />
+            {notifCount > 0 && (
+              <>
+                <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500 animate-ping opacity-75" />
+                <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" />
+              </>
+            )}
+          </button>
+          <NotificationDropdown
+            open={notifOpen}
+            onClose={() => setNotifOpen(false)}
+            onCountChange={setNotifCount}
+          />
+        </div>
 
         {/* User menu */}
         <div className="relative" ref={menuRef}>
