@@ -159,6 +159,15 @@ function computeDerived(
   // ── Tasa de cierre del MES: propuestas cerradas en el período / creadas en el período ──
   // Usa allProposals para contemplar todas (KPI empresa ve todo, salesperson ve solo las suyas)
   const scopeProposals = isCompany ? allProposals : proposals
+  console.log('Close rate debug:', {
+    scopeProposalsLength: scopeProposals.length,
+    statusCounts: scopeProposals.reduce((acc, p) => {
+      acc[p.status] = (acc[p.status] || 0) + 1
+      return acc
+    }, {}),
+    monthStart: pS,
+    monthEnd:   pE,
+  })
   const monthRateResult = calculateMonthCloseRate(scopeProposals, {
     monthStart: pS,
     monthEnd:   pE,
