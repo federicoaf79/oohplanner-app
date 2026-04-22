@@ -1,11 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
 import { validateArtwork } from '../../lib/validateArtwork'
-import { Shield, Lock, Eye, Building2, Upload, X, Loader2, ChevronRight, MoreVertical, BookOpen } from 'lucide-react'
+import { Shield, Lock, Eye, Building2, Upload, X, Loader2, MoreVertical, BookOpen } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
 import Button from '../../components/ui/Button'
-import NewFacilitatorAgreementWizard from '../../features/commissions/NewFacilitatorAgreementWizard'
-import AgreementDetailPanel from '../../features/commissions/AgreementDetailPanel'
 import ContactFormModal from '../../features/contacts/ContactFormModal'
 import Input from '../../components/ui/Input'
 import Card, { CardHeader } from '../../components/ui/Card'
@@ -66,18 +64,6 @@ export default function Settings() {
   const [uploadingArt, setUploadingArt] = useState(null) // 'h' | 'v' | 'sq' | null
   const [artError, setArtError] = useState(null) // { slot, message }
 
-  // ── Descuentos ──
-  const [maxSales, setMaxSales]     = useState(org?.max_discount_salesperson ?? 20)
-  const [maxMgr, setMaxMgr]         = useState(org?.max_discount_manager ?? 30)
-  const [savingDisc, setSavingDisc] = useState(false)
-  const [savedDisc, setSavedDisc]   = useState(false)
-
-  // ── Acuerdos con facilitadores ──
-  const [agreements, setAgreements]               = useState([])
-  const [loadingAgreements, setLoadingAgreements] = useState(false)
-  const [showAgreementWizard, setShowAgreementWizard] = useState(false)
-  const [selectedAgreement, setSelectedAgreement] = useState(null)
-
   // ── Contactos confidenciales ──
   const [confidentialContacts, setConfidentialContacts]       = useState([])
   const [loadingConfidential, setLoadingConfidential]         = useState(false)
@@ -90,10 +76,10 @@ export default function Settings() {
 
   // ── Tabs ──
   const [activeTab, setActiveTab] = useState(canEditOrg ? 'company' : 'profile')
-  // Note: the 'commercial', 'confidential_contacts' and 'confidential_reports' tab
-  // content blocks remain further down this file as unreachable dead code pending
+  // Note: the 'confidential_contacts' and 'confidential_reports' tab content
+  // blocks remain further down this file as unreachable dead code pending
   // migration to /app/inventory-settings. Do not delete without moving the logic.
-  // ('team' has already been migrated.)
+  // ('team' and 'commercial' have already been migrated.)
   const tabs = [
     { id: 'company',  label: 'Empresa',              visible: canEditOrg },
     { id: 'profile',  label: 'Mi Perfil de Usuario', visible: true       },
@@ -267,62 +253,6 @@ export default function Settings() {
     else setArtSq(null)
 
     await refreshProfile()
-  }
-
-  async function handleSaveDiscounts(e) {
-    e.preventDefault()
-    setSavingDisc(true)
-    await supabase
-      .from('organisations')
-      .update({
-        max_discount_salesperson: Math.min(100, Math.max(0, Number(maxSales))),
-        max_discount_manager:     Math.min(100, Math.max(0, Number(maxMgr))),
-      })
-      .eq('id', org.id)
-    await refreshProfile()
-    setSavingDisc(false)
-    setSavedDisc(true)
-    setTimeout(() => setSavedDisc(false), 3000)
-  }
-
-  // ── Acuerdos: cargar al entrar al tab ──
-  useEffect(() => {
-    if (activeTab !== 'commercial' || !isOwner) return
-    loadAgreements()
-  }, [activeTab, isOwner, org.id])
-
-  async function loadAgreements(opts = {}) {
-    setLoadingAgreements(true)
-    const { data } = await supabase
-      .from('facilitator_agreements')
-      .select(`
-        id, title, deal_code, commission_type, commission_pct,
-        start_date, end_date, is_active, notes, created_at,
-        contact:contacts!facilitator_agreements_contact_id_fkey(id, name, legal_name, visibility),
-        site_commissions(id, site_id)
-      `)
-      .eq('org_id', org.id)
-      .order('is_active', { ascending: false })
-      .order('created_at', { ascending: false })
-    const list = data ?? []
-    setAgreements(list)
-    if (opts.refreshSelectedId) {
-      const fresh = list.find(a => a.id === opts.refreshSelectedId)
-      if (fresh) setSelectedAgreement(fresh)
-    }
-    setLoadingAgreements(false)
-  }
-
-  function handleAgreementUpdated(updatedOrSignal) {
-    if (updatedOrSignal === null) {
-      setSelectedAgreement(null)
-      loadAgreements()
-    } else if (updatedOrSignal === 'reload') {
-      loadAgreements({ refreshSelectedId: selectedAgreement?.id })
-    } else {
-      setAgreements(prev => prev.map(a => a.id === updatedOrSignal.id ? updatedOrSignal : a))
-      setSelectedAgreement(updatedOrSignal)
-    }
   }
 
   // ── Contactos confidenciales: cargar al entrar al tab ──
@@ -716,173 +646,6 @@ export default function Settings() {
             </div>
 
           </div>
-        )}
-
-        {/* TAB 4 — Reglas comerciales */}
-        {activeTab === 'commercial' && (
-          <>
-            <Card>
-              <CardHeader
-                title="Límites de descuento"
-                subtitle="Máximo descuento que cada rol puede aplicar sin requerir aprobación"
-              />
-              <form onSubmit={handleSaveDiscounts} className="space-y-4">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-300">
-                      Vendedor (salesperson)
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="number" min="0" max="100" step="1"
-                        className="input-field pr-8 w-full"
-                        value={maxSales}
-                        onChange={e => setMaxSales(Number(e.target.value))}
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">%</span>
-                    </div>
-                    <p className="mt-1 text-xs text-slate-600">Default: 20%</p>
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-sm font-medium text-slate-300">
-                      Gerente (manager)
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="number" min="0" max="100" step="1"
-                        className="input-field pr-8 w-full"
-                        value={maxMgr}
-                        onChange={e => setMaxMgr(Number(e.target.value))}
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">%</span>
-                    </div>
-                    <p className="mt-1 text-xs text-slate-600">Default: 30%</p>
-                  </div>
-                </div>
-                <p className="text-xs text-slate-600 leading-relaxed">
-                  Owner: sin límite (100%). Si un vendedor supera su límite, la propuesta queda en estado
-                  "Esperando aprobación" hasta que un manager u owner la apruebe.
-                </p>
-                <SaveRow loading={savingDisc} saved={savedDisc}>Guardar límites</SaveRow>
-              </form>
-            </Card>
-            <Card>
-              <CardHeader
-                title="Acuerdos con facilitadores"
-                subtitle="Comisiones atadas a la locación o contrato del cartel. Se aplican automáticamente a toda venta del cartel."
-                action={
-                  <Button size="sm" onClick={() => setShowAgreementWizard(true)}>
-                    + Nuevo acuerdo
-                  </Button>
-                }
-              />
-
-              {loadingAgreements ? (
-                <div className="flex items-center justify-center py-10 text-slate-500">
-                  <Loader2 className="h-5 w-5 animate-spin mr-2" /> Cargando…
-                </div>
-              ) : agreements.length === 0 ? (
-                <div className="flex flex-col items-center gap-3 py-10 text-center">
-                  <p className="text-sm text-slate-500">Aún no hay acuerdos configurados</p>
-                  <Button size="sm" variant="secondary" onClick={() => setShowAgreementWizard(true)}>
-                    Crear el primero
-                  </Button>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-surface-700">
-                        {['Nombre', 'Contacto', 'Tipo', '%', 'Vigencia', 'Carteles', ''].map(h => (
-                          <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-surface-700">
-                      {agreements.map(a => (
-                        <tr
-                          key={a.id}
-                          onClick={() => setSelectedAgreement(a)}
-                          className={`cursor-pointer hover:bg-surface-800/50 transition-colors ${!a.is_active ? 'opacity-60' : ''}`}
-                        >
-                          {/* Nombre */}
-                          <td className="px-4 py-3">
-                            <p className="font-medium text-slate-200">{a.title}</p>
-                            <p className="text-xs text-slate-600 font-mono">{a.deal_code}</p>
-                          </td>
-                          {/* Contacto */}
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-slate-300">{a.contact?.name ?? '—'}</span>
-                              {a.contact?.visibility === 'owner_only' && (
-                                <Lock className="h-3.5 w-3.5 text-amber-400" aria-label="Confidencial" />
-                              )}
-                            </div>
-                            {a.contact?.legal_name && <p className="text-xs text-slate-500">{a.contact.legal_name}</p>}
-                          </td>
-                          {/* Tipo */}
-                          <td className="px-4 py-3">
-                            <div className="flex flex-col gap-1">
-                              {a.commission_type === 'location_facilitator' ? (
-                                <span className="inline-flex w-fit rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-400">Locación</span>
-                              ) : (
-                                <span className="inline-flex w-fit rounded-full bg-amber-500/10 px-2 py-0.5 text-xs font-medium text-amber-400">Contrato</span>
-                              )}
-                              {!a.is_active && (
-                                <span className="inline-flex w-fit rounded-full bg-surface-700 px-2 py-0.5 text-xs text-slate-400">Inactivo</span>
-                              )}
-                            </div>
-                          </td>
-                          {/* % */}
-                          <td className="px-4 py-3 font-mono text-slate-300">
-                            {Number(a.commission_pct).toFixed(2)}%
-                          </td>
-                          {/* Vigencia */}
-                          <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">
-                            {a.end_date
-                              ? <>{fmtDate(a.start_date)} → {fmtDate(a.end_date)}</>
-                              : <>Desde {fmtDate(a.start_date)}</>
-                            }
-                          </td>
-                          {/* Carteles */}
-                          <td className="px-4 py-3">
-                            {(a.site_commissions?.length ?? 0) === 0 ? (
-                              <span className="text-xs italic text-slate-500">— marco —</span>
-                            ) : (
-                              <span className="text-sm text-slate-300">
-                                {a.site_commissions.length} cartel{a.site_commissions.length === 1 ? '' : 'es'}
-                              </span>
-                            )}
-                          </td>
-                          {/* Ver detalle */}
-                          <td className="px-4 py-3">
-                            <ChevronRight className="h-4 w-4 text-slate-600" />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </Card>
-          </>
-        )}
-
-        {/* Wizard nuevo acuerdo */}
-        {showAgreementWizard && (
-          <NewFacilitatorAgreementWizard
-            onClose={() => setShowAgreementWizard(false)}
-            onSaved={() => { setShowAgreementWizard(false); loadAgreements() }}
-          />
-        )}
-
-        {/* Panel de detalle de acuerdo */}
-        {selectedAgreement && (
-          <AgreementDetailPanel
-            agreement={selectedAgreement}
-            onClose={() => setSelectedAgreement(null)}
-            onUpdated={handleAgreementUpdated}
-          />
         )}
 
         {/* Modales — Contactos confidenciales */}
