@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import { PlusCircle, X, ChevronDown } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
-import { sendEmail } from '../../lib/email'
 import Button from '../../components/ui/Button'
 import Card, { CardHeader } from '../../components/ui/Card'
 import Spinner from '../../components/ui/Spinner'
@@ -105,20 +104,22 @@ export default function Support() {
       return
     }
 
-    // Notify admin
-    await sendEmail({
-      to: 'hola@oohplanner.net',
-      subject: `[Ticket] ${form.subject} — ${org?.name}`,
-      html: `
-        <h2 style="font-family:sans-serif;color:#1e293b">Nuevo ticket de soporte</h2>
-        <table style="font-family:sans-serif;font-size:14px;color:#475569;border-collapse:collapse">
-          <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:#1e293b">Empresa:</td><td>${org?.name ?? '—'}</td></tr>
-          <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:#1e293b">De:</td><td>${profile?.full_name ?? '—'} &lt;${user?.email ?? '—'}&gt;</td></tr>
-          <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:#1e293b">Asunto:</td><td>${form.subject}</td></tr>
-          <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:#1e293b">Prioridad:</td><td style="text-transform:capitalize">${form.priority}</td></tr>
-        </table>
-        <p style="font-family:sans-serif;font-size:14px;color:#475569;margin-top:16px"><strong>Mensaje:</strong><br>${form.message.replace(/\n/g, '<br>')}</p>
-      `,
+    // Notify admin — recipient and "Support Ticket: " subject prefix are
+    // hardcoded in the send-support-ticket edge function.
+    await supabase.functions.invoke('send-support-ticket', {
+      body: {
+        subject: `${form.subject} — ${org?.name ?? 'sin empresa'}`,
+        html: `
+          <h2 style="font-family:sans-serif;color:#1e293b">Nuevo ticket de soporte</h2>
+          <table style="font-family:sans-serif;font-size:14px;color:#475569;border-collapse:collapse">
+            <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:#1e293b">Empresa:</td><td>${org?.name ?? '—'}</td></tr>
+            <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:#1e293b">De:</td><td>${profile?.full_name ?? '—'} &lt;${user?.email ?? '—'}&gt;</td></tr>
+            <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:#1e293b">Asunto:</td><td>${form.subject}</td></tr>
+            <tr><td style="padding:4px 12px 4px 0;font-weight:600;color:#1e293b">Prioridad:</td><td style="text-transform:capitalize">${form.priority}</td></tr>
+          </table>
+          <p style="font-family:sans-serif;font-size:14px;color:#475569;margin-top:16px"><strong>Mensaje:</strong><br>${form.message.replace(/\n/g, '<br>')}</p>
+        `,
+      },
     }).catch(() => { /* mail failure should not block the user */ })
 
     setForm(EMPTY)
