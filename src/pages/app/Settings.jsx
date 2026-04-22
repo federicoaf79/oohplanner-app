@@ -1,10 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
 import { validateArtwork } from '../../lib/validateArtwork'
-import { Shield, Lock, Eye, Building2, Upload, X, Loader2, MoreVertical, BookOpen } from 'lucide-react'
+import { Shield, Lock, Eye, Building2, Upload, X, Loader2, BookOpen } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
 import Button from '../../components/ui/Button'
-import ContactFormModal from '../../features/contacts/ContactFormModal'
 import Input from '../../components/ui/Input'
 import Card, { CardHeader } from '../../components/ui/Card'
 import { RoleBadge } from '../../components/ui/Badge'
@@ -64,22 +63,14 @@ export default function Settings() {
   const [uploadingArt, setUploadingArt] = useState(null) // 'h' | 'v' | 'sq' | null
   const [artError, setArtError] = useState(null) // { slot, message }
 
-  // ── Contactos confidenciales ──
-  const [confidentialContacts, setConfidentialContacts]       = useState([])
-  const [loadingConfidential, setLoadingConfidential]         = useState(false)
-  const [editingConfidentialContact, setEditingConfidentialContact] = useState(null)
-  const [confirmMakePublic, setConfirmMakePublic]             = useState(null)
-  const [confirmDeleteConfidential, setConfirmDeleteConfidential] = useState(null)
-  const [openConfidentialMenu, setOpenConfidentialMenu]       = useState(null)
-
   const canEditOrg = isOwner || isManager
 
   // ── Tabs ──
   const [activeTab, setActiveTab] = useState(canEditOrg ? 'company' : 'profile')
-  // Note: the 'confidential_contacts' and 'confidential_reports' tab content
-  // blocks remain further down this file as unreachable dead code pending
-  // migration to /app/inventory-settings. Do not delete without moving the logic.
-  // ('team' and 'commercial' have already been migrated.)
+  // Note: the 'confidential_reports' tab content block remains further down
+  // this file as unreachable dead code pending migration to
+  // /app/inventory-settings. Do not delete without moving the logic.
+  // ('team', 'commercial' and 'confidential_contacts' have been migrated.)
   const tabs = [
     { id: 'company',  label: 'Empresa',              visible: canEditOrg },
     { id: 'profile',  label: 'Mi Perfil de Usuario', visible: true       },
@@ -253,52 +244,6 @@ export default function Settings() {
     else setArtSq(null)
 
     await refreshProfile()
-  }
-
-  // ── Contactos confidenciales: cargar al entrar al tab ──
-  useEffect(() => {
-    if (activeTab !== 'confidential_contacts' || !isOwner) return
-    loadConfidentialContacts()
-  }, [activeTab, isOwner, org.id])
-
-  async function loadConfidentialContacts() {
-    setLoadingConfidential(true)
-    const { data } = await supabase
-      .from('contacts')
-      .select(`
-        id, name, legal_name, roles, email, phone, is_active,
-        agreements:facilitator_agreements!facilitator_agreements_contact_id_fkey(
-          id, is_active
-        )
-      `)
-      .eq('org_id', org.id)
-      .eq('visibility', 'owner_only')
-      .order('name')
-    setConfidentialContacts(data ?? [])
-    setLoadingConfidential(false)
-  }
-
-  async function handleMakePublic(contact) {
-    await supabase.from('contacts').update({ visibility: 'company_wide' }).eq('id', contact.id)
-    setConfirmMakePublic(null)
-    loadConfidentialContacts()
-  }
-
-  async function handleDeleteConfidential(contact) {
-    const activeAgreements = contact.agreements?.filter(a => a.is_active) ?? []
-    if (activeAgreements.length > 0) {
-      alert(`No se puede eliminar. Este contacto tiene ${activeAgreements.length} acuerdo(s) activo(s). Desactivá o desvinculá los acuerdos primero desde Reglas comerciales.`)
-      setConfirmDeleteConfidential(null)
-      return
-    }
-    await supabase.from('contacts').delete().eq('id', contact.id)
-    setConfirmDeleteConfidential(null)
-    loadConfidentialContacts()
-  }
-
-  function fmtDate(str) {
-    if (!str) return '—'
-    return new Date(str + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
   }
 
   return (
@@ -646,179 +591,6 @@ export default function Settings() {
             </div>
 
           </div>
-        )}
-
-        {/* Modales — Contactos confidenciales */}
-        {editingConfidentialContact && (
-          <ContactFormModal
-            contact={editingConfidentialContact}
-            onClose={() => setEditingConfidentialContact(null)}
-            onSaved={() => { setEditingConfidentialContact(null); loadConfidentialContacts() }}
-          />
-        )}
-
-        {confirmMakePublic && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-            <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-surface-800 p-6 shadow-2xl">
-              <h3 className="mb-2 font-semibold text-white">Hacer contacto público</h3>
-              <p className="mb-6 text-sm text-slate-400">
-                ¿Querés que todos los miembros de la empresa puedan ver a{' '}
-                <strong className="text-slate-200">"{confirmMakePublic.name}"</strong>?
-                Esta acción lo saca del listado confidencial.
-              </p>
-              <div className="flex gap-3">
-                <button onClick={() => setConfirmMakePublic(null)} className="btn-secondary flex-1">Cancelar</button>
-                <button
-                  onClick={() => handleMakePublic(confirmMakePublic)}
-                  className="flex-1 rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand/90"
-                >
-                  Hacer público
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {confirmDeleteConfidential && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
-            <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-surface-800 p-6 shadow-2xl">
-              <h3 className="mb-2 font-semibold text-white">Eliminar contacto</h3>
-              <p className="mb-6 text-sm text-slate-400">
-                ¿Estás seguro de eliminar a{' '}
-                <strong className="text-slate-200">"{confirmDeleteConfidential.name}"</strong>?
-                Esta acción no se puede deshacer.
-              </p>
-              <div className="flex gap-3">
-                <button onClick={() => setConfirmDeleteConfidential(null)} className="btn-secondary flex-1">Cancelar</button>
-                <button
-                  onClick={() => handleDeleteConfidential(confirmDeleteConfidential)}
-                  className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500"
-                >
-                  Eliminar
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* TAB 5 — Contactos confidenciales */}
-        {activeTab === 'confidential_contacts' && (
-          <Card>
-            <CardHeader
-              title="Contactos confidenciales"
-              subtitle="Contactos visibles solo para vos. Incluye facilitadores encubiertos y cualquier contacto marcado como reservado."
-            />
-            {loadingConfidential ? (
-              <div className="py-12 text-center">
-                <Loader2 className="mx-auto h-6 w-6 animate-spin text-brand" />
-              </div>
-            ) : confidentialContacts.length === 0 ? (
-              <div className="py-12 text-center">
-                <Lock className="mx-auto h-8 w-8 text-slate-600 mb-3" />
-                <p className="text-slate-400">Aún no hay contactos confidenciales</p>
-                <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                  Los contactos que marques como "Solo yo lo veo" aparecen acá.
-                  Podés marcarlos desde Contactos o al crear un acuerdo nuevo.
-                </p>
-              </div>
-            ) : (
-              <div>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-surface-700 text-xs uppercase text-slate-500">
-                      <th className="px-4 py-3 text-left font-medium">Nombre</th>
-                      <th className="px-4 py-3 text-left font-medium">Roles</th>
-                      <th className="px-4 py-3 text-left font-medium">Acuerdos</th>
-                      <th className="px-4 py-3" />
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-surface-800">
-                    {confidentialContacts.map(c => {
-                      const activeAgreements = c.agreements?.filter(a => a.is_active).length ?? 0
-                      const totalAgreements  = c.agreements?.length ?? 0
-                      const menuOpen = openConfidentialMenu === c.id
-                      return (
-                        <tr key={c.id} className="hover:bg-surface-800/50 transition-colors">
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2">
-                              <Lock className="h-3.5 w-3.5 shrink-0 text-amber-400" />
-                              <div>
-                                <p className="font-medium text-slate-100">{c.name}</p>
-                                {c.legal_name && <p className="text-xs text-slate-500">{c.legal_name}</p>}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            {c.roles && c.roles.length > 0 ? (
-                              <div className="flex flex-wrap gap-1">
-                                {c.roles.slice(0, 2).map(r => (
-                                  <span key={r} className="rounded-full bg-surface-700 px-2 py-0.5 text-xs text-slate-300">{r}</span>
-                                ))}
-                                {c.roles.length > 2 && (
-                                  <span className="text-xs text-slate-500">+{c.roles.length - 2}</span>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-xs italic text-slate-600">—</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            {totalAgreements === 0 ? (
-                              <span className="text-xs text-slate-500">—</span>
-                            ) : (
-                              <span className="text-sm text-slate-300">
-                                {activeAgreements} activo{activeAgreements === 1 ? '' : 's'}
-                                {totalAgreements > activeAgreements && (
-                                  <span className="text-xs text-slate-500 ml-1">
-                                    · {totalAgreements - activeAgreements} inactivo{(totalAgreements - activeAgreements) === 1 ? '' : 's'}
-                                  </span>
-                                )}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            <div className="relative flex justify-end">
-                              <button
-                                onClick={() => setOpenConfidentialMenu(v => v === c.id ? null : c.id)}
-                                className="rounded-md p-1 text-slate-500 hover:bg-surface-700 hover:text-slate-300 transition-colors"
-                              >
-                                <MoreVertical className="h-4 w-4" />
-                              </button>
-                              {menuOpen && (
-                                <>
-                                  <div className="fixed inset-0 z-40" onClick={() => setOpenConfidentialMenu(null)} />
-                                  <div className="absolute right-0 top-full mt-1 z-50 w-44 rounded-lg border border-surface-700 bg-surface-800 py-1 shadow-xl">
-                                    <button
-                                      onClick={() => { setOpenConfidentialMenu(null); setEditingConfidentialContact(c) }}
-                                      className="flex w-full items-center px-3 py-2 text-sm text-slate-300 hover:bg-surface-700"
-                                    >
-                                      Editar
-                                    </button>
-                                    <button
-                                      onClick={() => { setOpenConfidentialMenu(null); setConfirmMakePublic(c) }}
-                                      className="flex w-full items-center px-3 py-2 text-sm text-slate-300 hover:bg-surface-700"
-                                    >
-                                      Hacer público
-                                    </button>
-                                    <button
-                                      onClick={() => { setOpenConfidentialMenu(null); setConfirmDeleteConfidential(c) }}
-                                      className="flex w-full items-center px-3 py-2 text-sm text-rose-400 hover:bg-surface-700"
-                                    >
-                                      Eliminar
-                                    </button>
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </Card>
         )}
 
         {/* TAB 6 — Reportes confidenciales (placeholder) */}
