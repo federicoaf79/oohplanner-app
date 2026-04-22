@@ -98,14 +98,13 @@ export default function Settings() {
 
   // ── Tabs ──
   const [activeTab, setActiveTab] = useState(canEditOrg ? 'company' : 'profile')
+  // Note: the 'team', 'commercial', 'confidential_contacts' and 'confidential_reports'
+  // tab content blocks remain further down this file as unreachable dead code pending
+  // migration to /app/inventory-settings. Do not delete without moving the logic.
   const tabs = [
-    { id: 'company',               label: 'Empresa',                   visible: canEditOrg  },
-    { id: 'team',                  label: 'Equipo y comisiones',       visible: isOwner     },
-    { id: 'commercial',            label: 'Reglas comerciales',        visible: isOwner     },
-    { id: 'profile',               label: 'Mi perfil',                 visible: true        },
-    { id: 'confidential_contacts', label: 'Contactos confidenciales',  visible: isOwner     },
-    { id: 'confidential_reports',  label: 'Reportes confidenciales',   visible: isOwner     },
-    { id: 'security',              label: 'Privacidad y seguridad',    visible: true        },
+    { id: 'company',  label: 'Empresa',              visible: canEditOrg },
+    { id: 'profile',  label: 'Mi Perfil de Usuario', visible: true       },
+    { id: 'security', label: 'Privacidad y seguridad', visible: true     },
   ].filter(t => t.visible)
 
   // ── Handlers ──
@@ -625,7 +624,7 @@ export default function Settings() {
         {activeTab === 'profile' && (
           <div className="space-y-5">
           <Card>
-            <CardHeader title="Mi perfil" />
+            <CardHeader title="Mi Perfil de Usuario" />
             <div className="mb-5 flex items-center gap-4">
               <div className="flex h-14 w-14 items-center justify-center rounded-full bg-brand/20 text-lg font-bold text-brand">
                 {getInitials(profile?.full_name)}

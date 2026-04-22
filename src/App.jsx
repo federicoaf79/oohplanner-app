@@ -23,6 +23,7 @@ import Reports      from './pages/app/Reports'
 import Contacts     from './pages/app/Contacts'
 import Team         from './pages/app/Team'
 import Settings     from './pages/app/Settings'
+import InventorySettings from './pages/app/InventorySettings'
 import Support      from './pages/app/Support'
 import Billing      from './pages/app/Billing'
 import ZoneEditor   from './pages/app/ZoneEditor'
@@ -71,9 +72,10 @@ const router = createBrowserRouter([
           {
             element: <RoleGuard roles={['owner', 'manager']} />,
             children: [
-              { path: '/app/inventory',    element: <Inventory /> },
-              { path: '/app/reports',      element: <Reports /> },
-              { path: '/app/zone-editor',  element: <ZoneEditor /> },
+              { path: '/app/inventory',          element: <Inventory /> },
+              { path: '/app/inventory-settings', element: <InventorySettings /> },
+              { path: '/app/reports',            element: <Reports /> },
+              { path: '/app/zone-editor',        element: <ZoneEditor /> },
             ],
           },
 

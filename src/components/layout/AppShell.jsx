@@ -16,7 +16,8 @@ const PAGE_TITLES = {
   '/app/contacts':         'Contactos',
   '/app/reports':          'Reportes',
   '/app/team':             'Equipo',
-  '/app/settings':         'Ajustes',
+  '/app/settings':         'Configuración',
+  '/app/inventory-settings': 'Ajustes de inventario',
   '/app/support':          'Soporte',
   '/app/billing':          'Facturación',
 }

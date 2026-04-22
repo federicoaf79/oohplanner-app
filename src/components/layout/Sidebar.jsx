@@ -31,8 +31,7 @@ const NAV_SECTIONS = [
         roles: ['owner', 'manager'] },
       { label: 'Facturación',        path: '/app/billing',     icon: Receipt,
         roles: ['owner'] },
-      // Placeholder: points to /app/settings until a dedicated inventory-settings page exists.
-      { label: 'Ajustes Inventario', path: '/app/settings',    icon: Settings,
+      { label: 'Ajustes Inventario', path: '/app/inventory-settings', icon: Settings,
         roles: ['owner', 'manager'] },
     ],
   },
@@ -57,7 +56,7 @@ const NAV_SECTIONS = [
   // Section 4: Global settings — separator line, no header.
   {
     items: [
-      { label: 'Ajustes', path: '/app/settings', icon: Settings,
+      { label: 'Configuración', path: '/app/settings', icon: Settings,
         roles: ['owner', 'manager', 'salesperson'] },
     ],
   },
