@@ -6,6 +6,36 @@ import { useAuth } from '../../context/AuthContext'
 import { formatDate, formatCurrency } from '../../lib/utils'
 import Spinner from '../../components/ui/Spinner'
 import { WORKFLOW_STATUSES, FORMAT_MAP } from '../../lib/constants'
+import ProfitabilityChart from '../../components/ProfitabilityChart'
+
+// Mirrors supabase/functions/plan-pauta/index.ts::calcMargin. Keep in sync.
+function calculateProfitability(proposal) {
+  const items    = proposal?.proposal_items ?? []
+  const discount = proposal?.discount_pct ?? 0
+
+  const listTotal = items.reduce((s, i) => s + (i.rate ?? 0), 0)
+  const revenue   = proposal?.total_value ?? Math.round(listTotal * (1 - discount / 100))
+
+  let costs = 0
+  for (const item of items) {
+    const inv = item.site
+    if (!inv) continue
+    const area         = (inv.width_m ?? 0) * (inv.height_m ?? 0)
+    const fixedCosts   = (inv.cost_rent ?? 0) + (inv.cost_electricity ?? 0) +
+                         (inv.cost_taxes ?? 0) + (inv.cost_maintenance ?? 0) +
+                         (inv.cost_imponderables ?? 0)
+    const campaignCost = (inv.cost_print_per_m2 ?? 0) * area +
+                         (inv.cost_colocation ?? 0) + (inv.cost_design ?? 0)
+    const commissions  = (inv.base_rate ?? 0) * (
+      ((inv.cost_seller_commission_pct ?? 0) +
+       (inv.cost_agency_commission_pct ?? 0) +
+       (inv.asociado_comision_pct ?? 0)) / 100
+    )
+    costs += fixedCosts + campaignCost + commissions
+  }
+
+  return { revenue, costs }
+}
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -382,9 +412,11 @@ function CampaignModal({ campaign, onClose }) {
 // ── Campaign card ─────────────────────────────────────────────
 
 function CampaignCard({ proposal, canAdvance, canJump, onStatusChange, onAdvance, onOpen, advancing }) {
+  const { isOwner } = useAuth()
   const [showMeasures, setShowMeasures] = useState(false)
   const timeStatus = getCampaignTimeStatus(proposal)
   const next       = getNextStatus(proposal.workflow_status)
+  const { revenue, costs } = isOwner ? calculateProfitability(proposal) : { revenue: 0, costs: 0 }
 
   return (
     <div
@@ -397,10 +429,17 @@ function CampaignCard({ proposal, canAdvance, canJump, onStatusChange, onAdvance
           <p className="font-semibold text-white truncate">{proposal.title}</p>
           <p className="mt-0.5 text-sm text-slate-500">{proposal.client_name}</p>
         </div>
-        <div className="shrink-0">
+        <div className="flex flex-col items-end gap-1.5 shrink-0">
           <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${BADGE_COLORS[timeStatus.color]}`}>
             {timeStatus.label}
           </span>
+          {isOwner && (
+            <ProfitabilityChart
+              campaignId={proposal.id}
+              revenue={revenue}
+              costs={costs}
+            />
+          )}
         </div>
       </div>
 
@@ -499,6 +538,12 @@ export default function Campaigns() {
 
     async function load() {
       try {
+        // Owners get cost fields too (for the profitability chart).
+        // Non-owners don't receive cost data in the payload at all.
+        const baseSiteFields = 'id, name, code, format, address, print_width_cm, print_height_cm'
+        const costSiteFields = ', width_m, height_m, base_rate, cost_rent, cost_electricity, cost_taxes, cost_maintenance, cost_imponderables, cost_print_per_m2, cost_colocation, cost_design, cost_seller_commission_pct, cost_agency_commission_pct, asociado_comision_pct'
+        const siteFields = isOwner ? baseSiteFields + costSiteFields : baseSiteFields
+
         let query = supabase
           .from('proposals')
           .select(`
@@ -506,7 +551,7 @@ export default function Campaigns() {
             creator:profiles!created_by(id, full_name),
             proposal_items(
               id, site_id, rate, start_date, end_date, duration,
-              site:inventory(id, name, code, format, address, print_width_cm, print_height_cm)
+              site:inventory(${siteFields})
             )
           `)
           .eq('org_id', profile.org_id)
@@ -551,7 +596,7 @@ export default function Campaigns() {
     }
 
     load()
-  }, [profile?.org_id, profile?.id, isSalesperson])
+  }, [profile?.org_id, profile?.id, isSalesperson, isOwner])
 
   // Unique vendors derived from loaded campaigns (owner/manager only)
   const vendors = useMemo(() => {
