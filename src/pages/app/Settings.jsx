@@ -67,10 +67,6 @@ export default function Settings() {
 
   // ── Tabs ──
   const [activeTab, setActiveTab] = useState(canEditOrg ? 'company' : 'profile')
-  // Note: the 'confidential_reports' tab content block remains further down
-  // this file as unreachable dead code pending migration to
-  // /app/inventory-settings. Do not delete without moving the logic.
-  // ('team', 'commercial' and 'confidential_contacts' have been migrated.)
   const tabs = [
     { id: 'company',  label: 'Empresa',              visible: canEditOrg },
     { id: 'profile',  label: 'Mi Perfil de Usuario', visible: true       },
@@ -591,17 +587,6 @@ export default function Settings() {
             </div>
 
           </div>
-        )}
-
-        {/* TAB 6 — Reportes confidenciales (placeholder) */}
-        {activeTab === 'confidential_reports' && (
-          <Card>
-            <CardHeader title="Reportes confidenciales" />
-            <div className="text-center py-12 text-slate-500">
-              <p>Próximamente</p>
-              <p className="text-xs mt-2">Rentabilidad global, por cartel, por facilitador y por vendedor</p>
-            </div>
-          </Card>
         )}
 
         {/* TAB 7 — Privacidad y seguridad */}

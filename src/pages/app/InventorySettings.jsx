@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, Fragment } from 'react'
-import { BarChart2, ShieldCheck, Loader2, Lock, ChevronRight, MoreVertical } from 'lucide-react'
+import { ShieldCheck, Loader2, Lock, ChevronRight, MoreVertical } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
 import Card, { CardHeader } from '../../components/ui/Card'
@@ -20,17 +20,6 @@ function SaveRow({ loading, saved, children }) {
 function fmtDate(str) {
   if (!str) return '—'
   return new Date(str + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
-}
-
-// Placeholder metadata for tabs not yet migrated. 'team', 'commercial' and
-// 'contacts' are implemented below; only 'reports' still lives as dead code in
-// Settings.jsx pending future migration.
-const PLACEHOLDERS = {
-  reports: {
-    icon: BarChart2,
-    title: 'Reportes Confidenciales',
-    description: 'Acceso a reportes de rentabilidad',
-  },
 }
 
 const TABS = [
@@ -873,9 +862,15 @@ export default function InventorySettings() {
           </Card>
         )}
 
-        {/* Placeholder tab (reports) */}
-        {activeTab !== 'team' && activeTab !== 'commercial' && activeTab !== 'contacts' && (
-          <PlaceholderTab kind={activeTab} />
+        {/* TAB — Reportes Confidenciales (implemented) */}
+        {activeTab === 'reports' && (
+          <Card>
+            <CardHeader title="Reportes confidenciales" />
+            <div className="text-center py-12 text-slate-500">
+              <p>Próximamente</p>
+              <p className="text-xs mt-2">Rentabilidad global, por cartel, por facilitador y por vendedor</p>
+            </div>
+          </Card>
         )}
       </div>
 
@@ -951,22 +946,3 @@ export default function InventorySettings() {
   )
 }
 
-function PlaceholderTab({ kind }) {
-  const meta = PLACEHOLDERS[kind]
-  if (!meta) return null
-  const { icon: Icon, title, description } = meta
-  return (
-    <Card>
-      <div className="flex flex-col items-center text-center py-10 px-4">
-        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-brand/10 text-brand">
-          <Icon className="h-6 w-6" />
-        </div>
-        <p className="text-base font-semibold text-white">{title}</p>
-        <p className="mt-1 text-sm text-slate-500 max-w-md">{description}</p>
-        <span className="mt-4 rounded-full bg-surface-700/50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-          Próximamente
-        </span>
-      </div>
-    </Card>
-  )
-}
