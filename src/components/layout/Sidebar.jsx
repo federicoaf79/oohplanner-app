@@ -92,7 +92,7 @@ export default function Sidebar({ open, onClose }) {
         <div className="flex h-16 items-center justify-between px-5 border-b border-surface-700">
           <div className="flex items-center gap-2.5 min-w-0">
             <img
-              src="/logo.png"
+              src="/logo1.png"
               alt="OOH Planner"
               className="h-10 w-auto flex-shrink-0"
             />

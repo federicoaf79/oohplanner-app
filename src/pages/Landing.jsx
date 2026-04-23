@@ -395,7 +395,7 @@ export default function Landing() {
       {/* Footer */}
       <footer className="border-t border-surface-700 px-4 py-8 lg:px-8">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 sm:flex-row">
-          <img src="/logo.png" alt="OOH Planner" className="h-12 w-auto" />
+          <img src="/logo2.png" alt="OOH Planner" className="h-9 w-auto" />
           <p className="text-xs text-slate-600">© {new Date().getFullYear()} OOH Planner. Todos los derechos reservados.</p>
         </div>
       </footer>
