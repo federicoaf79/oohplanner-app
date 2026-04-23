@@ -317,7 +317,16 @@ export default function Reports() {
       ? occupiedSiteIds.size / physicalInventory.length * 100
       : 0
 
-    return { revenue, activeCount, closureRate, closureRateDetail: closureRateResult, occupancyPct, physicalSiteCount: physicalInventory.length }
+    return {
+      revenue,
+      activeCount,
+      closureRate,
+      closureRateDetail: closureRateResult,
+      occupancyPct,
+      physicalSiteCount: physicalInventory.length,
+      occupiedCount:     occupiedSiteIds.size,
+      digitalCount:      inventory.length - physicalInventory.length,
+    }
   }, [proposals, filteredProposals, filteredItems, propItems, inventory, dateRange, customStart, customEnd])
 
   // ── trend chart (always last 6 months) ───────────────────────────────────
@@ -612,9 +621,16 @@ export default function Reports() {
         />
         <KPICard
           icon={LayoutGrid}
-          label="Carteles ocupados"
+          label="Ocupación física"
           value={fmtPct(kpis.occupancyPct)}
-          sub={`${kpis.physicalSiteCount} carteles físicos totales`}
+          sub={
+            <>
+              {kpis.occupiedCount} de {kpis.physicalSiteCount} carteles físicos ocupados
+              <span className="block mt-0.5 text-[10px] text-slate-600">
+                {kpis.digitalCount} digitales siempre disponibles
+              </span>
+            </>
+          }
           color="text-cyan-400"
         />
       </div>
