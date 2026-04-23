@@ -178,7 +178,7 @@ export default function Landing() {
       {/* Navbar */}
       <nav className="fixed top-0 z-50 w-full border-b border-surface-700/50 bg-surface-900/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 lg:px-8">
-          <img src="/logo.png" alt="OOH Planner" className="h-12 w-auto" />
+          <img src="/logo.png" alt="OOH Planner" className="h-16 w-auto" />
           <div className="hidden items-center gap-8 md:flex">
             {['Características', 'Formatos'].map(item => (
               <a key={item} href={`#${item.toLowerCase()}`} className="text-sm text-slate-400 transition-colors hover:text-white">{item}</a>
@@ -395,7 +395,7 @@ export default function Landing() {
       {/* Footer */}
       <footer className="border-t border-surface-700 px-4 py-8 lg:px-8">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 sm:flex-row">
-          <img src="/logo.png" alt="OOH Planner" className="h-9 w-auto" />
+          <img src="/logo.png" alt="OOH Planner" className="h-12 w-auto" />
           <p className="text-xs text-slate-600">© {new Date().getFullYear()} OOH Planner. Todos los derechos reservados.</p>
         </div>
       </footer>
