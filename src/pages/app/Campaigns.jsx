@@ -7,35 +7,7 @@ import { formatDate, formatCurrency } from '../../lib/utils'
 import Spinner from '../../components/ui/Spinner'
 import { WORKFLOW_STATUSES, FORMAT_MAP } from '../../lib/constants'
 import ProfitabilityChart from '../../components/ProfitabilityChart'
-
-// Mirrors supabase/functions/plan-pauta/index.ts::calcMargin. Keep in sync.
-function calculateProfitability(proposal) {
-  const items    = proposal?.proposal_items ?? []
-  const discount = proposal?.discount_pct ?? 0
-
-  const listTotal = items.reduce((s, i) => s + (i.rate ?? 0), 0)
-  const revenue   = proposal?.total_value ?? Math.round(listTotal * (1 - discount / 100))
-
-  let costs = 0
-  for (const item of items) {
-    const inv = item.site
-    if (!inv) continue
-    const area         = (inv.width_m ?? 0) * (inv.height_m ?? 0)
-    const fixedCosts   = (inv.cost_rent ?? 0) + (inv.cost_electricity ?? 0) +
-                         (inv.cost_taxes ?? 0) + (inv.cost_maintenance ?? 0) +
-                         (inv.cost_imponderables ?? 0)
-    const campaignCost = (inv.cost_print_per_m2 ?? 0) * area +
-                         (inv.cost_colocation ?? 0) + (inv.cost_design ?? 0)
-    const commissions  = (inv.base_rate ?? 0) * (
-      ((inv.cost_seller_commission_pct ?? 0) +
-       (inv.cost_agency_commission_pct ?? 0) +
-       (inv.asociado_comision_pct ?? 0)) / 100
-    )
-    costs += fixedCosts + campaignCost + commissions
-  }
-
-  return { revenue, costs }
-}
+import { calculateProfitability } from '../../lib/profitability'
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -541,7 +513,7 @@ export default function Campaigns() {
         // Owners get cost fields too (for the profitability chart).
         // Non-owners don't receive cost data in the payload at all.
         const baseSiteFields = 'id, name, code, format, address, print_width_cm, print_height_cm'
-        const costSiteFields = ', width_m, height_m, base_rate, cost_rent, cost_electricity, cost_taxes, cost_maintenance, cost_imponderables, cost_print_per_m2, cost_colocation, cost_design, cost_seller_commission_pct, cost_agency_commission_pct, asociado_comision_pct'
+        const costSiteFields = ', width_m, height_m, base_rate, cost_rent, cost_electricity, cost_taxes, cost_maintenance, cost_imponderables, cost_print_per_m2, cost_colocation, cost_design, cost_seller_commission_pct, cost_agency_commission_pct, cost_owner_commission_pct, cost_owner_commission'
         const siteFields = isOwner ? baseSiteFields + costSiteFields : baseSiteFields
 
         let query = supabase
