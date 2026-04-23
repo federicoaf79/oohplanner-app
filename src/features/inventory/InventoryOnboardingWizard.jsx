@@ -446,7 +446,7 @@ Devolvé ÚNICAMENTE un array JSON sin texto adicional:
   "cost_seller_commission_pct": number|null,
   "cost_agency_commission_pct": number|null,
   "asociado_nombre": "string|null",
-  "asociado_comision_pct": number|null
+  "cost_owner_commission_pct": number|null
 }]
 REGLAS: valores monetarios en ARS (pesos argentinos). Porcentajes entre 0 y 100, nunca decimales como 0.05. code es crítico para el match con el inventario. Solo JSON array, sin texto adicional.`
 
@@ -879,7 +879,7 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
         cost_colocation: r.cost_colocation ?? null, cost_design: r.cost_design ?? null,
         cost_seller_commission_pct: r.cost_seller_commission_pct ?? null,
         cost_agency_commission_pct: r.cost_agency_commission_pct ?? null,
-        asociado_nombre: r.asociado_nombre ?? null, asociado_comision_pct: r.asociado_comision_pct ?? null,
+        asociado_nombre: r.asociado_nombre ?? null, cost_owner_commission_pct: r.cost_owner_commission_pct ?? null,
       }))
       const { error } = await supabase.from('inventory')
         .upsert(rows, { onConflict: 'org_id,code', ignoreDuplicates: false })
@@ -1003,7 +1003,7 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
     const headers = ['codigo','nombre','direccion','precio_mensual','precio_venta',
       'costo_alquiler','costo_luz','costo_impuestos','costo_mantenimiento',
       'costo_imponderables','costo_impresion_m2','costo_colocacion','costo_diseno',
-      'comision_vendedor_pct','comision_agencia_pct','asociado_nombre','asociado_comision_pct']
+      'comision_vendedor_pct','comision_agencia_pct','asociado_nombre','cost_owner_commission_pct']
     const rows = importedItems.map(i => [i.code, i.name, i.address, '', '', '', '', '', '', '', '', '', '', '', '', '', ''])
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows])
     const wb = XLSX.utils.book_new()

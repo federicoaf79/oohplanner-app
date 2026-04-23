@@ -87,7 +87,7 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
       cost_owner_commission:    item.cost_owner_commission ?? 0,
       // Asociado al cartel
       asociado_nombre:          item.asociado_nombre ?? '',
-      asociado_comision_pct:    item.asociado_comision_pct ?? 0,
+      cost_owner_commission_pct:    item.cost_owner_commission_pct ?? 0,
       // Costos campaña
       cost_print_per_m2:        item.cost_print_per_m2 ?? 0,
       cost_colocation:        item.cost_colocation ?? 0,
@@ -198,7 +198,7 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
         cost_imponderables:       form.cost_imponderables,
         cost_owner_commission:    form.cost_owner_commission,
         asociado_nombre:          form.asociado_nombre || null,
-        asociado_comision_pct:    form.asociado_comision_pct,
+        cost_owner_commission_pct:    form.cost_owner_commission_pct,
         cost_print_per_m2:        form.cost_print_per_m2,
         cost_colocation:        form.cost_colocation,
         cost_design:              form.cost_design,
@@ -421,8 +421,8 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
                     <div className="relative">
                       <input
                         type="number"
-                        value={form.asociado_comision_pct}
-                        onChange={e => set('asociado_comision_pct', Number(e.target.value))}
+                        value={form.cost_owner_commission_pct}
+                        onChange={e => set('cost_owner_commission_pct', Number(e.target.value))}
                         min="0" max="100" step="0.5"
                         className="w-full rounded-lg border border-surface-700 bg-surface-800 px-3 py-2 pr-8 text-sm text-white focus:border-brand focus:outline-none"
                       />
@@ -463,7 +463,7 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
                   <p className="text-xs text-slate-400">
                     <span className="text-white font-medium">{form.asociado_nombre}</span>
                     {' '}cobra el{' '}
-                    <span className="text-amber-400 font-semibold">{form.asociado_comision_pct}%</span>
+                    <span className="text-amber-400 font-semibold">{form.cost_owner_commission_pct}%</span>
                     {' '}sobre el precio de venta del espacio.
                   </p>
                   <p className="text-xs text-slate-500 mt-1">Configurado en la pestaña Costos fijos.</p>
