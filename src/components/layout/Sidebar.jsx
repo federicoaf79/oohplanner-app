@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Megaphone, MapPin, FileText,
-  BarChart2, Users, Settings, X, Zap, Receipt, Crosshair,
+  BarChart2, Users, Settings, X, Receipt, Crosshair,
   BookUser, HelpCircle,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
@@ -90,14 +90,15 @@ export default function Sidebar({ open, onClose }) {
       )}>
         {/* Logo */}
         <div className="flex h-16 items-center justify-between px-5 border-b border-surface-700">
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand">
-              <Zap className="h-4 w-4 text-white" />
-            </div>
-            <div>
-              <p className="text-sm font-bold text-white leading-none">OOH Planner</p>
-              <p className="text-xs text-slate-500 truncate max-w-[120px]">{org?.name}</p>
-            </div>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <img
+              src="/logo.png"
+              alt="OOH Planner"
+              className="h-10 w-auto flex-shrink-0"
+            />
+            {org?.name && (
+              <p className="text-xs text-slate-500 truncate">{org.name}</p>
+            )}
           </div>
           <button
             onClick={onClose}
