@@ -11,6 +11,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { FORMAT_MAP } from '../../lib/constants'
 import { calculateMonthCloseRate, calculateHistoricalCloseRate } from '../../lib/closeRate'
+import { calculateSiteProfitability } from '../../lib/profitability'
 import Spinner from '../../components/ui/Spinner'
 import ProposalMap from '../../features/proposals/ProposalMap'
 
@@ -268,13 +269,16 @@ function computeDerived(
   const topFormat = topFmtKey ? (FORMAT_MAP[topFmtKey]?.label ?? topFmtKey) : null
 
   // ── Oportunidades: top 5 físicos disponibles por margen ──
+  // Uses shared calculateSiteProfitability — full formula (fixed + campaign
+  // costs + all three commission roles on revenue_net). Previous version
+  // used fixed-only, so margins shown here will be lower.
   const opportunities = inventory
     .filter(i => i.is_available && !DIGITAL.has(i.format) && (i.base_rate ?? 0) > 0)
     .map(i => {
-      const margin = (i.base_rate ?? 0)
-        - (i.cost_rent ?? 0) - (i.cost_electricity ?? 0)
-        - (i.cost_taxes ?? 0) - (i.cost_maintenance ?? 0) - (i.cost_imponderables ?? 0)
-      return { ...i, margin, marginPct: i.base_rate > 0 ? margin / i.base_rate * 100 : 0 }
+      const p = calculateSiteProfitability(i, { discountPct: 0, months: 1 })
+      const margin    = p?.margin    ?? 0
+      const marginPct = p?.margin_pct ?? 0
+      return { ...i, margin, marginPct }
     })
     .sort((a, b) => b.margin - a.margin)
     .slice(0, 5)
@@ -354,7 +358,7 @@ export default function Dashboard() {
     Promise.all([
       // 1 — Inventario completo
       supabase.from('inventory')
-        .select('id, name, code, format, is_available, available_until, base_rate, cost_rent, cost_electricity, cost_taxes, cost_maintenance, cost_imponderables, latitude, longitude, address, owner_type')
+        .select('id, name, code, format, is_available, available_until, base_rate, cost_rent, cost_electricity, cost_taxes, cost_maintenance, cost_imponderables, width_m, height_m, print_width_cm, print_height_cm, cost_print_per_m2, cost_colocation, cost_design, cost_seller_commission_pct, cost_agency_commission_pct, cost_owner_commission_pct, cost_owner_commission, latitude, longitude, address, owner_type')
         .eq('org_id', profile.org_id),
 
       // 2 — Proposal items con fechas
@@ -700,7 +704,8 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── OPORTUNIDADES DE VENTA (todos los roles) ── */}
+      {/* ── OPORTUNIDADES DE VENTA (owner/manager — revela margen) ── */}
+      {isCompany && (
       <div>
         <h3 className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-500">
           Oportunidades de venta
@@ -775,6 +780,7 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+      )}
 
       {/* ── CAMPAÑAS PRÓXIMAS A VENCER (todos los roles) ── */}
       <div>
