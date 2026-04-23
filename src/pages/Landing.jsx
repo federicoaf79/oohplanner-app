@@ -143,6 +143,8 @@ const FORMATS = [
   { name: 'Pantallas Móviles', desc: 'Pantallas digitales en movimiento posicionadas en zonas de calor según la audiencia objetivo.', color: 'from-teal-900/40 to-teal-950/20 border-teal-500/30', badge: 'bg-teal-500/20 text-teal-300', Illustration: IllustrationMovil },
 ]
 
+// TODO: reactivar cuando haya data real (demo 25/04/2026)
+// eslint-disable-next-line no-unused-vars
 const PLANS = [
   {
     name: 'Starter', price: '$ARS 400.000', desc: 'Perfecto para dueños con inventario pequeño-mediano',
@@ -161,6 +163,8 @@ const PLANS = [
   },
 ]
 
+// TODO: reactivar cuando haya data real (demo 25/04/2026)
+// eslint-disable-next-line no-unused-vars
 const TESTIMONIALS = [
   { name: 'Carlos Mendoza', role: 'Director Comercial, Medios del Norte', text: 'OOH Planner nos permitió reducir el tiempo de preparación de propuestas de 3 días a 2 horas. Increíble.', stars: 5 },
   { name: 'María Torres', role: 'CEO, UrbanAds MX', text: 'Finalmente una plataforma pensada para el mercado OOH. El inventario georeferenciado es un game changer.', stars: 5 },
@@ -176,7 +180,7 @@ export default function Landing() {
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 lg:px-8">
           <img src="/logo.png" alt="OOH Planner" className="h-12 w-auto" />
           <div className="hidden items-center gap-8 md:flex">
-            {['Características', 'Formatos', 'Precios', 'Testimonios'].map(item => (
+            {['Características', 'Formatos'].map(item => (
               <a key={item} href={`#${item.toLowerCase()}`} className="text-sm text-slate-400 transition-colors hover:text-white">{item}</a>
             ))}
           </div>
@@ -197,24 +201,23 @@ export default function Landing() {
         <div className="relative mx-auto max-w-4xl text-center">
           <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand/10 px-4 py-1.5 text-sm text-brand">
             <TrendingUp className="h-3.5 w-3.5" />
-            Plataforma #1 para gestión OOH en LATAM
+            Diseñada en Argentina para el mercado OOH local
           </div>
           <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
-            Transforma tu operación{' '}
-            <span className="text-brand">OOH</span>{' '}
-            con tecnología inteligente
+            Vendé más de tu inventario de{' '}
+            <span className="text-brand">vía pública</span>, con control total
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-slate-400">
             Gestiona campañas, inventario y propuestas de publicidad exterior en una sola plataforma.
             Vendé más de tu inventario, controlá costos y maximizá rentabilidad por cartel.
           </p>
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-            <Link to="/register" className="btn-primary text-base px-6 py-3">
-              Impleméntala hoy mismo — 7 días gratis
+            <a href="mailto:hola@oohplanner.net" className="btn-primary text-base px-6 py-3">
+              Solicitá una demo
               <ChevronRight className="h-4 w-4" />
-            </Link>
+            </a>
           </div>
-          <p className="mt-4 text-xs text-slate-600">Sin tarjeta de crédito · Cancelación en cualquier momento</p>
+          <p className="mt-4 text-xs text-slate-600">Respondemos en 24hs hábiles</p>
         </div>
       </section>
 
@@ -291,7 +294,8 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Social proof */}
+      {/* Social proof — hidden for demo, reactivate when real customers exist */}
+      {/*
       <section className="border-y border-surface-700 bg-surface-800/50 px-4 py-12 lg:px-8">
         <div className="mx-auto max-w-5xl text-center">
           <p className="text-sm font-medium text-slate-500 uppercase tracking-widest mb-8">Utilizado por operadores líderes de OOH</p>
@@ -302,8 +306,10 @@ export default function Landing() {
           </div>
         </div>
       </section>
+      */}
 
-      {/* Testimonials */}
+      {/* Testimonials — hidden for demo, reactivate when real testimonials exist */}
+      {/*
       <section id="testimonios" className="px-4 py-20 lg:px-8 lg:py-28">
         <div className="mx-auto max-w-7xl">
           <div className="mb-16 text-center">
@@ -325,8 +331,10 @@ export default function Landing() {
           </div>
         </div>
       </section>
+      */}
 
-      {/* Pricing */}
+      {/* Pricing — hidden for demo, reactivate when pricing is locked in */}
+      {/*
       <section id="precios" className="px-4 py-20 lg:px-8 lg:py-28 bg-surface-800/20">
         <div className="mx-auto max-w-7xl">
           <div className="mb-16 text-center">
@@ -368,13 +376,14 @@ export default function Landing() {
           </div>
         </div>
       </section>
+      */}
 
       {/* CTA */}
       <section className="px-4 py-20 lg:px-8">
         <div className="mx-auto max-w-3xl text-center">
           <div className="rounded-2xl border border-brand/20 bg-brand/5 p-10">
             <h2 className="text-3xl font-bold text-white">Transformá tu operación OOH hoy mismo</h2>
-            <p className="mt-4 text-slate-400">Únete a más de 50 operadores que ya gestionan su inventario con OOH Planner.</p>
+            <p className="mt-4 text-slate-400">Gestioná tu inventario, vendé mejor, y tené control real de tu rentabilidad.</p>
             <a href="mailto:hola@oohplanner.net" className="btn-primary mt-8 inline-flex text-base px-8 py-3">
               Contactanos
               <ArrowRight className="h-4 w-4" />
