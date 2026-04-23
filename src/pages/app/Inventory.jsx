@@ -516,17 +516,31 @@ export default function Inventory() {
 
   const zones = [...new Set(items.map(i => i.city).filter(Boolean))].sort()
 
-  const filtered = items.filter(item => {
-    const q = search.toLowerCase()
-    const matchSearch = !q ||
-      item.name?.toLowerCase().includes(q) ||
-      item.code?.toLowerCase().includes(q) ||
-      item.address?.toLowerCase().includes(q)
-    const matchZone   = !filterZone   || item.city === filterZone
-    const matchFormat = !filterFormat || item.format === filterFormat
-    const matchAvail  = !filterAvail  || String(item.is_available) === filterAvail
-    return matchSearch && matchZone && matchFormat && matchAvail
-  })
+  const filtered = items
+    .filter(item => {
+      const q = search.toLowerCase()
+      const matchSearch = !q ||
+        item.name?.toLowerCase().includes(q) ||
+        item.code?.toLowerCase().includes(q) ||
+        item.address?.toLowerCase().includes(q)
+      const matchZone   = !filterZone   || item.city === filterZone
+      const matchFormat = !filterFormat || item.format === filterFormat
+      const matchAvail  = !filterAvail  || String(item.is_available) === filterAvail
+      return matchSearch && matchZone && matchFormat && matchAvail
+    })
+    // Items with a real photo first, placeholders (null photoUrl) last.
+    // Uses getItemPhotoUrl so caras/photo_url/image_url priority matches render.
+    // The includes('placehold') check is a defensive no-op — current data uses
+    // null URL + format-emoji div for placeholders, not placeholder URLs.
+    .sort((a, b) => {
+      const aUrl = getItemPhotoUrl(a)
+      const bUrl = getItemPhotoUrl(b)
+      const aReal = !!aUrl && !aUrl.includes('placehold')
+      const bReal = !!bUrl && !bUrl.includes('placehold')
+      if (aReal && !bReal) return -1
+      if (!aReal && bReal) return 1
+      return 0
+    })
 
   return (
     <div className="space-y-5 animate-fade-in">
