@@ -46,7 +46,7 @@ function FitBounds({ sites }) {
   return null
 }
 
-export default function ProposalMap({ sites = [], className = '', mapRef, mapHeight = '100%', getMarkerColor = null }) {
+export default function ProposalMap({ sites = [], className = '', mapRef, mapHeight = '100%', getMarkerColor = null, showLegend = true }) {
   const validSites = sites.filter(s => s.latitude && s.longitude)
 
   const center = useMemo(() => {
@@ -77,44 +77,57 @@ export default function ProposalMap({ sites = [], className = '', mapRef, mapHei
             position={[site.latitude, site.longitude]}
             icon={createDivIcon(site.format, false, getMarkerColor ? getMarkerColor(site) : null)}
           >
-            <Popup maxWidth={220}>
+            <Popup maxWidth={240}>
               <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '13px', lineHeight: 1.4 }}>
                 <p style={{ fontWeight: 700, marginBottom: 4 }}>{site.name}</p>
-                <p style={{ color: '#64748b', marginBottom: 4 }}>{site.address}</p>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{
-                    background: `${FORMAT_MAP[site.format]?.color}20`,
-                    color: FORMAT_MAP[site.format]?.color,
-                    borderRadius: 999, padding: '1px 8px', fontSize: 11, fontWeight: 600
-                  }}>
-                    {FORMAT_MAP[site.format]?.label ?? site.format}
+                <p style={{ color: '#64748b', marginBottom: 6 }}>{site.address}</p>
+                <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '2px 10px', fontSize: 12 }}>
+                  <span style={{ color: '#64748b' }}>Formato:</span>
+                  <span style={{ color: FORMAT_MAP[site.format]?.color ?? '#94a3b8', fontWeight: 600 }}>
+                    {FORMAT_MAP[site.format]?.label ?? site.format ?? '—'}
+                  </span>
+                  <span style={{ color: '#64748b' }}>Tipo:</span>
+                  <span style={{ color: '#e2e8f0', fontWeight: 600 }}>
+                    {site.owner_type === 'owned' ? 'Propio'
+                      : site.owner_type === 'rented' ? 'Comercializado'
+                      : '—'}
                   </span>
                   {site.rate && (
-                    <span style={{ color: '#94a3b8', fontSize: 11 }}>
-                      {formatCurrency(site.rate, 'ARS')}/mes
-                    </span>
+                    <>
+                      <span style={{ color: '#64748b' }}>Precio:</span>
+                      <span style={{ color: '#e2e8f0' }}>
+                        {formatCurrency(site.rate, 'ARS')}/mes
+                      </span>
+                    </>
+                  )}
+                  {site.impactsPerMonth && (
+                    <>
+                      <span style={{ color: '#64748b' }}>Impactos:</span>
+                      <span style={{ color: '#e2e8f0' }}>
+                        ~{(site.impactsPerMonth / 1000).toFixed(0)}k/mes
+                      </span>
+                    </>
                   )}
                 </div>
-                {site.impactsPerMonth && (
-                  <p style={{ color: '#94a3b8', fontSize: 11, marginTop: 4 }}>
-                    ~{(site.impactsPerMonth / 1000).toFixed(0)}k impactos/mes
-                  </p>
-                )}
               </div>
             </Popup>
           </Marker>
         ))}
       </MapContainer>
 
-      {/* Legend */}
-      <div className="flex items-center gap-4 border-t border-surface-700 bg-surface-800 px-4 py-2.5">
-        {Object.entries(FORMAT_MAP).map(([key, { label, color }]) => (
-          <div key={key} className="flex items-center gap-1.5">
-            <div className="h-3 w-3 rounded-full border-2 border-white/40" style={{ background: color }} />
-            <span className="text-xs text-slate-500">{label}</span>
-          </div>
-        ))}
-      </div>
+      {/* Legend — format colors. Callers using a custom marker-color scheme
+          (e.g. Dashboard's owner_type colouring) should pass showLegend={false}
+          and render their own legend to avoid a double-legend UX. */}
+      {showLegend && (
+        <div className="flex items-center gap-4 border-t border-surface-700 bg-surface-800 px-4 py-2.5">
+          {Object.entries(FORMAT_MAP).map(([key, { label, color }]) => (
+            <div key={key} className="flex items-center gap-1.5">
+              <div className="h-3 w-3 rounded-full border-2 border-white/40" style={{ background: color }} />
+              <span className="text-xs text-slate-500">{label}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
