@@ -11,6 +11,7 @@ import { supabase } from '../../lib/supabase'
 import { FORMAT_MAP } from '../../lib/constants'
 import { useAuth } from '../../context/AuthContext'
 import { calculateHistoricalCloseRate } from '../../lib/closeRate'
+import { calculateSiteProfitability, calculateMonthlyFleetMargin } from '../../lib/profitability'
 import Spinner from '../../components/ui/Spinner'
 
 // ─── format helpers ──────────────────────────────────────────────────────────
@@ -175,10 +176,12 @@ export default function Reports() {
           .select(`
             id, code, name, format, base_rate, is_available,
             cost_rent, cost_electricity, cost_taxes,
-            cost_maintenance, cost_imponderables, cost_print_per_m2,
+            cost_maintenance, cost_imponderables,
+            cost_print_per_m2, cost_colocation, cost_design,
+            print_width_cm, print_height_cm, width_m, height_m,
             cost_seller_commission_pct, cost_agency_commission_pct,
-            asociado_nombre, asociado_comision_pct,
-            width_m, height_m
+            cost_owner_commission_pct, cost_owner_commission,
+            asociado_nombre
           `)
           .eq('org_id', orgId),
       ])
@@ -213,6 +216,7 @@ export default function Reports() {
         const clientPrice = Math.round((pi.rate ?? 0) * (1 - discountPct / 100))
         return {
           ...pi,
+          discount_pct: discountPct,
           client_price: clientPrice,
           site_name: inv.name ?? null,
           site_code: inv.code ?? null,
@@ -227,7 +231,7 @@ export default function Reports() {
           cost_seller_commission_pct: inv.cost_seller_commission_pct ?? 0,
           cost_agency_commission_pct: inv.cost_agency_commission_pct ?? 0,
           asociado_nombre:            inv.asociado_nombre ?? null,
-          asociado_comision_pct:      inv.asociado_comision_pct ?? 0,
+          cost_owner_commission_pct:  inv.cost_owner_commission_pct ?? 0,
           width_m:  inv.width_m ?? 0,
           height_m: inv.height_m ?? 0,
         }
@@ -317,14 +321,14 @@ export default function Reports() {
   }, [proposals, filteredProposals, filteredItems, propItems, inventory, dateRange, customStart, customEnd])
 
   // ── trend chart (always last 6 months) ───────────────────────────────────
+  // Uses the shared calculateMonthlyFleetMargin helper. Scope: cost is only
+  // attributed to billboards actually occupied in each month (via overlap),
+  // not inventory-wide. Margin now includes print + colocation + design +
+  // all three commission roles on revenue_net.
   const trendData = useMemo(() => {
     const now = new Date()
     const DIGITAL_FORMATS = new Set(['digital', 'urban_furniture_digital'])
-
-    const totalFixedCosts = inventory.reduce((s, inv) =>
-      s + (inv.cost_rent ?? 0) + (inv.cost_electricity ?? 0) +
-      (inv.cost_taxes ?? 0) + (inv.cost_maintenance ?? 0) +
-      (inv.cost_imponderables ?? 0), 0)
+    const acceptedProposals = proposals.filter(p => p.status === 'accepted')
 
     const invMap = {}
     inventory.forEach(inv => { invMap[inv.id] = inv })
@@ -339,16 +343,13 @@ export default function Reports() {
       const monthStart = new Date(d.getFullYear(), d.getMonth(), 1)
       const monthEnd   = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59)
 
-      // Revenue: propuestas aceptadas en el mes (por accepted_at)
-      const monthProps = proposals.filter(p => {
-        if (p.status !== 'accepted') return false
-        const dt = new Date(p.accepted_at ?? p.created_at)
-        return dt >= monthStart && dt <= monthEnd
+      const fleet = calculateMonthlyFleetMargin({
+        proposals: acceptedProposals,
+        items:     propItems,
+        inventory,
+        monthStart,
+        monthEnd,
       })
-      const revIds = new Set(monthProps.map(p => p.id))
-      const revenue = propItems
-        .filter(pi => revIds.has(pi.proposal_id))
-        .reduce((s, pi) => s + (pi.client_price ?? pi.rate ?? 0), 0)
 
       // Ocupación: solapamiento real de campaña con el mes (solo físicos)
       const occupiedInMonth = new Set(
@@ -364,9 +365,13 @@ export default function Reports() {
         ? Math.round(occupiedInMonth.size / physicalTotal * 100)
         : 0
 
-      const margin = revenue > 0 ? (revenue - totalFixedCosts) / revenue * 100 : 0
-
-      return { name: MONTH_LABELS[d.getMonth()], revenue, costs: totalFixedCosts, occupancy, margin }
+      return {
+        name:      MONTH_LABELS[d.getMonth()],
+        revenue:   fleet.revenue_net,
+        costs:     fleet.cost_total,
+        occupancy,
+        margin:    fleet.margin_pct,
+      }
     })
   }, [proposals, propItems, inventory])
 
@@ -437,46 +442,63 @@ export default function Reports() {
   }, [inventory, filteredProposals, filteredItems])
 
   // ── profitability per site ────────────────────────────────────────────────
+  // Per-site profitability — aggregated across revenue-producing items via
+  // the shared calculateSiteProfitability helper. Now includes cost_colocation
+  // + cost_design + full owner commission (previously omitted).
   const siteProfit = useMemo(() => {
     return inventory.map(inv => {
       const siteItems = filteredItems.filter(pi => pi.site_id === inv.id)
       const revItems  = siteItems.filter(pi => REV_STATUSES.has(filteredStatusMap[pi.proposal_id]))
       const isOccupied = siteItems.some(pi => ACTIVE_STATUSES.has(filteredStatusMap[pi.proposal_id]))
 
-      const revenue = revItems.reduce((s, pi) => s + (pi.rate ?? 0), 0)
+      // Aggregate profitability per item using the shared helper.
+      const agg = revItems.reduce((acc, pi) => {
+        const months = Number(pi.duration) || 1
+        const result = calculateSiteProfitability(inv, {
+          months,
+          itemRate:   pi.rate,
+          discountPct: pi.discount_pct ?? 0,
+        })
+        if (!result) return acc
+        acc.revenue    += result.revenue_net
+        acc.fixedCosts += result.costs.fixed_prorated
+        acc.printCost  += result.costs.print
+        acc.colocation += result.costs.colocation
+        acc.design     += result.costs.design
+        acc.sellerComm += result.costs.seller_commission
+        acc.agencyComm += result.costs.agency_commission
+        acc.ownerComm  += result.costs.owner_commission
+        return acc
+      }, {
+        revenue: 0, fixedCosts: 0, printCost: 0, colocation: 0, design: 0,
+        sellerComm: 0, agencyComm: 0, ownerComm: 0,
+      })
 
-      // Fixed monthly costs
-      const fixedCosts = (inv.cost_rent ?? 0) + (inv.cost_electricity ?? 0) +
-        (inv.cost_taxes ?? 0) + (inv.cost_maintenance ?? 0) +
-        (inv.cost_imponderables ?? 0)
-      const area      = (inv.width_m ?? 0) * (inv.height_m ?? 0)
-      const printCost = (inv.cost_print_per_m2 ?? 0) * area
-      const totalCosts = fixedCosts + printCost
+      const totalCosts = agg.fixedCosts + agg.printCost + agg.colocation + agg.design
+      const totalComm  = agg.sellerComm + agg.agencyComm + agg.ownerComm
+      const netProfit  = agg.revenue - totalCosts - totalComm
+      const roi        = totalCosts > 0 ? netProfit / totalCosts * 100 : null
+      const margin     = agg.revenue > 0 ? netProfit / agg.revenue * 100 : null
 
-      // Commissions (per-item, then summed)
-      const sellerComm = revItems.reduce((s, pi) =>
-        s + (pi.rate ?? 0) * (pi.cost_seller_commission_pct ?? 0) / 100, 0)
-      const agencyComm = revItems.reduce((s, pi) =>
-        s + (pi.rate ?? 0) * (pi.cost_agency_commission_pct ?? 0) / 100, 0)
-      const asociPct   = inv.asociado_comision_pct ?? 0
-      const asociComm  = revenue * asociPct / 100
-      const totalComm  = sellerComm + agencyComm + asociComm
-
-      // For display pcts use first item's values
-      const fi = revItems[0]
-      const sellerPct = fi?.cost_seller_commission_pct ?? 0
-      const agencyPct = fi?.cost_agency_commission_pct ?? 0
-
-      const netProfit = revenue - totalCosts - totalComm
-      const roi       = totalCosts > 0 ? netProfit / totalCosts * 100 : null
-      const margin    = revenue > 0 ? netProfit / revenue * 100 : null
+      // Display percentages — from inv (current config), not frozen on items.
+      const sellerPct = inv.cost_seller_commission_pct ?? 0
+      const agencyPct = inv.cost_agency_commission_pct ?? 0
+      const ownerPct  = inv.cost_owner_commission_pct ?? 0
 
       return {
         ...inv,
-        revenue, fixedCosts, printCost, totalCosts,
-        sellerPct, agencyPct, asociPct,
+        revenue: agg.revenue,
+        fixedCosts: agg.fixedCosts,
+        printCost: agg.printCost,
+        totalCosts,
+        sellerPct,
+        agencyPct,
+        asociPct:  ownerPct,                          // UI backwards-compat key
         asociName: inv.asociado_nombre ?? null,
-        sellerComm, agencyComm, asociComm, totalComm,
+        sellerComm: agg.sellerComm,
+        agencyComm: agg.agencyComm,
+        asociComm:  agg.ownerComm,                    // UI backwards-compat key
+        totalComm,
         netProfit, roi, margin, isOccupied,
       }
     }).sort((a, b) => b.revenue - a.revenue)
