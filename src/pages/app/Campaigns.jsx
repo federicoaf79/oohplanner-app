@@ -206,27 +206,6 @@ function PrintMeasuresModal({ campaign, onClose }) {
   )
 }
 
-// ── Reusable collapsible section for the modal body ───────────
-function ModalSection({ title, right, defaultOpen = false, children }) {
-  const [open, setOpen] = useState(defaultOpen)
-  return (
-    <div className="rounded-xl border border-surface-700 bg-surface-800/40">
-      <button
-        type="button"
-        onClick={() => setOpen(v => !v)}
-        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-surface-800/70 transition-colors rounded-t-xl"
-      >
-        <div className="flex items-center gap-2">
-          <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${open ? 'rotate-0' : '-rotate-90'}`} />
-          <p className="text-sm font-semibold text-white">{title}</p>
-        </div>
-        {right && <span className="text-xs text-slate-500">{right}</span>}
-      </button>
-      {open && <div className="px-4 pb-4 pt-3 border-t border-surface-700/60">{children}</div>}
-    </div>
-  )
-}
-
 // ── Helpers for production ajuste state ───────────────────────
 function ajusteFromItem(item) {
   return {
@@ -375,11 +354,12 @@ function ProductionGlobalPanel({ campaign, items, org, editable, onItemsUpdated 
     return calculateProposalProfitability({ ...campaign, org, items: mutated })
   }, [campaign, items, org, s])
 
-  const stdTotal   = preview.cost_breakdown.produccion_cobrada_standard
-  const efeTotal   = preview.cost_breakdown.produccion_cobrada_efectiva
-  const bonif      = Math.max(0, stdTotal - efeTotal) + (Number(s.montoFijo) || 0) * items.length
+  const stdTotal    = preview.cost_breakdown.produccion_cobrada_standard
+  const efeTotal    = preview.cost_breakdown.produccion_cobrada_efectiva
+  // produccion_bonificacion_total = std - efectiva (already accounts for montoFijo)
+  const bonif       = Math.max(0, preview.cost_breakdown.produccion_bonificacion_total)
   const marginDelta = (preview.margin_pct - baseline.margin_pct)
-  const noCharge   = s.printEnabled === false && s.colocEnabled === false && s.disenoEnabled === false && (Number(s.montoFijo) || 0) === 0 && stdTotal > 0
+  const noCharge    = !s.printEnabled && !s.colocEnabled && !s.disenoEnabled && (Number(s.montoFijo) || 0) === 0 && stdTotal > 0
 
   async function handleSave() {
     setSaving(true)
@@ -476,7 +456,7 @@ function ProductionGlobalPanel({ campaign, items, org, editable, onItemsUpdated 
       </div>
 
       {/* Sticky: Impacto de los ajustes + acciones */}
-      <div className="sticky bottom-0 -mx-4 -mb-4 px-4 pt-3 pb-4 bg-slate-900/95 backdrop-blur border-t border-slate-700 rounded-b-xl space-y-3 z-10">
+      <div className="sticky bottom-0 -mx-5 -mb-5 px-5 pt-3 pb-4 bg-slate-900/95 backdrop-blur border-t border-slate-700 rounded-b-xl space-y-3 z-10">
         <div className="rounded-xl border border-surface-700 bg-surface-900 p-3">
           <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Impacto de los ajustes</p>
           <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2 text-sm">
@@ -729,6 +709,12 @@ function ProductionItemRow({ item, campaign, org, editable, onSaved }) {
 
 function ProductionComponentBlock({ label, standard, efectiva, enabled, onEnabledChange, pct, onPctChange, disabled }) {
   const bonificado = Math.abs((standard ?? 0) - (efectiva ?? 0)) > 0.5
+  const efectivaValue = enabled ? (efectiva ?? 0) : 0
+  const efectivaClass = !enabled
+    ? 'text-rose-400'
+    : bonificado
+    ? 'text-teal-400'
+    : 'text-white'
   return (
     <div className="grid grid-cols-12 items-center gap-3 text-xs py-1">
       <p className="col-span-2 text-sm font-medium text-slate-200">{label}</p>
@@ -747,7 +733,7 @@ function ProductionComponentBlock({ label, standard, efectiva, enabled, onEnable
             onClick={() => !disabled && onEnabledChange(!enabled)}
             disabled={disabled}
             className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-              enabled ? 'bg-teal-500' : 'bg-surface-600'
+              enabled ? 'bg-teal-500' : 'bg-amber-500/40'
             } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
           >
             <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
@@ -757,7 +743,9 @@ function ProductionComponentBlock({ label, standard, efectiva, enabled, onEnable
           <span className="text-[11px] text-slate-500">Cobrar al cliente</span>
         </div>
         {!enabled && (
-          <span className="text-[10px] text-amber-400/80 pl-[2.75rem]">Bonificado 100%</span>
+          <span className="text-[10px] font-bold uppercase tracking-wide text-amber-400 pl-[2.75rem]">
+            Bonificado 100%
+          </span>
         )}
       </div>
 
@@ -776,8 +764,8 @@ function ProductionComponentBlock({ label, standard, efectiva, enabled, onEnable
 
       <div className="col-span-3 text-right">
         <p className="text-[10px] uppercase tracking-wide text-slate-500">A facturar</p>
-        <p className={`text-sm font-bold ${bonificado ? 'text-teal-400' : 'text-white'}`}>
-          {formatCurrency(efectiva ?? 0)}
+        <p className={`text-sm font-bold ${efectivaClass}`}>
+          {formatCurrency(efectivaValue)}
         </p>
       </div>
     </div>
@@ -789,6 +777,7 @@ function ProductionComponentBlock({ label, standard, efectiva, enabled, onEnable
 function CampaignModal({ campaign, onClose, onItemsUpdated }) {
   const { role, org } = useAuth()
   const [showPrint, setShowPrint] = useState(false)
+  const [activeTab, setActiveTab] = useState('resumen')
   if (!campaign) return null
   const items    = campaign.proposal_items ?? []
   const brief    = campaign.brief_data ?? {}
@@ -829,11 +818,33 @@ function CampaignModal({ campaign, onClose, onItemsUpdated }) {
           </div>
         </div>
 
-        {/* Body */}
-        <div className="p-5 max-h-[75vh] overflow-y-auto space-y-3">
+        {/* Tab nav */}
+        <div className="flex flex-wrap gap-2 px-5 py-3 border-b border-slate-700">
+          {[
+            { id: 'resumen',    label: 'Resumen',    show: true },
+            { id: 'inventario', label: 'Inventario', show: true },
+            { id: 'costos',     label: 'Costos de Producción', show: (role === 'owner' || role === 'manager') && items.length > 0 },
+          ].filter(t => t.show).map(t => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setActiveTab(t.id)}
+              className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+                activeTab === t.id
+                  ? 'bg-brand text-white'
+                  : 'bg-slate-800/40 text-slate-400 hover:bg-slate-800/80 hover:text-slate-200'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
 
-          {/* ── Sección 1: Resumen de propuesta ── */}
-          <ModalSection title="Resumen de propuesta" defaultOpen>
+        {/* Body */}
+        <div className="p-5 max-h-[70vh] overflow-y-auto">
+
+          {/* Tab: Resumen */}
+          {activeTab === 'resumen' && (
             <div className="grid gap-3 md:grid-cols-2">
               <div className="grid grid-cols-2 gap-2">
                 <div className="rounded-lg bg-surface-800 px-3 py-2">
@@ -880,14 +891,10 @@ function CampaignModal({ campaign, onClose, onItemsUpdated }) {
                 </div>
               )}
             </div>
-          </ModalSection>
+          )}
 
-          {/* ── Sección 2: Inventario de la campaña ── */}
-          <ModalSection
-            title="Inventario de la campaña"
-            right={items.length > 0 ? `${items.length} soporte${items.length > 1 ? 's' : ''}` : null}
-            defaultOpen
-          >
+          {/* Tab: Inventario */}
+          {activeTab === 'inventario' && (
             <div className="grid gap-3 md:grid-cols-2">
               {doohItems.length > 0 && (
                 <div>
@@ -954,19 +961,17 @@ function CampaignModal({ campaign, onClose, onItemsUpdated }) {
                 <p className="text-xs text-slate-600 py-2 text-center md:col-span-2">Sin carteles registrados</p>
               )}
             </div>
-          </ModalSection>
+          )}
 
-          {/* ── Sección 3: Costos de Producción (owner/manager only) ── */}
-          {(role === 'owner' || role === 'manager') && items.length > 0 && (
-            <ModalSection title="Costos de Producción">
-              <ProductionNegotiationPanel
-                campaign={campaign}
-                items={items}
-                org={org}
-                editable={EDITABLE_PROD_STATUSES.has(campaign.workflow_status)}
-                onItemsUpdated={onItemsUpdated}
-              />
-            </ModalSection>
+          {/* Tab: Costos de Producción (owner/manager only) */}
+          {activeTab === 'costos' && (role === 'owner' || role === 'manager') && items.length > 0 && (
+            <ProductionNegotiationPanel
+              campaign={campaign}
+              items={items}
+              org={org}
+              editable={EDITABLE_PROD_STATUSES.has(campaign.workflow_status)}
+              onItemsUpdated={onItemsUpdated}
+            />
           )}
         </div>
         {showPrint && <PrintMeasuresModal campaign={campaign} onClose={() => setShowPrint(false)} />}
