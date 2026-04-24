@@ -25,6 +25,7 @@ function fmtDate(str) {
 const TABS = [
   { id: 'team',       label: 'Equipo y comisiones' },
   { id: 'commercial', label: 'Reglas Comerciales' },
+  { id: 'production', label: 'Costos de Producción', ownerOnly: true },
   { id: 'contacts',   label: 'Contactos Confidenciales' },
   { id: 'reports',    label: 'Reportes Confidenciales' },
 ]
@@ -55,6 +56,19 @@ export default function InventorySettings() {
   const [loadingAgreements,   setLoadingAgreements]   = useState(false)
   const [showAgreementWizard, setShowAgreementWizard] = useState(false)
   const [selectedAgreement,   setSelectedAgreement]   = useState(null)
+
+  // ── Costos de producción (owner-only) ──
+  const [prodHasInternal,   setProdHasInternal]   = useState(!!org?.has_internal_designer)
+  const [prodInternalPrice, setProdInternalPrice] = useState(org?.internal_designer_price_per_billboard ?? 20000)
+  const [prodExtCost,       setProdExtCost]       = useState(org?.external_designer_cost_per_hour ?? 20000)
+  const [prodExtHours,      setProdExtHours]      = useState(org?.external_designer_default_hours ?? 3.5)
+  const [prodExtMarkup,     setProdExtMarkup]     = useState(org?.external_designer_markup_pct ?? 30)
+  const [prodColocCost,     setProdColocCost]     = useState(org?.colocacion_cost_per_m2 ?? 25000)
+  const [prodColocMarkup,   setProdColocMarkup]   = useState(org?.colocacion_markup_pct ?? 30)
+  const [prodPrintCost,     setProdPrintCost]     = useState(org?.impresion_cost_per_m2 ?? 32500)
+  const [prodPrintMarkup,   setProdPrintMarkup]   = useState(org?.impresion_markup_pct ?? 30)
+  const [savingProd,        setSavingProd]        = useState(false)
+  const [savedProd,         setSavedProd]         = useState(false)
 
   // ── Contactos confidenciales ──
   const [confidentialContacts,        setConfidentialContacts]        = useState([])
@@ -213,6 +227,42 @@ export default function InventorySettings() {
     loadAgreements()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, isOwner, org?.id])
+
+  // Sync production inputs when org refreshes (e.g. post-save or login).
+  useEffect(() => {
+    if (!org) return
+    setProdHasInternal(!!org.has_internal_designer)
+    setProdInternalPrice(org.internal_designer_price_per_billboard ?? 20000)
+    setProdExtCost(org.external_designer_cost_per_hour ?? 20000)
+    setProdExtHours(org.external_designer_default_hours ?? 3.5)
+    setProdExtMarkup(org.external_designer_markup_pct ?? 30)
+    setProdColocCost(org.colocacion_cost_per_m2 ?? 25000)
+    setProdColocMarkup(org.colocacion_markup_pct ?? 30)
+    setProdPrintCost(org.impresion_cost_per_m2 ?? 32500)
+    setProdPrintMarkup(org.impresion_markup_pct ?? 30)
+  }, [org?.id])
+
+  async function handleSaveProduction(e) {
+    e.preventDefault()
+    setSavingProd(true)
+    const clampPct = v => Math.min(100, Math.max(0, Number(v) || 0))
+    const nonNeg   = v => Math.max(0, Number(v) || 0)
+    await supabase.from('organisations').update({
+      has_internal_designer:                 prodHasInternal,
+      internal_designer_price_per_billboard: nonNeg(prodInternalPrice),
+      external_designer_cost_per_hour:       nonNeg(prodExtCost),
+      external_designer_default_hours:       nonNeg(prodExtHours),
+      external_designer_markup_pct:          clampPct(prodExtMarkup),
+      colocacion_cost_per_m2:                nonNeg(prodColocCost),
+      colocacion_markup_pct:                 clampPct(prodColocMarkup),
+      impresion_cost_per_m2:                 nonNeg(prodPrintCost),
+      impresion_markup_pct:                  clampPct(prodPrintMarkup),
+    }).eq('id', org.id)
+    await refreshProfile()
+    setSavingProd(false)
+    setSavedProd(true)
+    setTimeout(() => setSavedProd(false), 3000)
+  }
 
   async function loadAgreements(opts = {}) {
     setLoadingAgreements(true)
@@ -422,7 +472,7 @@ export default function InventorySettings() {
 
       {/* Pill tabs */}
       <div className="flex flex-wrap gap-2 border-b border-surface-700 pb-3 overflow-x-auto">
-        {TABS.map(tab => (
+        {TABS.filter(t => !t.ownerOnly || isOwner).map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
@@ -740,6 +790,184 @@ export default function InventorySettings() {
               )}
             </Card>
           </>
+        )}
+
+        {/* TAB — Costos de Producción (owner-only) */}
+        {activeTab === 'production' && isOwner && (
+          <Card>
+            <CardHeader
+              title="Costos de Producción"
+              subtitle="Configurá los costos reales y markups que se aplicarán al armar propuestas. Estos valores se pueden negociar y ajustar por campaña."
+            />
+            <form onSubmit={handleSaveProduction} className="space-y-8">
+
+              {/* ── Sub-sección 1: Diseño ── */}
+              <div>
+                <h4 className="text-sm font-semibold text-white mb-3">Diseño</h4>
+                <div className="flex items-center justify-between gap-4 mb-4">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-slate-200">Diseñador propio (en nómina)</p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Si está activo, se cobra un precio fijo por cartel. Si no, se calcula por horas al costo del diseñador externo.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={prodHasInternal}
+                    onClick={() => setProdHasInternal(v => !v)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                      prodHasInternal ? 'bg-brand' : 'bg-surface-700'
+                    }`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                      prodHasInternal ? 'translate-x-6' : 'translate-x-1'
+                    }`} />
+                  </button>
+                </div>
+
+                {prodHasInternal ? (
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-300">
+                      Precio al cliente por cartel ($)
+                    </label>
+                    <div className="relative max-w-xs">
+                      <input
+                        type="number" min="0" step="500"
+                        className="input-field pl-7 w-full"
+                        value={prodInternalPrice}
+                        onChange={e => setProdInternalPrice(e.target.value)}
+                      />
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">$</span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-600">
+                      Precio final que se cobra al cliente. Cubre tiempo del diseñador interno.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid gap-4 sm:grid-cols-3">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-slate-300">
+                        Costo por hora ($/h)
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number" min="0" step="500"
+                          className="input-field pl-7 w-full"
+                          value={prodExtCost}
+                          onChange={e => setProdExtCost(e.target.value)}
+                        />
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">$</span>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-slate-300">
+                        Horas estimadas por cartel
+                      </label>
+                      <input
+                        type="number" min="0" step="0.5"
+                        className="input-field w-full"
+                        value={prodExtHours}
+                        onChange={e => setProdExtHours(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium text-slate-300">
+                        Markup sobre costo (%)
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number" min="0" max="100" step="5"
+                          className="input-field pr-8 w-full"
+                          value={prodExtMarkup}
+                          onChange={e => setProdExtMarkup(e.target.value)}
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">%</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Sub-sección 2: Colocación ── */}
+              <div>
+                <h4 className="text-sm font-semibold text-white mb-3">Colocación</h4>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-300">
+                      Costo por m² al proveedor ($)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number" min="0" step="500"
+                        className="input-field pl-7 w-full"
+                        value={prodColocCost}
+                        onChange={e => setProdColocCost(e.target.value)}
+                      />
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">$</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-300">
+                      Markup sobre colocación (%)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number" min="0" max="100" step="5"
+                        className="input-field pr-8 w-full"
+                        value={prodColocMarkup}
+                        onChange={e => setProdColocMarkup(e.target.value)}
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">%</span>
+                    </div>
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-slate-600">
+                  Aplicable solo a carteles físicos. Los formatos digitales no requieren colocación.
+                </p>
+              </div>
+
+              {/* ── Sub-sección 3: Impresión ── */}
+              <div>
+                <h4 className="text-sm font-semibold text-white mb-3">Impresión</h4>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-300">
+                      Costo por m² al proveedor ($)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number" min="0" step="500"
+                        className="input-field pl-7 w-full"
+                        value={prodPrintCost}
+                        onChange={e => setProdPrintCost(e.target.value)}
+                      />
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">$</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-slate-300">
+                      Markup sobre impresión (%)
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number" min="0" max="100" step="5"
+                        className="input-field pr-8 w-full"
+                        value={prodPrintMarkup}
+                        onChange={e => setProdPrintMarkup(e.target.value)}
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">%</span>
+                    </div>
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-slate-600">
+                  Lona de gran formato / afiche papel. No aplica a pantallas digitales LED.
+                </p>
+              </div>
+
+              <SaveRow loading={savingProd} saved={savedProd} />
+            </form>
+          </Card>
         )}
 
         {/* TAB — Contactos Confidenciales (implemented) */}

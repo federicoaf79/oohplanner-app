@@ -32,7 +32,12 @@ export function AuthProvider({ children }) {
           office_address, office_phone, office_hours, website,
           billing_cuit, billing_razon_social, billing_contact,
           billing_phone, billing_address, billing_email, notes,
-          artwork_h_url, artwork_v_url, artwork_sq_url
+          artwork_h_url, artwork_v_url, artwork_sq_url,
+          has_internal_designer, internal_designer_price_per_billboard,
+          external_designer_cost_per_hour, external_designer_markup_pct,
+          external_designer_default_hours,
+          colocacion_cost_per_m2, colocacion_markup_pct,
+          impresion_cost_per_m2, impresion_markup_pct
         )
       `)
       .eq('id', userId)
