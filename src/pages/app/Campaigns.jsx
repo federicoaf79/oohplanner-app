@@ -1,13 +1,15 @@
 import { useState, useEffect, useMemo, Fragment } from 'react'
 import { Link } from 'react-router-dom'
-import { Search, Megaphone, Calendar, ChevronRight, X, Filter } from 'lucide-react'
+import { Search, Megaphone, Calendar, ChevronRight, X, Filter, ChevronDown, AlertTriangle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { formatDate, formatCurrency } from '../../lib/utils'
 import Spinner from '../../components/ui/Spinner'
 import { WORKFLOW_STATUSES, FORMAT_MAP } from '../../lib/constants'
 import ProfitabilityChart from '../../components/ProfitabilityChart'
-import { calculateProfitability } from '../../lib/profitability'
+import { calculateProfitability, calculateSiteProfitability } from '../../lib/profitability'
+
+const EDITABLE_PROD_STATUSES = new Set(['approved', 'printing', 'active'])
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -204,9 +206,297 @@ function PrintMeasuresModal({ campaign, onClose }) {
   )
 }
 
+// ── Production negotiation panel ──────────────────────────────
+// Lets owner/manager apply bonificaciones and toggle off production
+// components per proposal_item. Writes to proposal_items columns added
+// by Block A.1 migration. Read-only preview if workflow status is not
+// yet approved.
+
+function ProductionNegotiationPanel({ campaign, items, org, editable, onItemsUpdated }) {
+  return (
+    <div className="mt-6 rounded-xl border border-surface-700 bg-surface-800/40 p-4">
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div>
+          <p className="text-sm font-semibold text-white">Negociación de Producción</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Ajustá lo que se factura por cartel. Aplicá bonificaciones o remové componentes completos.
+          </p>
+        </div>
+      </div>
+
+      {!editable && (
+        <div className="mb-3 flex items-center gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-xs text-amber-300">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          Disponible una vez aprobada la propuesta.
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {items.map(item => (
+          <ProductionItemRow
+            key={item.id}
+            item={item}
+            campaign={campaign}
+            org={org}
+            editable={editable}
+            onSaved={(updatedItem) => {
+              const next = items.map(it => it.id === updatedItem.id ? { ...it, ...updatedItem } : it)
+              onItemsUpdated?.(campaign.id, next)
+            }}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ProductionItemRow({ item, campaign, org, editable, onSaved }) {
+  const [expanded, setExpanded] = useState(false)
+  const [printEnabled,     setPrintEnabled]     = useState(!item.produccion_print_disabled)
+  const [colocEnabled,     setColocEnabled]     = useState(!item.produccion_colocacion_disabled)
+  const [disenoEnabled,    setDisenoEnabled]    = useState(!item.produccion_diseno_disabled)
+  const [printPct,         setPrintPct]         = useState(Number(item.produccion_print_ajuste_pct ?? 0))
+  const [colocPct,         setColocPct]         = useState(Number(item.produccion_colocacion_ajuste_pct ?? 0))
+  const [disenoPct,        setDisenoPct]        = useState(Number(item.produccion_diseno_ajuste_pct ?? 0))
+  const [montoFijo,        setMontoFijo]        = useState(Number(item.produccion_ajuste_monto_fijo ?? 0))
+  const [motivo,           setMotivo]           = useState(item.produccion_ajuste_motivo ?? '')
+  const [saving,           setSaving]           = useState(false)
+  const [saved,            setSaved]            = useState(false)
+
+  const site = item.site ?? null
+  const fmtLabel = FORMAT_MAP[site?.format]?.label ?? site?.format ?? '—'
+
+  // Compute standard + efectiva on every render — helper is pure and cheap.
+  const metrics = useMemo(() => {
+    if (!site || !org) return null
+    return calculateSiteProfitability(site, {
+      months: item.duration || 1,
+      itemRate: item.rate,
+      discountPct: campaign.discount_pct ?? 0,
+      orgProduccionConfig: org,
+      produccionAjustes: {
+        printPct:           Number(printPct) || 0,
+        colocacionPct:      Number(colocPct) || 0,
+        disenoPct:          Number(disenoPct) || 0,
+        printDisabled:      !printEnabled,
+        colocacionDisabled: !colocEnabled,
+        disenoDisabled:     !disenoEnabled,
+        montoFijo:          Number(montoFijo) || 0,
+      },
+    })
+  }, [site, org, item.duration, item.rate, campaign.discount_pct,
+      printPct, colocPct, disenoPct, printEnabled, colocEnabled, disenoEnabled, montoFijo])
+
+  const b = metrics?.cost_breakdown
+  const stdTotal = b?.produccion_cobrada_standard ?? 0
+  const efeTotal = b?.produccion_cobrada_efectiva ?? 0
+
+  const freeGift = editable && efeTotal === 0 && stdTotal > 0
+
+  async function handleSave() {
+    setSaving(true)
+    const payload = {
+      produccion_print_ajuste_pct:       Math.min(0, Math.max(-100, Number(printPct) || 0)),
+      produccion_print_disabled:         !printEnabled,
+      produccion_colocacion_ajuste_pct:  Math.min(0, Math.max(-100, Number(colocPct) || 0)),
+      produccion_colocacion_disabled:    !colocEnabled,
+      produccion_diseno_ajuste_pct:      Math.min(0, Math.max(-100, Number(disenoPct) || 0)),
+      produccion_diseno_disabled:        !disenoEnabled,
+      produccion_ajuste_monto_fijo:      Math.max(0, Number(montoFijo) || 0),
+      produccion_ajuste_motivo:          (motivo || '').slice(0, 500),
+    }
+    const { data, error } = await supabase
+      .from('proposal_items')
+      .update(payload)
+      .eq('id', item.id)
+      .select()
+      .single()
+    setSaving(false)
+    if (error) {
+      console.error('save prod ajustes error:', error.message)
+      return
+    }
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2500)
+    onSaved?.({ ...item, ...payload, ...(data ?? {}) })
+  }
+
+  return (
+    <div className="rounded-lg border border-surface-700 bg-surface-800">
+      {/* Collapsed row */}
+      <button
+        type="button"
+        onClick={() => setExpanded(v => !v)}
+        className="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left hover:bg-surface-700/40 transition-colors"
+      >
+        <div className="flex items-center gap-2 min-w-0">
+          <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${expanded ? 'rotate-0' : '-rotate-90'}`} />
+          <p className="text-sm font-medium text-white truncate">{site?.name ?? '—'}</p>
+          <span className="text-xs text-slate-500 shrink-0">· {fmtLabel}</span>
+        </div>
+        <div className="flex items-center gap-4 text-xs shrink-0">
+          <span className="text-slate-500">Standard: <span className="text-slate-400">{formatCurrency(stdTotal)}</span></span>
+          <span className="text-slate-400">Efectivo: <span className={`font-bold ${efeTotal === stdTotal ? 'text-white' : 'text-teal-400'}`}>{formatCurrency(efeTotal)}</span></span>
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="border-t border-surface-700 p-4 space-y-4">
+          {!metrics && (
+            <p className="text-xs text-slate-500 italic">
+              Falta configuración de producción de la organización. Configurala en Ajustes Inventario → Costos de Producción.
+            </p>
+          )}
+
+          {metrics && (
+            <>
+              <ProductionComponentBlock
+                label="Impresión"
+                standard={b.impresion_standard}
+                efectiva={b.impresion_efectiva}
+                enabled={printEnabled}
+                onEnabledChange={setPrintEnabled}
+                pct={printPct}
+                onPctChange={setPrintPct}
+                disabled={!editable}
+              />
+              <ProductionComponentBlock
+                label="Colocación"
+                standard={b.colocacion_standard}
+                efectiva={b.colocacion_efectiva}
+                enabled={colocEnabled}
+                onEnabledChange={setColocEnabled}
+                pct={colocPct}
+                onPctChange={setColocPct}
+                disabled={!editable}
+              />
+              <ProductionComponentBlock
+                label="Diseño"
+                standard={b.diseno_standard}
+                efectiva={b.diseno_efectiva}
+                enabled={disenoEnabled}
+                onEnabledChange={setDisenoEnabled}
+                pct={disenoPct}
+                onPctChange={setDisenoPct}
+                disabled={!editable}
+              />
+
+              <div className="grid gap-3 sm:grid-cols-2 pt-2 border-t border-surface-700">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-400">
+                    Bonificación adicional (monto fijo)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="number" min="0" step="1000"
+                      className="input-field pl-7 w-full text-sm"
+                      value={montoFijo}
+                      onChange={e => setMontoFijo(e.target.value)}
+                      disabled={!editable}
+                    />
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">$</span>
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-400">
+                    Motivo del ajuste (opcional)
+                  </label>
+                  <textarea
+                    rows={1}
+                    maxLength={500}
+                    className="input-field w-full text-sm resize-none"
+                    value={motivo}
+                    onChange={e => setMotivo(e.target.value)}
+                    disabled={!editable}
+                    placeholder="Ej: regalo campaña, bonificación fidelización…"
+                  />
+                </div>
+              </div>
+
+              {freeGift && (
+                <div className="flex items-center gap-2 rounded-md bg-amber-500/10 border border-amber-500/20 px-2.5 py-1.5 text-xs text-amber-300">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  La producción no se cobrará al cliente.
+                </div>
+              )}
+
+              {editable && (
+                <div className="flex items-center justify-end gap-3 pt-2">
+                  {saved && <span className="text-xs text-teal-400">✓ Ajustes guardados</span>}
+                  <button
+                    type="button"
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="rounded-lg bg-brand px-4 py-1.5 text-sm font-semibold text-white hover:bg-brand/90 disabled:opacity-50 transition-colors"
+                  >
+                    {saving ? 'Guardando…' : 'Guardar ajustes'}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ProductionComponentBlock({ label, standard, efectiva, enabled, onEnabledChange, pct, onPctChange, disabled }) {
+  const bonificado = Math.abs((standard ?? 0) - (efectiva ?? 0)) > 0.5
+  return (
+    <div className="grid grid-cols-12 items-center gap-3 text-xs">
+      <p className="col-span-2 text-sm font-medium text-slate-200">{label}</p>
+
+      <div className="col-span-3">
+        <p className="text-[10px] uppercase tracking-wide text-slate-500">Standard</p>
+        <p className="text-sm text-slate-400">{formatCurrency(standard ?? 0)}</p>
+      </div>
+
+      <div className="col-span-2 flex items-center gap-2">
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          onClick={() => !disabled && onEnabledChange(!enabled)}
+          disabled={disabled}
+          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+            enabled ? 'bg-teal-500' : 'bg-surface-600'
+          } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+        >
+          <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+            enabled ? 'translate-x-[18px]' : 'translate-x-0.5'
+          }`} />
+        </button>
+        <span className="text-[11px] text-slate-500">Facturar</span>
+      </div>
+
+      <div className="col-span-2">
+        <div className="relative">
+          <input
+            type="number" min="-100" max="0" step="5"
+            value={pct}
+            onChange={e => onPctChange(e.target.value)}
+            disabled={disabled || !enabled}
+            className="input-field w-full text-sm pr-6 text-right disabled:opacity-50"
+          />
+          <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500">%</span>
+        </div>
+      </div>
+
+      <div className="col-span-3 text-right">
+        <p className="text-[10px] uppercase tracking-wide text-slate-500">Efectivo</p>
+        <p className={`text-sm font-bold ${bonificado ? 'text-teal-400' : 'text-white'}`}>
+          {formatCurrency(efectiva ?? 0)}
+        </p>
+      </div>
+    </div>
+  )
+}
+
 // ── Campaign detail modal ─────────────────────────────────────
 
-function CampaignModal({ campaign, onClose }) {
+function CampaignModal({ campaign, onClose, onItemsUpdated }) {
+  const { role, org } = useAuth()
   const [showPrint, setShowPrint] = useState(false)
   if (!campaign) return null
   const items    = campaign.proposal_items ?? []
@@ -374,6 +664,16 @@ function CampaignModal({ campaign, onClose }) {
               )}
             </div>
           </div>
+
+          {(role === 'owner' || role === 'manager') && items.length > 0 && (
+            <ProductionNegotiationPanel
+              campaign={campaign}
+              items={items}
+              org={org}
+              editable={EDITABLE_PROD_STATUSES.has(campaign.workflow_status)}
+              onItemsUpdated={onItemsUpdated}
+            />
+          )}
         </div>
         {showPrint && <PrintMeasuresModal campaign={campaign} onClose={() => setShowPrint(false)} />}
       </div>
@@ -523,6 +823,10 @@ export default function Campaigns() {
             creator:profiles!created_by(id, full_name),
             proposal_items(
               id, site_id, rate, start_date, end_date, duration,
+              produccion_print_ajuste_pct, produccion_print_disabled,
+              produccion_colocacion_ajuste_pct, produccion_colocacion_disabled,
+              produccion_diseno_ajuste_pct, produccion_diseno_disabled,
+              produccion_ajuste_monto_fijo, produccion_ajuste_motivo,
               site:inventory(${siteFields})
             )
           `)
@@ -648,6 +952,15 @@ export default function Campaigns() {
 
   function canAdvance(p) {
     return isOwner || isManager || p.created_by === profile?.id
+  }
+
+  function handleItemsUpdated(proposalId, updatedItems) {
+    setProposals(prev => prev.map(p =>
+      p.id === proposalId ? { ...p, proposal_items: updatedItems } : p
+    ))
+    setSelectedCampaign(prev =>
+      prev?.id === proposalId ? { ...prev, proposal_items: updatedItems } : prev
+    )
   }
 
   async function handleWithdrawAll() {
@@ -822,6 +1135,7 @@ export default function Campaigns() {
         <CampaignModal
           campaign={selectedCampaign}
           onClose={() => setSelectedCampaign(null)}
+          onItemsUpdated={handleItemsUpdated}
         />
       )}
     </div>
