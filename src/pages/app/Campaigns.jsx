@@ -207,14 +207,19 @@ function PrintMeasuresModal({ campaign, onClose }) {
 }
 
 // ── Helpers for production ajuste state ───────────────────────
+// UI convention: user-facing % values are positive (0-100) representing
+// "20% bonificación". DB / helper convention: stored as negative (-20
+// means -20% applied to standard). Helpers below convert between the two.
+const clampPctUI = (v) => Math.min(100, Math.max(0, Number(v) || 0))
+
 function ajusteFromItem(item) {
   return {
     printEnabled:  !item.produccion_print_disabled,
     colocEnabled:  !item.produccion_colocacion_disabled,
     disenoEnabled: !item.produccion_diseno_disabled,
-    printPct:      Number(item.produccion_print_ajuste_pct ?? 0),
-    colocPct:      Number(item.produccion_colocacion_ajuste_pct ?? 0),
-    disenoPct:     Number(item.produccion_diseno_ajuste_pct ?? 0),
+    printPct:      Math.abs(Number(item.produccion_print_ajuste_pct ?? 0)),
+    colocPct:      Math.abs(Number(item.produccion_colocacion_ajuste_pct ?? 0)),
+    disenoPct:     Math.abs(Number(item.produccion_diseno_ajuste_pct ?? 0)),
     montoFijo:     Number(item.produccion_ajuste_monto_fijo ?? 0),
     motivo:        item.produccion_ajuste_motivo ?? '',
   }
@@ -235,21 +240,22 @@ function deriveGlobalSnapshot(items) {
     printEnabled:  commonFieldValue(items, it => !it.produccion_print_disabled, true),
     colocEnabled:  commonFieldValue(items, it => !it.produccion_colocacion_disabled, true),
     disenoEnabled: commonFieldValue(items, it => !it.produccion_diseno_disabled, true),
-    printPct:      commonFieldValue(items, it => Number(it.produccion_print_ajuste_pct ?? 0), 0),
-    colocPct:      commonFieldValue(items, it => Number(it.produccion_colocacion_ajuste_pct ?? 0), 0),
-    disenoPct:     commonFieldValue(items, it => Number(it.produccion_diseno_ajuste_pct ?? 0), 0),
+    printPct:      commonFieldValue(items, it => Math.abs(Number(it.produccion_print_ajuste_pct ?? 0)), 0),
+    colocPct:      commonFieldValue(items, it => Math.abs(Number(it.produccion_colocacion_ajuste_pct ?? 0)), 0),
+    disenoPct:     commonFieldValue(items, it => Math.abs(Number(it.produccion_diseno_ajuste_pct ?? 0)), 0),
     montoFijo:     commonFieldValue(items, it => Number(it.produccion_ajuste_monto_fijo ?? 0), 0),
     motivo:        commonFieldValue(items, it => it.produccion_ajuste_motivo ?? '', ''),
   }
 }
 
+// UI state → DB row. Negate % because DB stores negative (helper convention).
 function payloadFromState(s) {
   return {
-    produccion_print_ajuste_pct:      Math.min(0, Math.max(-100, Number(s.printPct) || 0)),
+    produccion_print_ajuste_pct:      -clampPctUI(s.printPct),
     produccion_print_disabled:        !s.printEnabled,
-    produccion_colocacion_ajuste_pct: Math.min(0, Math.max(-100, Number(s.colocPct) || 0)),
+    produccion_colocacion_ajuste_pct: -clampPctUI(s.colocPct),
     produccion_colocacion_disabled:   !s.colocEnabled,
-    produccion_diseno_ajuste_pct:     Math.min(0, Math.max(-100, Number(s.disenoPct) || 0)),
+    produccion_diseno_ajuste_pct:     -clampPctUI(s.disenoPct),
     produccion_diseno_disabled:       !s.disenoEnabled,
     produccion_ajuste_monto_fijo:     Math.max(0, Number(s.montoFijo) || 0),
     produccion_ajuste_motivo:         (s.motivo || '').slice(0, 500),
@@ -540,9 +546,9 @@ function ProductionItemRow({ item, campaign, org, editable, onSaved }) {
       discountPct: campaign.discount_pct ?? 0,
       orgProduccionConfig: org,
       produccionAjustes: {
-        printPct:           Number(s.printPct) || 0,
-        colocacionPct:      Number(s.colocPct) || 0,
-        disenoPct:          Number(s.disenoPct) || 0,
+        printPct:           -clampPctUI(s.printPct),
+        colocacionPct:      -clampPctUI(s.colocPct),
+        disenoPct:          -clampPctUI(s.disenoPct),
         printDisabled:      !s.printEnabled,
         colocacionDisabled: !s.colocEnabled,
         disenoDisabled:     !s.disenoEnabled,
@@ -752,9 +758,9 @@ function ProductionComponentBlock({ label, standard, efectiva, enabled, onEnable
       <div className="col-span-2">
         <div className="relative">
           <input
-            type="number" min="-100" max="0" step="5"
+            type="number" min="0" max="100" step="5"
             value={pct}
-            onChange={e => onPctChange(e.target.value)}
+            onChange={e => onPctChange(Number(e.target.value) || 0)}
             disabled={disabled || !enabled}
             className="input-field w-full text-sm py-1.5 pr-6 text-right disabled:opacity-50"
           />
