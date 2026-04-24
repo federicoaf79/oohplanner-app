@@ -634,7 +634,7 @@ export default function Reports() {
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <KPICard
           icon={TrendingUp}
-          label="Revenue total"
+          label="Facturación total"
           value={fmtARS(kpis.revenue)}
           sub="Propuestas enviadas / activas"
         />
@@ -702,7 +702,7 @@ export default function Reports() {
         {/* metric pills */}
         <div className="flex items-center gap-2 flex-wrap mb-5">
           {[
-            { id: 'revenue',   label: 'Revenue' },
+            { id: 'revenue',   label: 'Facturación' },
             { id: 'costs',     label: 'Costos' },
             { id: 'occupancy', label: 'Ocupación' },
             { id: 'margin',    label: 'Margen' },
@@ -816,7 +816,7 @@ export default function Reports() {
                   <tr className="text-xs text-slate-500 uppercase tracking-wide border-b border-surface-700">
                     <th className="text-left pb-3 font-medium">Vendedor</th>
                     <th className="text-right pb-3 font-medium">Propuestas</th>
-                    <th className="text-right pb-3 font-medium">Revenue</th>
+                    <th className="text-right pb-3 font-medium">Facturación</th>
                     <th className="text-left pb-3 font-medium px-4">vs Target</th>
                     <th className="text-right pb-3 font-medium">Comisión est.</th>
                     <th className="text-right pb-3 font-medium">Tasa cierre</th>
@@ -881,8 +881,8 @@ export default function Reports() {
                     <th className="text-right pb-3 font-medium">Carteles</th>
                     <th className="text-right pb-3 font-medium">Ocupados</th>
                     <th className="text-right pb-3 font-medium">% Ocupación</th>
-                    <th className="text-right pb-3 font-medium">Revenue</th>
-                    <th className="text-right pb-3 font-medium">Revenue prom.</th>
+                    <th className="text-right pb-3 font-medium">Facturación</th>
+                    <th className="text-right pb-3 font-medium">Facturación prom.</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-700/50">
@@ -928,7 +928,7 @@ export default function Reports() {
                   <th className="w-6 pb-3" />
                   <th className="text-left pb-3 font-medium">Cartel</th>
                   <th className="text-left pb-3 font-medium hidden sm:table-cell">Formato</th>
-                  <th className="text-right pb-3 font-medium">Revenue período</th>
+                  <th className="text-right pb-3 font-medium">Facturación período</th>
                   <th className="text-right pb-3 font-medium hidden md:table-cell">Costos/mes</th>
                   <th className="text-right pb-3 font-medium">Margen</th>
                   <th className="text-right pb-3 font-medium hidden lg:table-cell">Estado</th>
@@ -1020,7 +1020,7 @@ export default function Reports() {
                                   Ingresos
                                 </p>
                                 <div className="flex justify-between text-sm">
-                                  <span className="text-slate-400">Revenue período</span>
+                                  <span className="text-slate-400">Facturación período</span>
                                   <span className="text-white font-medium">{fmtARS(site.revenue)}</span>
                                 </div>
                                 <div className="flex justify-between text-sm">

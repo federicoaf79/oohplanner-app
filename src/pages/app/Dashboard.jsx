@@ -461,7 +461,7 @@ export default function Dashboard() {
 
             {/* Revenue */}
             <div className="card p-4">
-              <p className="text-xs text-slate-500 mb-1">Revenue período</p>
+              <p className="text-xs text-slate-500 mb-1">Facturación período</p>
               <p className="text-xl font-bold text-white">{fmtARS(derived.revenue)}</p>
               {derived.revenue > 0 ? (
                 derived.revDelta != null ? (
