@@ -179,7 +179,7 @@ export default function Landing() {
       {/* Navbar */}
       <nav className="fixed top-0 z-50 w-full border-b border-surface-700/50 bg-surface-900/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 lg:px-8">
-          <img src="/logo.png" alt="OOH Planner" className="h-14 w-auto" />
+          <img src="/logo.png" alt="OOH Planner" className="h-24 w-auto" />
           <div className="hidden items-center gap-8 md:flex">
             {['Características', 'Formatos'].map(item => (
               <a key={item} href={`#${item.toLowerCase()}`} className="text-sm text-slate-400 transition-colors hover:text-white">{item}</a>
@@ -323,10 +323,12 @@ export default function Landing() {
           </div>
           <div className="grid gap-4 sm:grid-cols-2">
             {[
-              'Costos completos por cartel: alquiler, luz, impuestos, mantenimiento, impresión, colocación, diseño — prorrateados por duración de campaña.',
-              'Comisiones en 3 niveles (vendedor, agencia, dueño) calculadas sobre revenue neto. Se registran automáticamente al cerrar venta.',
-              'Aprobación de descuentos según rol: owner sin límite, manager hasta 30%, vendedor hasta 20%. Configurable por empresa.',
-              'Reportes confidenciales: los vendedores nunca ven costos ni márgenes. Sólo owners acceden a rentabilidad completa.',
+              'Inventario completo: Sube rápidamente todo tu inventario de pantallas y formatos que administras, propio o de terceros, por medio de nuestro sistema de macheo automático de ubicaciones.',
+              'Sistema de comisiones: Escala de comisiones a todo el nivel de la empresa y participación dentro de la operación.',
+              'Migración de datos: Sube archivos de múltiples fuentes de forma fácil y segura.',
+              'Reportes y analítica: Toda la información de tu operación en un solo lugar, con cuadros comparativos y analítica.',
+              'Alertas Administrativas: El sistema te avisa vencimientos de contratos, posiciones, acuerdos, y mucho más.',
+              'Gestión de contactos: Administra clientes, agencias y proveedores con roles diferenciados.',
             ].map((item, i) => (
               <div key={i} className="card p-5 flex items-start gap-3">
                 <CheckCircle className="h-5 w-5 text-brand mt-0.5 shrink-0" />
@@ -518,7 +520,7 @@ export default function Landing() {
       {/* Footer */}
       <footer className="border-t border-surface-700 px-4 py-8 lg:px-8">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 sm:flex-row">
-          <img src="/logo2.png" alt="OOH Planner" className="h-16 w-auto" />
+          <img src="/logo2.png" alt="OOH Planner" className="h-28 w-auto" />
           <p className="text-xs text-slate-600">© {new Date().getFullYear()} OOH Planner. Todos los derechos reservados.</p>
         </div>
       </footer>
