@@ -210,11 +210,11 @@ function PrintMeasuresModal({ campaign, onClose }) {
 function ModalSection({ title, right, defaultOpen = false, children }) {
   const [open, setOpen] = useState(defaultOpen)
   return (
-    <div className="rounded-xl border border-surface-700 bg-surface-800/40 overflow-hidden">
+    <div className="rounded-xl border border-surface-700 bg-surface-800/40">
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
-        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-surface-800/70 transition-colors"
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-surface-800/70 transition-colors rounded-t-xl"
       >
         <div className="flex items-center gap-2">
           <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${open ? 'rotate-0' : '-rotate-90'}`} />
@@ -222,7 +222,7 @@ function ModalSection({ title, right, defaultOpen = false, children }) {
         </div>
         {right && <span className="text-xs text-slate-500">{right}</span>}
       </button>
-      {open && <div className="px-4 pb-4 pt-1 border-t border-surface-700/60">{children}</div>}
+      {open && <div className="px-4 pb-4 pt-3 border-t border-surface-700/60">{children}</div>}
     </div>
   )
 }
@@ -303,7 +303,7 @@ function ProductionNegotiationPanel({ campaign, items, org, editable, onItemsUpd
             key={t.id}
             type="button"
             onClick={() => setMode(t.id)}
-            className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+            className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
               mode === t.id ? 'bg-brand text-white' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -324,19 +324,26 @@ function ProductionNegotiationPanel({ campaign, items, org, editable, onItemsUpd
 
       {mode === 'per-item' && (
         <div className="space-y-2">
-          {items.map(item => (
-            <ProductionItemRow
-              key={item.id}
-              item={item}
-              campaign={campaign}
-              org={org}
-              editable={editable}
-              onSaved={(updatedItem) => {
-                const next = items.map(it => it.id === updatedItem.id ? { ...it, ...updatedItem } : it)
-                onItemsUpdated?.(campaign.id, next)
-              }}
-            />
-          ))}
+          {[...items]
+            .sort((a, b) => {
+              const DIGITAL = new Set(['digital', 'urban_furniture_digital'])
+              const ad = DIGITAL.has(a.site?.format) ? 1 : 0
+              const bd = DIGITAL.has(b.site?.format) ? 1 : 0
+              return ad - bd
+            })
+            .map(item => (
+              <ProductionItemRow
+                key={item.id}
+                item={item}
+                campaign={campaign}
+                org={org}
+                editable={editable}
+                onSaved={(updatedItem) => {
+                  const next = items.map(it => it.id === updatedItem.id ? { ...it, ...updatedItem } : it)
+                  onItemsUpdated?.(campaign.id, next)
+                }}
+              />
+            ))}
         </div>
       )}
     </div>
@@ -398,7 +405,7 @@ function ProductionGlobalPanel({ campaign, items, org, editable, onItemsUpdated 
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-surface-700 bg-surface-800 p-4 space-y-4">
+      <div className="rounded-xl border border-surface-700 bg-surface-800 p-3 space-y-3">
         <p className="text-xs text-slate-500">
           Aplicar a los <strong className="text-slate-300">{items.length} cartel{items.length !== 1 ? 'es' : ''}</strong> de la campaña
         </p>
@@ -442,7 +449,7 @@ function ProductionGlobalPanel({ campaign, items, org, editable, onItemsUpdated 
             <div className="relative">
               <input
                 type="number" min="0" step="1000"
-                className="input-field pl-7 w-full text-sm"
+                className="input-field pl-7 w-full text-sm py-1.5"
                 value={s.montoFijo}
                 onChange={e => set({ montoFijo: e.target.value })}
                 disabled={!editable}
@@ -458,7 +465,7 @@ function ProductionGlobalPanel({ campaign, items, org, editable, onItemsUpdated 
             <textarea
               rows={1}
               maxLength={500}
-              className="input-field w-full text-sm resize-none"
+              className="input-field w-full text-sm py-1.5 resize-none"
               value={s.motivo}
               onChange={e => set({ motivo: e.target.value })}
               disabled={!editable}
@@ -468,52 +475,54 @@ function ProductionGlobalPanel({ campaign, items, org, editable, onItemsUpdated 
         </div>
       </div>
 
-      {/* Vista previa de impacto */}
-      <div className="rounded-xl border border-surface-700 bg-surface-900 p-4">
-        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Vista previa de impacto</p>
-        <div className="grid gap-2 sm:grid-cols-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-slate-500">Standard total</span>
-            <span className="text-slate-300">{formatCurrency(stdTotal)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-500">Efectivo total</span>
-            <span className={`font-bold ${efeTotal < stdTotal ? 'text-teal-400' : 'text-white'}`}>{formatCurrency(efeTotal)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-500">Bonificación</span>
-            <span className="text-amber-300">{formatCurrency(bonif)}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-slate-500">Margen impactado</span>
-            <span className={`font-medium ${marginDelta < 0 ? 'text-rose-400' : marginDelta > 0 ? 'text-teal-400' : 'text-slate-300'}`}>
-              {marginDelta >= 0 ? '+' : ''}{marginDelta.toFixed(1)}pp
-            </span>
+      {/* Sticky: Impacto de los ajustes + acciones */}
+      <div className="sticky bottom-0 -mx-4 -mb-4 px-4 pt-3 pb-4 bg-slate-900/95 backdrop-blur border-t border-slate-700 rounded-b-xl space-y-3 z-10">
+        <div className="rounded-xl border border-surface-700 bg-surface-900 p-3">
+          <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Impacto de los ajustes</p>
+          <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2 text-sm">
+            <div className="flex justify-between">
+              <span className="text-slate-500">Costo standard</span>
+              <span className="text-slate-300">{formatCurrency(stdTotal)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">A facturar al cliente</span>
+              <span className={`font-bold ${efeTotal < stdTotal ? 'text-teal-400' : 'text-white'}`}>{formatCurrency(efeTotal)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">Bonificación</span>
+              <span className="text-amber-300">{formatCurrency(bonif)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-500">Impacto en margen</span>
+              <span className={`font-medium ${marginDelta < 0 ? 'text-rose-400' : marginDelta > 0 ? 'text-teal-400' : 'text-slate-300'}`}>
+                {marginDelta >= 0 ? '+' : ''}{marginDelta.toFixed(1)}pp
+              </span>
+            </div>
           </div>
         </div>
+
+        {noCharge && (
+          <div className="flex items-center gap-2 rounded-md bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-xs text-amber-300">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            No se cobrará producción a la campaña.
+          </div>
+        )}
+
+        {editable && (
+          <div className="flex items-center justify-end gap-3">
+            {saved && <span className="text-xs text-teal-400">✓ Ajustes aplicados a los {items.length} cartel{items.length !== 1 ? 'es' : ''}</span>}
+            <button type="button" onClick={handleCancel} className="btn-secondary">Cancelar</button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="btn-primary disabled:opacity-50"
+            >
+              {saving ? 'Guardando…' : `Guardar y aplicar a todos los carteles`}
+            </button>
+          </div>
+        )}
       </div>
-
-      {noCharge && (
-        <div className="flex items-center gap-2 rounded-md bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-xs text-amber-300">
-          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-          No se cobrará producción a la campaña.
-        </div>
-      )}
-
-      {editable && (
-        <div className="flex items-center justify-end gap-3">
-          {saved && <span className="text-xs text-teal-400">✓ Ajustes aplicados a los {items.length} cartel{items.length !== 1 ? 'es' : ''}</span>}
-          <button type="button" onClick={handleCancel} className="btn-secondary">Cancelar</button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="btn-primary disabled:opacity-50"
-          >
-            {saving ? 'Guardando…' : `Guardar y aplicar a todos los carteles`}
-          </button>
-        </div>
-      )}
     </div>
   )
 }
@@ -541,6 +550,7 @@ function ProductionItemRow({ item, campaign, org, editable, onSaved }) {
 
   const site = item.site ?? null
   const fmtLabel = FORMAT_MAP[site?.format]?.label ?? site?.format ?? '—'
+  const fmtColor = FORMAT_MAP[site?.format]?.color ?? '#94a3b8'
 
   const metrics = useMemo(() => {
     if (!site || !org) return null
@@ -602,11 +612,16 @@ function ProductionItemRow({ item, campaign, org, editable, onSaved }) {
         <div className="flex items-center gap-2 min-w-0">
           <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${expanded ? 'rotate-0' : '-rotate-90'}`} />
           <p className="text-sm font-medium text-white truncate">{site?.name ?? '—'}</p>
-          <span className="text-xs text-slate-500 shrink-0">· {fmtLabel}</span>
+          <span
+            className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium"
+            style={{ backgroundColor: `${fmtColor}20`, color: fmtColor }}
+          >
+            {fmtLabel}
+          </span>
         </div>
         <div className="flex items-center gap-4 text-xs shrink-0">
           <span className="text-slate-500">Standard: <span className="text-slate-400">{formatCurrency(stdTotal)}</span></span>
-          <span className="text-slate-400">Efectivo: <span className={`font-bold ${efeTotal === stdTotal ? 'text-white' : 'text-teal-400'}`}>{formatCurrency(efeTotal)}</span></span>
+          <span className="text-slate-400">A facturar: <span className={`font-bold ${efeTotal === stdTotal ? 'text-white' : 'text-teal-400'}`}>{formatCurrency(efeTotal)}</span></span>
         </div>
       </button>
 
@@ -715,7 +730,7 @@ function ProductionItemRow({ item, campaign, org, editable, onSaved }) {
 function ProductionComponentBlock({ label, standard, efectiva, enabled, onEnabledChange, pct, onPctChange, disabled }) {
   const bonificado = Math.abs((standard ?? 0) - (efectiva ?? 0)) > 0.5
   return (
-    <div className="grid grid-cols-12 items-center gap-3 text-xs">
+    <div className="grid grid-cols-12 items-center gap-3 text-xs py-1">
       <p className="col-span-2 text-sm font-medium text-slate-200">{label}</p>
 
       <div className="col-span-3">
@@ -723,22 +738,27 @@ function ProductionComponentBlock({ label, standard, efectiva, enabled, onEnable
         <p className="text-sm text-slate-400">{formatCurrency(standard ?? 0)}</p>
       </div>
 
-      <div className="col-span-2 flex items-center gap-2">
-        <button
-          type="button"
-          role="switch"
-          aria-checked={enabled}
-          onClick={() => !disabled && onEnabledChange(!enabled)}
-          disabled={disabled}
-          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
-            enabled ? 'bg-teal-500' : 'bg-surface-600'
-          } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-        >
-          <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
-            enabled ? 'translate-x-[18px]' : 'translate-x-0.5'
-          }`} />
-        </button>
-        <span className="text-[11px] text-slate-500">Facturar</span>
+      <div className="col-span-2 flex flex-col gap-0.5">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={enabled}
+            onClick={() => !disabled && onEnabledChange(!enabled)}
+            disabled={disabled}
+            className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+              enabled ? 'bg-teal-500' : 'bg-surface-600'
+            } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+          >
+            <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${
+              enabled ? 'translate-x-[18px]' : 'translate-x-0.5'
+            }`} />
+          </button>
+          <span className="text-[11px] text-slate-500">Cobrar al cliente</span>
+        </div>
+        {!enabled && (
+          <span className="text-[10px] text-amber-400/80 pl-[2.75rem]">Bonificado 100%</span>
+        )}
       </div>
 
       <div className="col-span-2">
@@ -748,14 +768,14 @@ function ProductionComponentBlock({ label, standard, efectiva, enabled, onEnable
             value={pct}
             onChange={e => onPctChange(e.target.value)}
             disabled={disabled || !enabled}
-            className="input-field w-full text-sm pr-6 text-right disabled:opacity-50"
+            className="input-field w-full text-sm py-1.5 pr-6 text-right disabled:opacity-50"
           />
           <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500">%</span>
         </div>
       </div>
 
       <div className="col-span-3 text-right">
-        <p className="text-[10px] uppercase tracking-wide text-slate-500">Efectivo</p>
+        <p className="text-[10px] uppercase tracking-wide text-slate-500">A facturar</p>
         <p className={`text-sm font-bold ${bonificado ? 'text-teal-400' : 'text-white'}`}>
           {formatCurrency(efectiva ?? 0)}
         </p>
@@ -814,33 +834,33 @@ function CampaignModal({ campaign, onClose, onItemsUpdated }) {
 
           {/* ── Sección 1: Resumen de propuesta ── */}
           <ModalSection title="Resumen de propuesta" defaultOpen>
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="rounded-xl bg-surface-800 p-3">
-                  <p className="text-xs text-slate-500 mb-0.5">Inversión cliente</p>
-                  <p className="font-bold text-white">{formatCurrency(clientTotal)}</p>
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg bg-surface-800 px-3 py-2">
+                  <p className="text-[10px] text-slate-500 mb-0.5 uppercase tracking-wide">Inversión cliente</p>
+                  <p className="text-xl font-bold text-white">{formatCurrency(clientTotal)}</p>
                 </div>
-                <div className="rounded-xl bg-surface-800 p-3">
-                  <p className="text-xs text-slate-500 mb-0.5">Vendedor</p>
-                  <p className="font-semibold text-white truncate">{campaign.creator?.full_name ?? '—'}</p>
+                <div className="rounded-lg bg-surface-800 px-3 py-2">
+                  <p className="text-[10px] text-slate-500 mb-0.5 uppercase tracking-wide">Vendedor</p>
+                  <p className="text-sm font-semibold text-white truncate">{campaign.creator?.full_name ?? '—'}</p>
                 </div>
-                <div className="rounded-xl bg-surface-800 p-3">
-                  <p className="text-xs text-slate-500 mb-0.5">Inicio</p>
-                  <p className="font-semibold text-slate-300">{formatDate(brief.startDate) ?? '—'}</p>
+                <div className="rounded-lg bg-surface-800 px-3 py-2">
+                  <p className="text-[10px] text-slate-500 mb-0.5 uppercase tracking-wide">Inicio</p>
+                  <p className="text-sm font-semibold text-slate-300">{formatDate(brief.startDate) ?? '—'}</p>
                 </div>
-                <div className="rounded-xl bg-surface-800 p-3">
-                  <p className="text-xs text-slate-500 mb-0.5">Fin</p>
-                  <p className={`font-semibold ${isExpired ? 'text-red-400' : 'text-slate-300'}`}>
+                <div className="rounded-lg bg-surface-800 px-3 py-2">
+                  <p className="text-[10px] text-slate-500 mb-0.5 uppercase tracking-wide">Fin</p>
+                  <p className={`text-sm font-semibold ${isExpired ? 'text-red-400' : 'text-slate-300'}`}>
                     {formatDate(campaign.valid_until)}
-                    {days !== null && !isExpired && <span className="ml-1.5 text-xs text-slate-500">({days}d)</span>}
-                    {isExpired && <span className="ml-1.5 text-xs">(vencida)</span>}
+                    {days !== null && !isExpired && <span className="ml-1.5 text-[11px] text-slate-500">({days}d)</span>}
+                    {isExpired && <span className="ml-1.5 text-[11px]">(vencida)</span>}
                   </p>
                 </div>
               </div>
 
               {listTotal > 0 && (
-                <div className="rounded-xl bg-surface-800 p-4 space-y-2 text-sm">
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Resumen financiero</p>
+                <div className="rounded-lg bg-surface-800 p-3 space-y-1.5 text-sm">
+                  <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-2">Resumen financiero</p>
                   <div className="flex justify-between">
                     <span className="text-slate-500">Precio de lista</span>
                     <span className={discount > 0 ? 'text-slate-500 line-through' : 'text-slate-300'}>
@@ -853,7 +873,7 @@ function CampaignModal({ campaign, onClose, onItemsUpdated }) {
                       <span>-{formatCurrency(discountAmt)}</span>
                     </div>
                   )}
-                  <div className="flex justify-between font-bold text-white border-t border-surface-700 pt-2">
+                  <div className="flex justify-between font-bold text-white border-t border-surface-700 pt-1.5">
                     <span>Total cliente</span>
                     <span>{formatCurrency(clientTotal)}</span>
                   </div>
@@ -868,26 +888,26 @@ function CampaignModal({ campaign, onClose, onItemsUpdated }) {
             right={items.length > 0 ? `${items.length} soporte${items.length > 1 ? 's' : ''}` : null}
             defaultOpen
           >
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-3 md:grid-cols-2">
               {doohItems.length > 0 && (
                 <div>
-                  <p className="mb-2 text-xs font-semibold text-blue-400 uppercase tracking-wide flex items-center gap-1.5">
+                  <p className="mb-1.5 text-[10px] font-semibold text-blue-400 uppercase tracking-wide flex items-center gap-1.5">
                     📺 Digital (DOOH) · {doohItems.length} pantalla{doohItems.length > 1 ? 's' : ''}
                   </p>
-                  <div className="space-y-1.5">
+                  <div className="space-y-1">
                     {doohItems.map((item, i) => {
                       const inv = item.site ?? null
                       const listPx = item.rate ?? 0
                       const clientPx = Math.round(listPx * (1 - discount / 100))
                       return (
-                        <div key={item.id ?? i} className="rounded-lg bg-surface-800 px-3 py-2.5">
+                        <div key={item.id ?? i} className="rounded-lg bg-surface-800 px-3 py-2">
                           <div className="flex items-center justify-between gap-2">
                             <p className="text-sm font-medium text-white truncate">{inv?.name ?? '—'}</p>
                             <span className="shrink-0 text-sm font-bold text-brand">{formatCurrency(clientPx)}</span>
                           </div>
-                          {inv?.address && <p className="text-xs text-slate-500 truncate mt-0.5">{inv.address}</p>}
+                          {inv?.address && <p className="text-[11px] text-slate-500 truncate mt-0.5">{inv.address}</p>}
                           {listPx > 0 && discount > 0 && (
-                            <p className="text-xs text-slate-600 mt-0.5">Lista: {formatCurrency(listPx)}</p>
+                            <p className="text-[11px] text-slate-600 mt-0.5">Lista: {formatCurrency(listPx)}</p>
                           )}
                         </div>
                       )
@@ -898,10 +918,10 @@ function CampaignModal({ campaign, onClose, onItemsUpdated }) {
 
               {offItems.length > 0 && (
                 <div>
-                  <p className="mb-2 text-xs font-semibold text-orange-400 uppercase tracking-wide flex items-center gap-1.5">
+                  <p className="mb-1.5 text-[10px] font-semibold text-orange-400 uppercase tracking-wide flex items-center gap-1.5">
                     🏙️ Vía Pública (OFF) · {offItems.length} soporte{offItems.length > 1 ? 's' : ''}
                   </p>
-                  <div className="space-y-1.5">
+                  <div className="space-y-1">
                     {offItems.map((item, i) => {
                       const inv = item.site ?? null
                       const fmtColor = FORMAT_MAP[inv?.format]?.color
@@ -909,19 +929,19 @@ function CampaignModal({ campaign, onClose, onItemsUpdated }) {
                       const listPx = item.rate ?? 0
                       const clientPx = Math.round(listPx * (1 - discount / 100))
                       return (
-                        <div key={item.id ?? i} className="rounded-lg bg-surface-800 px-3 py-2.5">
+                        <div key={item.id ?? i} className="rounded-lg bg-surface-800 px-3 py-2">
                           <div className="flex items-center justify-between gap-2">
                             <p className="text-sm font-medium text-white truncate">{inv?.name ?? '—'}</p>
                             <span className="shrink-0 text-sm font-bold text-brand">{formatCurrency(clientPx)}</span>
                           </div>
                           <div className="flex items-center gap-2 mt-0.5">
-                            {inv?.address && <p className="text-xs text-slate-500 truncate flex-1">{inv.address}</p>}
-                            <span className="shrink-0 text-xs font-medium" style={{ color: fmtColor ?? '#94a3b8' }}>
+                            {inv?.address && <p className="text-[11px] text-slate-500 truncate flex-1">{inv.address}</p>}
+                            <span className="shrink-0 text-[11px] font-medium" style={{ color: fmtColor ?? '#94a3b8' }}>
                               {fmtLabel}
                             </span>
                           </div>
                           {listPx > 0 && discount > 0 && (
-                            <p className="text-xs text-slate-600 mt-0.5">Lista: {formatCurrency(listPx)}</p>
+                            <p className="text-[11px] text-slate-600 mt-0.5">Lista: {formatCurrency(listPx)}</p>
                           )}
                         </div>
                       )
@@ -936,9 +956,9 @@ function CampaignModal({ campaign, onClose, onItemsUpdated }) {
             </div>
           </ModalSection>
 
-          {/* ── Sección 3: Negociación de Producción (owner/manager only) ── */}
+          {/* ── Sección 3: Costos de Producción (owner/manager only) ── */}
           {(role === 'owner' || role === 'manager') && items.length > 0 && (
-            <ModalSection title="Negociación de Producción">
+            <ModalSection title="Costos de Producción">
               <ProductionNegotiationPanel
                 campaign={campaign}
                 items={items}
