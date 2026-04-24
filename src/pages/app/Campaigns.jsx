@@ -438,6 +438,7 @@ function ProductionGlobalPanel({ campaign, items, org, editable, onItemsUpdated 
                 className="input-field pl-7 w-full text-sm py-1.5"
                 value={s.montoFijo}
                 onChange={e => set({ montoFijo: e.target.value })}
+                onFocus={(e) => e.target.select()}
                 disabled={!editable}
               />
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">$</span>
@@ -663,6 +664,7 @@ function ProductionItemRow({ item, campaign, org, editable, onSaved }) {
                       className="input-field pl-7 w-full text-sm"
                       value={s.montoFijo}
                       onChange={e => set({ montoFijo: e.target.value })}
+                      onFocus={(e) => e.target.select()}
                       disabled={!editable}
                     />
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">$</span>
@@ -761,6 +763,7 @@ function ProductionComponentBlock({ label, standard, efectiva, enabled, onEnable
             type="number" min="0" max="100" step="5"
             value={pct}
             onChange={e => onPctChange(Number(e.target.value) || 0)}
+            onFocus={(e) => e.target.select()}
             disabled={disabled || !enabled}
             className="input-field w-full text-sm py-1.5 pr-6 text-right disabled:opacity-50"
           />
