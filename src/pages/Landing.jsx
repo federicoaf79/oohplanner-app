@@ -1,16 +1,17 @@
 import { Link } from 'react-router-dom'
 import {
-  ArrowRight, MapPin, BarChart2, FileText, Users,
-  CheckCircle, Star, ChevronRight, Megaphone, TrendingUp, Shield
+  ArrowRight, MapPin, FileText, Users,
+  CheckCircle, Star, ChevronRight, TrendingUp, Shield,
+  Sparkles, DollarSign, Upload,
 } from 'lucide-react'
 
 const FEATURES = [
-  { icon: Megaphone, title: 'Gestión de Campañas', desc: 'Crea, monitorea y optimiza campañas OOH con visibilidad total en tiempo real.', color: 'bg-blue-500/10 text-blue-400' },
-  { icon: MapPin, title: 'Inventario Inteligente', desc: 'Administra tu cartera de espacios publicitarios con geoposicionamiento y métricas de tráfico.', color: 'bg-teal-500/10 text-teal-400' },
-  { icon: FileText, title: 'Propuestas Profesionales', desc: 'Genera propuestas impactantes en minutos y envíalas directamente al cliente.', color: 'bg-purple-500/10 text-purple-400' },
-  { icon: BarChart2, title: 'Reportes y Analytics', desc: 'Visualiza el desempeño de tus campañas con dashboards ejecutivos y reportes automáticos.', color: 'bg-amber-500/10 text-amber-400' },
-  { icon: Users, title: 'Multi-rol y Equipos', desc: 'Colabora con tu equipo: owners, managers y vendedores con permisos diferenciados.', color: 'bg-rose-500/10 text-rose-400' },
-  { icon: Shield, title: 'Seguridad Multi-tenant', desc: 'Cada empresa opera en un espacio completamente aislado. Tus datos son solo tuyos.', color: 'bg-teal-500/10 text-teal-400' },
+  { icon: Sparkles,   title: 'Planificador IA',          desc: 'IA que analiza tu inventario real y genera dos estrategias — máximo alcance o máximo impacto — con audiencias y CPM en segundos.',     color: 'bg-blue-500/10 text-blue-400' },
+  { icon: DollarSign, title: 'Rentabilidad en vivo',     desc: 'Margen por cartel y campaña calculado con costos fijos prorrateados + variables + comisiones. Siempre actualizado, sin planillas.',    color: 'bg-amber-500/10 text-amber-400' },
+  { icon: FileText,   title: 'Propuestas profesionales', desc: 'PDF branded con mapa, audiencias, mockups del arte sobre el cartel real, y desglose financiero. Compartible por WhatsApp.',              color: 'bg-purple-500/10 text-purple-400' },
+  { icon: MapPin,     title: 'Inventario completo',      desc: 'Fotos, GPS, costos, ocupación en tiempo real, corredores. Importación masiva desde Excel con deduplicación y rollback.',                color: 'bg-cyan-500/10 text-cyan-400' },
+  { icon: Users,      title: 'Equipo y comisiones',      desc: 'Owner, manager, vendedor. Comisiones automáticas al cerrar venta. Reportes confidenciales según rol.',                                   color: 'bg-rose-500/10 text-rose-400' },
+  { icon: Upload,     title: 'Onboarding masivo',        desc: 'Importá inventario, contactos y equipo desde Excel/CSV/PDF con reconciliación inteligente. Si algo sale mal, rollback con un clic.',    color: 'bg-indigo-500/10 text-indigo-400' },
 ]
 
 function IllustrationEspectacular() {
@@ -178,7 +179,7 @@ export default function Landing() {
       {/* Navbar */}
       <nav className="fixed top-0 z-50 w-full border-b border-surface-700/50 bg-surface-900/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 lg:px-8">
-          <img src="/logo.png" alt="OOH Planner" className="h-16 w-auto" />
+          <img src="/logo.png" alt="OOH Planner" className="h-14 w-auto" />
           <div className="hidden items-center gap-8 md:flex">
             {['Características', 'Formatos'].map(item => (
               <a key={item} href={`#${item.toLowerCase()}`} className="text-sm text-slate-400 transition-colors hover:text-white">{item}</a>
@@ -204,12 +205,15 @@ export default function Landing() {
             Diseñada en Argentina para el mercado OOH local
           </div>
           <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
-            Vendé más de tu inventario de{' '}
-            <span className="text-brand">vía pública</span>, con control total
+            La plataforma completa para gestionar tu negocio de{' '}
+            <span className="text-brand">vía pública</span>
           </h1>
           <p className="mx-auto mt-6 max-w-2xl text-lg text-slate-400">
-            Gestiona campañas, inventario y propuestas de publicidad exterior en una sola plataforma.
-            Vendé más de tu inventario, controlá costos y maximizá rentabilidad por cartel.
+            Administración inteligente de inventario, planificación con IA y audiencias,
+            control total de costos y rentabilidad. Todo en un solo lugar.
+          </p>
+          <p className="mx-auto mt-3 max-w-xl text-sm text-slate-500">
+            Pensada para dueños de portfolios pequeños y medianos.
           </p>
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             <a href="mailto:hola@oohplanner.net" className="btn-primary text-base px-6 py-3">
@@ -218,6 +222,44 @@ export default function Landing() {
             </a>
           </div>
           <p className="mt-4 text-xs text-slate-600">Respondemos en 24hs hábiles</p>
+        </div>
+      </section>
+
+      {/* La plataforma en acción — 3 pasos del flow end-to-end */}
+      <section className="relative overflow-hidden px-4 py-16 lg:px-8 lg:py-20 bg-surface-800/30 border-t border-surface-700">
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute -top-20 right-10 h-[400px] w-[400px] rounded-full bg-brand/5 blur-3xl" />
+        </div>
+        <div className="relative mx-auto max-w-6xl">
+          <div className="mb-12 text-center">
+            <h2 className="text-2xl font-bold text-white lg:text-3xl">La plataforma en acción</h2>
+            <p className="mt-3 text-slate-400">Del brief del cliente a la campaña activa, en tres pasos.</p>
+          </div>
+          <div className="grid gap-6 md:grid-cols-3">
+            {[
+              {
+                step: '01',
+                title: 'Planificá con IA',
+                desc: 'Cargá el brief del cliente. El Planificador IA analiza tu inventario real y propone dos estrategias — máximo alcance o máximo impacto — con audiencias y CPM calculados.',
+              },
+              {
+                step: '02',
+                title: 'Propuesta profesional',
+                desc: 'PDF branded con mapa de ubicaciones, métricas de audiencia, mockups del arte del cliente sobre el cartel real, y desglose financiero. Compartible por WhatsApp.',
+              },
+              {
+                step: '03',
+                title: 'Ciclo completo',
+                desc: 'Aprobada → impresión → colocación → activa → retirada. Workflow visual, alertas de vencimiento, comisiones automáticas al cerrar venta.',
+              },
+            ].map(({ step, title, desc }) => (
+              <div key={step} className="card p-6 transition-colors hover:border-brand/30">
+                <span className="text-xs font-bold tracking-widest text-brand">{step}</span>
+                <h3 className="mt-2 text-lg font-semibold text-white">{title}</h3>
+                <p className="mt-3 text-sm text-slate-400 leading-relaxed">{desc}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -262,6 +304,87 @@ export default function Landing() {
                 <p className="text-sm text-slate-400 leading-relaxed">{desc}</p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Gestión administrativa completa */}
+      <section className="px-4 py-20 lg:px-8 lg:py-28">
+        <div className="mx-auto max-w-5xl">
+          <div className="mb-10 text-center">
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand/10 px-4 py-1.5 text-sm text-brand">
+              <CheckCircle className="h-3.5 w-3.5" />
+              Administración completa
+            </div>
+            <h2 className="text-2xl font-bold text-white lg:text-3xl">Gestión Administrativa Completa</h2>
+            <p className="mt-3 text-slate-400 max-w-2xl mx-auto">
+              Todo lo necesario para operar un portfolio de vía pública con control total del negocio.
+            </p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {[
+              'Costos completos por cartel: alquiler, luz, impuestos, mantenimiento, impresión, colocación, diseño — prorrateados por duración de campaña.',
+              'Comisiones en 3 niveles (vendedor, agencia, dueño) calculadas sobre revenue neto. Se registran automáticamente al cerrar venta.',
+              'Aprobación de descuentos según rol: owner sin límite, manager hasta 30%, vendedor hasta 20%. Configurable por empresa.',
+              'Reportes confidenciales: los vendedores nunca ven costos ni márgenes. Sólo owners acceden a rentabilidad completa.',
+            ].map((item, i) => (
+              <div key={i} className="card p-5 flex items-start gap-3">
+                <CheckCircle className="h-5 w-5 text-brand mt-0.5 shrink-0" />
+                <p className="text-sm text-slate-300 leading-relaxed">{item}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Workflow completo de campaña */}
+      <section className="relative px-4 py-20 lg:px-8 lg:py-28 bg-surface-800/30 border-y border-surface-700">
+        <div className="mx-auto max-w-5xl">
+          <div className="mb-12 text-center">
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand/10 px-4 py-1.5 text-sm text-brand">
+              <ArrowRight className="h-3.5 w-3.5" />
+              Ciclo completo de venta
+            </div>
+            <h2 className="text-2xl font-bold text-white lg:text-3xl">Workflow visual, de punta a punta</h2>
+            <p className="mt-3 text-slate-400 max-w-2xl mx-auto">
+              Cada propuesta aprobada avanza por 6 estados trackeables. Con alertas automáticas,
+              comisiones al cerrar, y retiro por vencimiento.
+            </p>
+          </div>
+
+          {/* Stepper — pills + arrows mimicking the in-app WorkflowStepper */}
+          <div className="flex flex-wrap items-center justify-center gap-2 max-w-4xl mx-auto">
+            {[
+              { label: 'Aprobada',   cls: 'border-teal-500/40 bg-teal-500/10 text-teal-400' },
+              { label: 'Impresión',  cls: 'border-blue-500/40 bg-blue-500/10 text-blue-400' },
+              { label: 'Colocación', cls: 'border-amber-500/40 bg-amber-500/10 text-amber-400' },
+              { label: 'Activa',     cls: 'border-brand/40 bg-brand/10 text-brand' },
+              { label: 'Renovada',   cls: 'border-purple-500/40 bg-purple-500/10 text-purple-400' },
+              { label: 'Retirada',   cls: 'border-slate-600 bg-slate-500/10 text-slate-400' },
+            ].map((step, i, arr) => (
+              <div key={step.label} className="flex items-center gap-2">
+                <span className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${step.cls}`}>
+                  {step.label}
+                </span>
+                {i < arr.length - 1 && <ChevronRight className="h-4 w-4 text-slate-600" />}
+              </div>
+            ))}
+          </div>
+
+          {/* Key metrics */}
+          <div className="mt-12 grid gap-6 sm:grid-cols-3 max-w-3xl mx-auto text-center">
+            <div>
+              <p className="text-3xl font-bold bg-gradient-to-r from-brand to-purple-400 bg-clip-text text-transparent">60d</p>
+              <p className="mt-2 text-xs text-slate-500">Aviso automático de vencimiento</p>
+            </div>
+            <div>
+              <p className="text-3xl font-bold bg-gradient-to-r from-brand to-purple-400 bg-clip-text text-transparent">Auto</p>
+              <p className="mt-2 text-xs text-slate-500">Comisiones al cerrar venta</p>
+            </div>
+            <div>
+              <p className="text-3xl font-bold bg-gradient-to-r from-brand to-purple-400 bg-clip-text text-transparent">Stepper</p>
+              <p className="mt-2 text-xs text-slate-500">Tracking visual en cada card</p>
+            </div>
           </div>
         </div>
       </section>
@@ -395,7 +518,7 @@ export default function Landing() {
       {/* Footer */}
       <footer className="border-t border-surface-700 px-4 py-8 lg:px-8">
         <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-4 sm:flex-row">
-          <img src="/logo2.png" alt="OOH Planner" className="h-9 w-auto" />
+          <img src="/logo2.png" alt="OOH Planner" className="h-16 w-auto" />
           <p className="text-xs text-slate-600">© {new Date().getFullYear()} OOH Planner. Todos los derechos reservados.</p>
         </div>
       </footer>
