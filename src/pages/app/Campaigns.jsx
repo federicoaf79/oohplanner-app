@@ -7,7 +7,7 @@ import { formatDate, formatCurrency } from '../../lib/utils'
 import Spinner from '../../components/ui/Spinner'
 import { WORKFLOW_STATUSES, FORMAT_MAP } from '../../lib/constants'
 import ProfitabilityChart from '../../components/ProfitabilityChart'
-import { calculateProfitability, calculateSiteProfitability } from '../../lib/profitability'
+import { calculateProfitability, calculateSiteProfitability, calculateProposalProfitability } from '../../lib/profitability'
 
 const EDITABLE_PROD_STATUSES = new Set(['approved', 'printing', 'active'])
 
@@ -206,24 +206,86 @@ function PrintMeasuresModal({ campaign, onClose }) {
   )
 }
 
+// ── Reusable collapsible section for the modal body ───────────
+function ModalSection({ title, right, defaultOpen = false, children }) {
+  const [open, setOpen] = useState(defaultOpen)
+  return (
+    <div className="rounded-xl border border-surface-700 bg-surface-800/40 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-surface-800/70 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <ChevronDown className={`h-4 w-4 text-slate-500 transition-transform ${open ? 'rotate-0' : '-rotate-90'}`} />
+          <p className="text-sm font-semibold text-white">{title}</p>
+        </div>
+        {right && <span className="text-xs text-slate-500">{right}</span>}
+      </button>
+      {open && <div className="px-4 pb-4 pt-1 border-t border-surface-700/60">{children}</div>}
+    </div>
+  )
+}
+
+// ── Helpers for production ajuste state ───────────────────────
+function ajusteFromItem(item) {
+  return {
+    printEnabled:  !item.produccion_print_disabled,
+    colocEnabled:  !item.produccion_colocacion_disabled,
+    disenoEnabled: !item.produccion_diseno_disabled,
+    printPct:      Number(item.produccion_print_ajuste_pct ?? 0),
+    colocPct:      Number(item.produccion_colocacion_ajuste_pct ?? 0),
+    disenoPct:     Number(item.produccion_diseno_ajuste_pct ?? 0),
+    montoFijo:     Number(item.produccion_ajuste_monto_fijo ?? 0),
+    motivo:        item.produccion_ajuste_motivo ?? '',
+  }
+}
+
+// If all items share the same value for a field, return it; else return fallback.
+function commonFieldValue(items, picker, fallback) {
+  if (items.length === 0) return fallback
+  const first = picker(items[0])
+  for (let i = 1; i < items.length; i++) {
+    if (picker(items[i]) !== first) return fallback
+  }
+  return first
+}
+
+function deriveGlobalSnapshot(items) {
+  return {
+    printEnabled:  commonFieldValue(items, it => !it.produccion_print_disabled, true),
+    colocEnabled:  commonFieldValue(items, it => !it.produccion_colocacion_disabled, true),
+    disenoEnabled: commonFieldValue(items, it => !it.produccion_diseno_disabled, true),
+    printPct:      commonFieldValue(items, it => Number(it.produccion_print_ajuste_pct ?? 0), 0),
+    colocPct:      commonFieldValue(items, it => Number(it.produccion_colocacion_ajuste_pct ?? 0), 0),
+    disenoPct:     commonFieldValue(items, it => Number(it.produccion_diseno_ajuste_pct ?? 0), 0),
+    montoFijo:     commonFieldValue(items, it => Number(it.produccion_ajuste_monto_fijo ?? 0), 0),
+    motivo:        commonFieldValue(items, it => it.produccion_ajuste_motivo ?? '', ''),
+  }
+}
+
+function payloadFromState(s) {
+  return {
+    produccion_print_ajuste_pct:      Math.min(0, Math.max(-100, Number(s.printPct) || 0)),
+    produccion_print_disabled:        !s.printEnabled,
+    produccion_colocacion_ajuste_pct: Math.min(0, Math.max(-100, Number(s.colocPct) || 0)),
+    produccion_colocacion_disabled:   !s.colocEnabled,
+    produccion_diseno_ajuste_pct:     Math.min(0, Math.max(-100, Number(s.disenoPct) || 0)),
+    produccion_diseno_disabled:       !s.disenoEnabled,
+    produccion_ajuste_monto_fijo:     Math.max(0, Number(s.montoFijo) || 0),
+    produccion_ajuste_motivo:         (s.motivo || '').slice(0, 500),
+  }
+}
+
 // ── Production negotiation panel ──────────────────────────────
 // Lets owner/manager apply bonificaciones and toggle off production
-// components per proposal_item. Writes to proposal_items columns added
-// by Block A.1 migration. Read-only preview if workflow status is not
-// yet approved.
+// components. Two modes: global (applies to all items) and per-item.
 
 function ProductionNegotiationPanel({ campaign, items, org, editable, onItemsUpdated }) {
-  return (
-    <div className="mt-6 rounded-xl border border-surface-700 bg-surface-800/40 p-4">
-      <div className="flex items-start justify-between gap-3 mb-3">
-        <div>
-          <p className="text-sm font-semibold text-white">Negociación de Producción</p>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Ajustá lo que se factura por cartel. Aplicá bonificaciones o remové componentes completos.
-          </p>
-        </div>
-      </div>
+  const [mode, setMode] = useState('global')
 
+  return (
+    <div>
       {!editable && (
         <div className="mb-3 flex items-center gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-xs text-amber-300">
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
@@ -231,42 +293,255 @@ function ProductionNegotiationPanel({ campaign, items, org, editable, onItemsUpd
         </div>
       )}
 
-      <div className="space-y-2">
-        {items.map(item => (
-          <ProductionItemRow
-            key={item.id}
-            item={item}
-            campaign={campaign}
-            org={org}
-            editable={editable}
-            onSaved={(updatedItem) => {
-              const next = items.map(it => it.id === updatedItem.id ? { ...it, ...updatedItem } : it)
-              onItemsUpdated?.(campaign.id, next)
-            }}
-          />
+      {/* Mode tabs */}
+      <div className="inline-flex rounded-lg bg-surface-900 border border-surface-700 p-0.5 mb-4">
+        {[
+          { id: 'global',   label: 'Ajuste global' },
+          { id: 'per-item', label: 'Ajuste por cartel' },
+        ].map(t => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setMode(t.id)}
+            className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+              mode === t.id ? 'bg-brand text-white' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            {t.label}
+          </button>
         ))}
       </div>
+
+      {mode === 'global' && (
+        <ProductionGlobalPanel
+          campaign={campaign}
+          items={items}
+          org={org}
+          editable={editable}
+          onItemsUpdated={onItemsUpdated}
+        />
+      )}
+
+      {mode === 'per-item' && (
+        <div className="space-y-2">
+          {items.map(item => (
+            <ProductionItemRow
+              key={item.id}
+              item={item}
+              campaign={campaign}
+              org={org}
+              editable={editable}
+              onSaved={(updatedItem) => {
+                const next = items.map(it => it.id === updatedItem.id ? { ...it, ...updatedItem } : it)
+                onItemsUpdated?.(campaign.id, next)
+              }}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ProductionGlobalPanel({ campaign, items, org, editable, onItemsUpdated }) {
+  const snapshot = useMemo(() => deriveGlobalSnapshot(items), [items])
+  const [s, setS] = useState(snapshot)
+  const [saving, setSaving] = useState(false)
+  const [saved,  setSaved]  = useState(false)
+
+  // Reset state when the persisted snapshot changes (e.g. after save).
+  useEffect(() => { setS(snapshot) }, [snapshot])
+
+  const set = (patch) => setS(prev => ({ ...prev, ...patch }))
+
+  // Baseline: proposal with items as persisted.
+  const baseline = useMemo(() => calculateProposalProfitability({
+    ...campaign,
+    org,
+    items: items.map(it => ({ ...it, site: it.site })),
+  }), [campaign, items, org])
+
+  // Preview: apply local state to all items in memory.
+  const preview = useMemo(() => {
+    const payload = payloadFromState(s)
+    const mutated = items.map(it => ({ ...it, ...payload, site: it.site }))
+    return calculateProposalProfitability({ ...campaign, org, items: mutated })
+  }, [campaign, items, org, s])
+
+  const stdTotal   = preview.cost_breakdown.produccion_cobrada_standard
+  const efeTotal   = preview.cost_breakdown.produccion_cobrada_efectiva
+  const bonif      = Math.max(0, stdTotal - efeTotal) + (Number(s.montoFijo) || 0) * items.length
+  const marginDelta = (preview.margin_pct - baseline.margin_pct)
+  const noCharge   = s.printEnabled === false && s.colocEnabled === false && s.disenoEnabled === false && (Number(s.montoFijo) || 0) === 0 && stdTotal > 0
+
+  async function handleSave() {
+    setSaving(true)
+    const payload = payloadFromState(s)
+    const { error } = await supabase
+      .from('proposal_items')
+      .update(payload)
+      .eq('proposal_id', campaign.id)
+    setSaving(false)
+    if (error) {
+      console.error('global prod ajustes error:', error.message)
+      return
+    }
+    const nextItems = items.map(it => ({ ...it, ...payload }))
+    onItemsUpdated?.(campaign.id, nextItems)
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2500)
+  }
+
+  function handleCancel() {
+    setS(snapshot)
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-xl border border-surface-700 bg-surface-800 p-4 space-y-4">
+        <p className="text-xs text-slate-500">
+          Aplicar a los <strong className="text-slate-300">{items.length} cartel{items.length !== 1 ? 'es' : ''}</strong> de la campaña
+        </p>
+
+        <ProductionComponentBlock
+          label="Impresión"
+          standard={preview.cost_breakdown.impresion_standard}
+          efectiva={preview.cost_breakdown.impresion_efectiva}
+          enabled={s.printEnabled}
+          onEnabledChange={v => set({ printEnabled: v })}
+          pct={s.printPct}
+          onPctChange={v => set({ printPct: v })}
+          disabled={!editable}
+        />
+        <ProductionComponentBlock
+          label="Colocación"
+          standard={preview.cost_breakdown.colocacion_standard}
+          efectiva={preview.cost_breakdown.colocacion_efectiva}
+          enabled={s.colocEnabled}
+          onEnabledChange={v => set({ colocEnabled: v })}
+          pct={s.colocPct}
+          onPctChange={v => set({ colocPct: v })}
+          disabled={!editable}
+        />
+        <ProductionComponentBlock
+          label="Diseño"
+          standard={preview.cost_breakdown.diseno_standard}
+          efectiva={preview.cost_breakdown.diseno_efectiva}
+          enabled={s.disenoEnabled}
+          onEnabledChange={v => set({ disenoEnabled: v })}
+          pct={s.disenoPct}
+          onPctChange={v => set({ disenoPct: v })}
+          disabled={!editable}
+        />
+
+        <div className="grid gap-3 sm:grid-cols-2 pt-3 border-t border-surface-700">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-400">
+              Bonificación adicional (monto fijo, por cartel)
+            </label>
+            <div className="relative">
+              <input
+                type="number" min="0" step="1000"
+                className="input-field pl-7 w-full text-sm"
+                value={s.montoFijo}
+                onChange={e => set({ montoFijo: e.target.value })}
+                disabled={!editable}
+              />
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">$</span>
+            </div>
+            <p className="mt-1 text-[10px] text-slate-600">Se aplica entero a cada item.</p>
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-slate-400">
+              Motivo del ajuste (opcional)
+            </label>
+            <textarea
+              rows={1}
+              maxLength={500}
+              className="input-field w-full text-sm resize-none"
+              value={s.motivo}
+              onChange={e => set({ motivo: e.target.value })}
+              disabled={!editable}
+              placeholder="Ej: regalo campaña, bonificación fidelización…"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Vista previa de impacto */}
+      <div className="rounded-xl border border-surface-700 bg-surface-900 p-4">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Vista previa de impacto</p>
+        <div className="grid gap-2 sm:grid-cols-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-slate-500">Standard total</span>
+            <span className="text-slate-300">{formatCurrency(stdTotal)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-500">Efectivo total</span>
+            <span className={`font-bold ${efeTotal < stdTotal ? 'text-teal-400' : 'text-white'}`}>{formatCurrency(efeTotal)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-500">Bonificación</span>
+            <span className="text-amber-300">{formatCurrency(bonif)}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-500">Margen impactado</span>
+            <span className={`font-medium ${marginDelta < 0 ? 'text-rose-400' : marginDelta > 0 ? 'text-teal-400' : 'text-slate-300'}`}>
+              {marginDelta >= 0 ? '+' : ''}{marginDelta.toFixed(1)}pp
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {noCharge && (
+        <div className="flex items-center gap-2 rounded-md bg-amber-500/10 border border-amber-500/20 px-3 py-2 text-xs text-amber-300">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          No se cobrará producción a la campaña.
+        </div>
+      )}
+
+      {editable && (
+        <div className="flex items-center justify-end gap-3">
+          {saved && <span className="text-xs text-teal-400">✓ Ajustes aplicados a los {items.length} cartel{items.length !== 1 ? 'es' : ''}</span>}
+          <button type="button" onClick={handleCancel} className="btn-secondary">Cancelar</button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="btn-primary disabled:opacity-50"
+          >
+            {saving ? 'Guardando…' : `Guardar y aplicar a todos los carteles`}
+          </button>
+        </div>
+      )}
     </div>
   )
 }
 
 function ProductionItemRow({ item, campaign, org, editable, onSaved }) {
+  const snapshot = useMemo(() => ajusteFromItem(item), [
+    item.id,
+    item.produccion_print_ajuste_pct,
+    item.produccion_print_disabled,
+    item.produccion_colocacion_ajuste_pct,
+    item.produccion_colocacion_disabled,
+    item.produccion_diseno_ajuste_pct,
+    item.produccion_diseno_disabled,
+    item.produccion_ajuste_monto_fijo,
+    item.produccion_ajuste_motivo,
+  ])
   const [expanded, setExpanded] = useState(false)
-  const [printEnabled,     setPrintEnabled]     = useState(!item.produccion_print_disabled)
-  const [colocEnabled,     setColocEnabled]     = useState(!item.produccion_colocacion_disabled)
-  const [disenoEnabled,    setDisenoEnabled]    = useState(!item.produccion_diseno_disabled)
-  const [printPct,         setPrintPct]         = useState(Number(item.produccion_print_ajuste_pct ?? 0))
-  const [colocPct,         setColocPct]         = useState(Number(item.produccion_colocacion_ajuste_pct ?? 0))
-  const [disenoPct,        setDisenoPct]        = useState(Number(item.produccion_diseno_ajuste_pct ?? 0))
-  const [montoFijo,        setMontoFijo]        = useState(Number(item.produccion_ajuste_monto_fijo ?? 0))
-  const [motivo,           setMotivo]           = useState(item.produccion_ajuste_motivo ?? '')
-  const [saving,           setSaving]           = useState(false)
-  const [saved,            setSaved]            = useState(false)
+  const [s, setS]          = useState(snapshot)
+  const [saving, setSaving] = useState(false)
+  const [saved,  setSaved]  = useState(false)
+
+  useEffect(() => { setS(snapshot) }, [snapshot])
+
+  const set = (patch) => setS(prev => ({ ...prev, ...patch }))
 
   const site = item.site ?? null
   const fmtLabel = FORMAT_MAP[site?.format]?.label ?? site?.format ?? '—'
 
-  // Compute standard + efectiva on every render — helper is pure and cheap.
   const metrics = useMemo(() => {
     if (!site || !org) return null
     return calculateSiteProfitability(site, {
@@ -275,17 +550,16 @@ function ProductionItemRow({ item, campaign, org, editable, onSaved }) {
       discountPct: campaign.discount_pct ?? 0,
       orgProduccionConfig: org,
       produccionAjustes: {
-        printPct:           Number(printPct) || 0,
-        colocacionPct:      Number(colocPct) || 0,
-        disenoPct:          Number(disenoPct) || 0,
-        printDisabled:      !printEnabled,
-        colocacionDisabled: !colocEnabled,
-        disenoDisabled:     !disenoEnabled,
-        montoFijo:          Number(montoFijo) || 0,
+        printPct:           Number(s.printPct) || 0,
+        colocacionPct:      Number(s.colocPct) || 0,
+        disenoPct:          Number(s.disenoPct) || 0,
+        printDisabled:      !s.printEnabled,
+        colocacionDisabled: !s.colocEnabled,
+        disenoDisabled:     !s.disenoEnabled,
+        montoFijo:          Number(s.montoFijo) || 0,
       },
     })
-  }, [site, org, item.duration, item.rate, campaign.discount_pct,
-      printPct, colocPct, disenoPct, printEnabled, colocEnabled, disenoEnabled, montoFijo])
+  }, [site, org, item.duration, item.rate, campaign.discount_pct, s])
 
   const b = metrics?.cost_breakdown
   const stdTotal = b?.produccion_cobrada_standard ?? 0
@@ -295,16 +569,7 @@ function ProductionItemRow({ item, campaign, org, editable, onSaved }) {
 
   async function handleSave() {
     setSaving(true)
-    const payload = {
-      produccion_print_ajuste_pct:       Math.min(0, Math.max(-100, Number(printPct) || 0)),
-      produccion_print_disabled:         !printEnabled,
-      produccion_colocacion_ajuste_pct:  Math.min(0, Math.max(-100, Number(colocPct) || 0)),
-      produccion_colocacion_disabled:    !colocEnabled,
-      produccion_diseno_ajuste_pct:      Math.min(0, Math.max(-100, Number(disenoPct) || 0)),
-      produccion_diseno_disabled:        !disenoEnabled,
-      produccion_ajuste_monto_fijo:      Math.max(0, Number(montoFijo) || 0),
-      produccion_ajuste_motivo:          (motivo || '').slice(0, 500),
-    }
+    const payload = payloadFromState(s)
     const { data, error } = await supabase
       .from('proposal_items')
       .update(payload)
@@ -319,6 +584,11 @@ function ProductionItemRow({ item, campaign, org, editable, onSaved }) {
     setSaved(true)
     setTimeout(() => setSaved(false), 2500)
     onSaved?.({ ...item, ...payload, ...(data ?? {}) })
+  }
+
+  function handleCancel() {
+    setS(snapshot)
+    setExpanded(false)
   }
 
   return (
@@ -354,30 +624,30 @@ function ProductionItemRow({ item, campaign, org, editable, onSaved }) {
                 label="Impresión"
                 standard={b.impresion_standard}
                 efectiva={b.impresion_efectiva}
-                enabled={printEnabled}
-                onEnabledChange={setPrintEnabled}
-                pct={printPct}
-                onPctChange={setPrintPct}
+                enabled={s.printEnabled}
+                onEnabledChange={v => set({ printEnabled: v })}
+                pct={s.printPct}
+                onPctChange={v => set({ printPct: v })}
                 disabled={!editable}
               />
               <ProductionComponentBlock
                 label="Colocación"
                 standard={b.colocacion_standard}
                 efectiva={b.colocacion_efectiva}
-                enabled={colocEnabled}
-                onEnabledChange={setColocEnabled}
-                pct={colocPct}
-                onPctChange={setColocPct}
+                enabled={s.colocEnabled}
+                onEnabledChange={v => set({ colocEnabled: v })}
+                pct={s.colocPct}
+                onPctChange={v => set({ colocPct: v })}
                 disabled={!editable}
               />
               <ProductionComponentBlock
                 label="Diseño"
                 standard={b.diseno_standard}
                 efectiva={b.diseno_efectiva}
-                enabled={disenoEnabled}
-                onEnabledChange={setDisenoEnabled}
-                pct={disenoPct}
-                onPctChange={setDisenoPct}
+                enabled={s.disenoEnabled}
+                onEnabledChange={v => set({ disenoEnabled: v })}
+                pct={s.disenoPct}
+                onPctChange={v => set({ disenoPct: v })}
                 disabled={!editable}
               />
 
@@ -390,8 +660,8 @@ function ProductionItemRow({ item, campaign, org, editable, onSaved }) {
                     <input
                       type="number" min="0" step="1000"
                       className="input-field pl-7 w-full text-sm"
-                      value={montoFijo}
-                      onChange={e => setMontoFijo(e.target.value)}
+                      value={s.montoFijo}
+                      onChange={e => set({ montoFijo: e.target.value })}
                       disabled={!editable}
                     />
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">$</span>
@@ -405,8 +675,8 @@ function ProductionItemRow({ item, campaign, org, editable, onSaved }) {
                     rows={1}
                     maxLength={500}
                     className="input-field w-full text-sm resize-none"
-                    value={motivo}
-                    onChange={e => setMotivo(e.target.value)}
+                    value={s.motivo}
+                    onChange={e => set({ motivo: e.target.value })}
                     disabled={!editable}
                     placeholder="Ej: regalo campaña, bonificación fidelización…"
                   />
@@ -423,11 +693,12 @@ function ProductionItemRow({ item, campaign, org, editable, onSaved }) {
               {editable && (
                 <div className="flex items-center justify-end gap-3 pt-2">
                   {saved && <span className="text-xs text-teal-400">✓ Ajustes guardados</span>}
+                  <button type="button" onClick={handleCancel} className="btn-secondary">Cancelar</button>
                   <button
                     type="button"
                     onClick={handleSave}
                     disabled={saving}
-                    className="rounded-lg bg-brand px-4 py-1.5 text-sm font-semibold text-white hover:bg-brand/90 disabled:opacity-50 transition-colors"
+                    className="btn-primary disabled:opacity-50"
                   >
                     {saving ? 'Guardando…' : 'Guardar ajustes'}
                   </button>
@@ -516,7 +787,7 @@ function CampaignModal({ campaign, onClose, onItemsUpdated }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full md:max-w-4xl xl:max-w-5xl rounded-2xl bg-surface-900 border border-surface-700 shadow-2xl overflow-hidden">
+      <div className="relative w-full max-w-6xl mx-auto rounded-2xl bg-surface-900 border border-surface-700 shadow-2xl overflow-hidden">
 
         {/* Header */}
         <div className="flex items-start justify-between gap-3 p-5 border-b border-surface-700">
@@ -539,13 +810,11 @@ function CampaignModal({ campaign, onClose, onItemsUpdated }) {
         </div>
 
         {/* Body */}
-        <div className="p-5 max-h-[70vh] overflow-y-auto">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="p-5 max-h-[75vh] overflow-y-auto space-y-3">
 
-            {/* ── Columna izquierda ── */}
-            <div className="space-y-4">
-
-              {/* Key info grid */}
+          {/* ── Sección 1: Resumen de propuesta ── */}
+          <ModalSection title="Resumen de propuesta" defaultOpen>
+            <div className="grid gap-4 md:grid-cols-2">
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-xl bg-surface-800 p-3">
                   <p className="text-xs text-slate-500 mb-0.5">Inversión cliente</p>
@@ -569,7 +838,6 @@ function CampaignModal({ campaign, onClose, onItemsUpdated }) {
                 </div>
               </div>
 
-              {/* Resumen financiero */}
               {listTotal > 0 && (
                 <div className="rounded-xl bg-surface-800 p-4 space-y-2 text-sm">
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Resumen financiero</p>
@@ -592,11 +860,15 @@ function CampaignModal({ campaign, onClose, onItemsUpdated }) {
                 </div>
               )}
             </div>
+          </ModalSection>
 
-            {/* ── Columna derecha ── */}
-            <div className="space-y-4">
-
-              {/* Carteles — DOOH */}
+          {/* ── Sección 2: Inventario de la campaña ── */}
+          <ModalSection
+            title="Inventario de la campaña"
+            right={items.length > 0 ? `${items.length} soporte${items.length > 1 ? 's' : ''}` : null}
+            defaultOpen
+          >
+            <div className="grid gap-4 md:grid-cols-2">
               {doohItems.length > 0 && (
                 <div>
                   <p className="mb-2 text-xs font-semibold text-blue-400 uppercase tracking-wide flex items-center gap-1.5">
@@ -624,7 +896,6 @@ function CampaignModal({ campaign, onClose, onItemsUpdated }) {
                 </div>
               )}
 
-              {/* Carteles — OFF */}
               {offItems.length > 0 && (
                 <div>
                   <p className="mb-2 text-xs font-semibold text-orange-400 uppercase tracking-wide flex items-center gap-1.5">
@@ -660,19 +931,22 @@ function CampaignModal({ campaign, onClose, onItemsUpdated }) {
               )}
 
               {items.length === 0 && (
-                <p className="text-xs text-slate-600 py-2 text-center">Sin carteles registrados</p>
+                <p className="text-xs text-slate-600 py-2 text-center md:col-span-2">Sin carteles registrados</p>
               )}
             </div>
-          </div>
+          </ModalSection>
 
+          {/* ── Sección 3: Negociación de Producción (owner/manager only) ── */}
           {(role === 'owner' || role === 'manager') && items.length > 0 && (
-            <ProductionNegotiationPanel
-              campaign={campaign}
-              items={items}
-              org={org}
-              editable={EDITABLE_PROD_STATUSES.has(campaign.workflow_status)}
-              onItemsUpdated={onItemsUpdated}
-            />
+            <ModalSection title="Negociación de Producción">
+              <ProductionNegotiationPanel
+                campaign={campaign}
+                items={items}
+                org={org}
+                editable={EDITABLE_PROD_STATUSES.has(campaign.workflow_status)}
+                onItemsUpdated={onItemsUpdated}
+              />
+            </ModalSection>
           )}
         </div>
         {showPrint && <PrintMeasuresModal campaign={campaign} onClose={() => setShowPrint(false)} />}
