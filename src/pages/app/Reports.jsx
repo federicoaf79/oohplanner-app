@@ -11,7 +11,12 @@ import { supabase } from '../../lib/supabase'
 import { FORMAT_MAP } from '../../lib/constants'
 import { useAuth } from '../../context/AuthContext'
 import { calculateHistoricalCloseRate } from '../../lib/closeRate'
-import { calculateSiteProfitability, calculateMonthlyFleetMargin } from '../../lib/profitability'
+import {
+  calculateSiteProfitability,
+  calculateMonthlyFleetMargin,
+  calculateProposalProfitability,
+  profitabilityColor,
+} from '../../lib/profitability'
 import Spinner from '../../components/ui/Spinner'
 
 // ─── format helpers ──────────────────────────────────────────────────────────
@@ -317,6 +322,33 @@ export default function Reports() {
       ? occupiedSiteIds.size / physicalInventory.length * 100
       : 0
 
+    // ── Utilidad agregada del período ──
+    // Sum margin/revenue per accepted proposal in the date window via the
+    // shared calculateProposalProfitability helper. Fetches do NOT embed
+    // the org yet (pending Block B.3), so the helper falls into backwards
+    // compat mode — margin = alquiler - fijos - comisiones, without the
+    // production markup lift. When B.3 lands, these numbers will rise.
+    const itemsByProposalId = {}
+    filteredItems.forEach(pi => {
+      if (!itemsByProposalId[pi.proposal_id]) itemsByProposalId[pi.proposal_id] = []
+      itemsByProposalId[pi.proposal_id].push({
+        ...pi,
+        site: invMap[pi.site_id] || null,
+      })
+    })
+
+    let utilityMargin = 0
+    let utilityRevenue = 0
+    filteredProposals.forEach(p => {
+      const result = calculateProposalProfitability({
+        ...p,
+        items: itemsByProposalId[p.id] || [],
+      })
+      utilityMargin  += result.margin
+      utilityRevenue += result.revenue_total
+    })
+    const utilityPct = utilityRevenue > 0 ? (utilityMargin / utilityRevenue) * 100 : 0
+
     return {
       revenue,
       activeCount,
@@ -326,6 +358,9 @@ export default function Reports() {
       physicalSiteCount: physicalInventory.length,
       occupiedCount:     occupiedSiteIds.size,
       digitalCount:      inventory.length - physicalInventory.length,
+      utilityMargin,
+      utilityRevenue,
+      utilityPct,
     }
   }, [proposals, filteredProposals, filteredItems, propItems, inventory, dateRange, customStart, customEnd])
 
@@ -596,7 +631,7 @@ export default function Reports() {
       </div>
 
       {/* ── KPIs ─────────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <KPICard
           icon={TrendingUp}
           label="Revenue total"
@@ -632,6 +667,30 @@ export default function Reports() {
             </>
           }
           color="text-cyan-400"
+        />
+        <KPICard
+          icon={TrendingUp}
+          label="Utilidad del período"
+          value={fmtARS(kpis.utilityMargin)}
+          sub={
+            <>
+              <span className={
+                (() => {
+                  const c = profitabilityColor(kpis.utilityPct)
+                  if (c === 'brand') return 'text-brand'
+                  if (c === 'teal')  return 'text-teal-400'
+                  if (c === 'amber') return 'text-amber-400'
+                  return 'text-rose-400'
+                })()
+              }>
+                {fmtPct(kpis.utilityPct)} margen
+              </span>
+              <span className="block mt-0.5 text-[10px] text-slate-600">
+                Sobre {fmtARS(kpis.utilityRevenue)} facturados
+              </span>
+            </>
+          }
+          color="text-teal-400"
         />
       </div>
 
@@ -1172,6 +1231,29 @@ export default function Reports() {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {kpis.utilityRevenue > 0 && (
+          <div className="mt-5 rounded-xl bg-slate-800/50 border border-surface-700 px-4 py-3 text-center">
+            <p className="text-xs text-slate-400">
+              Total consolidado del período:{' '}
+              <span className="font-semibold text-white">{fmtARS(kpis.utilityMargin)}</span>
+              {' '}de utilidad sobre{' '}
+              <span className="font-semibold text-white">{fmtARS(kpis.utilityRevenue)}</span>
+              {' '}facturados{' '}
+              <span className={
+                (() => {
+                  const c = profitabilityColor(kpis.utilityPct)
+                  if (c === 'brand') return 'text-brand'
+                  if (c === 'teal')  return 'text-teal-400'
+                  if (c === 'amber') return 'text-amber-400'
+                  return 'text-rose-400'
+                })()
+              }>
+                ({fmtPct(kpis.utilityPct)} margen)
+              </span>
+            </p>
           </div>
         )}
       </Section>
