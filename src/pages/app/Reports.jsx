@@ -54,16 +54,6 @@ function getDateBounds(dateRange, customStart, customEnd) {
   return { from: null, to: null }
 }
 
-function applyDateFilter(list, dateRange, customStart, customEnd) {
-  const { from, to } = getDateBounds(dateRange, customStart, customEnd)
-  return list.filter(item => {
-    const d = new Date(item.accepted_at ?? item.created_at)
-    if (from && d < from) return false
-    if (to   && d > to)   return false
-    return true
-  })
-}
-
 const MONTH_LABELS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
 
 const DATE_OPTS = [
@@ -254,10 +244,20 @@ export default function Reports() {
   }
 
   // ── filtered proposals & items ───────────────────────────────────────────
-  const filteredProposals = useMemo(
-    () => applyDateFilter(proposals, dateRange, customStart, customEnd).filter(p => p.status === 'accepted'),
-    [proposals, dateRange, customStart, customEnd]
-  )
+  // Filter by accepted_at (cuándo el cliente aceptó = cuándo se facturó).
+  // Si no hay accepted_at, la propuesta no cuenta para el período —
+  // no prorrateamos: la aceptación cae entera en su mes.
+  const filteredProposals = useMemo(() => {
+    const { from, to } = getDateBounds(dateRange, customStart, customEnd)
+    return proposals.filter(p => {
+      if (p.status !== 'accepted') return false
+      if (!p.accepted_at) return false
+      const acc = new Date(p.accepted_at)
+      if (from && acc < from) return false
+      if (to   && acc > to)   return false
+      return true
+    })
+  }, [proposals, dateRange, customStart, customEnd])
 
   const filteredProposalIds = useMemo(
     () => new Set(filteredProposals.map(p => p.id)),
@@ -640,7 +640,7 @@ export default function Reports() {
         />
         <KPICard
           icon={FileText}
-          label="Propuestas activas"
+          label="Propuestas aceptadas"
           value={fmtNum(kpis.activeCount)}
           sub="Aceptadas en el período"
           color="text-teal-400"
