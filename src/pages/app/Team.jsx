@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { UserPlus, Users, MoreVertical } from 'lucide-react'
+import { UserPlus, Users, MoreVertical, Pencil, Check, X } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import Button from '../../components/ui/Button'
@@ -28,6 +28,7 @@ export default function Team() {
   const [toast, setToast]           = useState(null)
   const [openMenu, setOpenMenu]     = useState(null) // memberId whose ⋯ is open
   const [confirmDeactivate, setConfirmDeactivate] = useState(null)
+  const [showEmailInfo, setShowEmailInfo]   = useState(false)
 
   const orgId   = profile?.org_id
   const isOwner = profile?.role === 'owner'
@@ -87,6 +88,29 @@ export default function Team() {
     }
     setMembers(prev => prev.map(m => m.id === member.id ? { ...m, role: newRole } : m))
     flash('✓ Rol actualizado')
+  }
+
+  async function handleSaveName(memberId, newName) {
+    const trimmed = (newName ?? '').trim()
+    if (trimmed.length < 2) {
+      flash('El nombre debe tener al menos 2 caracteres.', 'err')
+      return false
+    }
+    if (trimmed.length > 100) {
+      flash('Máximo 100 caracteres.', 'err')
+      return false
+    }
+    const { error } = await supabase
+      .from('profiles')
+      .update({ full_name: trimmed })
+      .eq('id', memberId)
+    if (error) {
+      flash(`Error: ${error.message}`, 'err')
+      return false
+    }
+    setMembers(prev => prev.map(m => m.id === memberId ? { ...m, full_name: trimmed } : m))
+    flash('✓ Nombre actualizado')
+    return true
   }
 
   async function handleDeactivate(member) {
@@ -167,6 +191,8 @@ export default function Team() {
                   onCloseMenu={() => setOpenMenu(null)}
                   onRoleChange={(r) => handleRoleChange(m, r)}
                   onDeactivate={() => { setOpenMenu(null); setConfirmDeactivate(m) }}
+                  onSaveName={handleSaveName}
+                  onEditEmail={() => setShowEmailInfo(true)}
                 />
               ))}
             </tbody>
@@ -190,6 +216,30 @@ export default function Team() {
         onClose={() => setShowInvite(false)}
         onSuccess={loadTeam}
       />
+
+      {showEmailInfo && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowEmailInfo(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl border border-slate-700 bg-surface-800 shadow-2xl p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="font-semibold text-white mb-2">Cambio de email</h3>
+            <p className="text-sm text-slate-400 mb-4">
+              Por seguridad, el cambio de email requiere verificación del nuevo correo.
+              Esta función estará disponible en la próxima versión.
+            </p>
+            <p className="text-xs text-slate-500 mb-5">
+              Si necesitás cambiar un email urgentemente, contactá a soporte.
+            </p>
+            <Button className="w-full" onClick={() => setShowEmailInfo(false)}>
+              Entendido
+            </Button>
+          </div>
+        </div>
+      )}
 
       {confirmDeactivate && (
         <div
@@ -225,10 +275,15 @@ export default function Team() {
   )
 }
 
-function TeamRow({ member, currentUserId, isOnlyOwner, saving, menuOpen, onOpenMenu, onCloseMenu, onRoleChange, onDeactivate }) {
+function TeamRow({ member, currentUserId, isOnlyOwner, saving, menuOpen, onOpenMenu, onCloseMenu, onRoleChange, onDeactivate, onSaveName, onEditEmail }) {
   const menuRef = useRef(null)
+  const inputRef = useRef(null)
   const isSelf = member.id === currentUserId
   const inactive = member.is_active === false
+
+  const [editingName, setEditingName] = useState(false)
+  const [nameDraft,   setNameDraft]   = useState(member.full_name ?? '')
+  const [savingName,  setSavingName]  = useState(false)
 
   useEffect(() => {
     if (!menuOpen) return
@@ -239,6 +294,46 @@ function TeamRow({ member, currentUserId, isOnlyOwner, saving, menuOpen, onOpenM
     return () => document.removeEventListener('mousedown', handleOutside)
   }, [menuOpen, onCloseMenu])
 
+  useEffect(() => {
+    if (editingName && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [editingName])
+
+  function startEditName() {
+    setNameDraft(member.full_name ?? '')
+    setEditingName(true)
+  }
+
+  function cancelEditName() {
+    setNameDraft(member.full_name ?? '')
+    setEditingName(false)
+  }
+
+  async function commitEditName() {
+    const trimmed = nameDraft.trim()
+    if (trimmed.length < 2 || trimmed.length > 100) return
+    if (trimmed === (member.full_name ?? '')) {
+      setEditingName(false)
+      return
+    }
+    setSavingName(true)
+    const ok = await onSaveName(member.id, trimmed)
+    setSavingName(false)
+    if (ok) setEditingName(false)
+  }
+
+  function handleNameKeyDown(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      commitEditName()
+    } else if (e.key === 'Escape') {
+      e.preventDefault()
+      cancelEditName()
+    }
+  }
+
   return (
     <tr className={`transition-colors ${inactive ? 'opacity-50' : 'hover:bg-surface-700/50'}`}>
       <td className="px-5 py-3">
@@ -246,17 +341,78 @@ function TeamRow({ member, currentUserId, isOnlyOwner, saving, menuOpen, onOpenM
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand/20 text-xs font-bold text-brand">
             {getInitials(member.full_name)}
           </div>
-          <div className="min-w-0">
-            <p className="font-medium text-slate-100 truncate">{member.full_name ?? '—'}</p>
-            <p className="text-xs text-slate-500">
-              {isSelf ? 'Tú' : ''}
-              {inactive ? <span className="ml-1.5 text-amber-400">· Inactivo</span> : null}
-            </p>
+          <div className="min-w-0 flex-1">
+            {editingName ? (
+              <div className="flex items-center gap-2">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  maxLength={100}
+                  value={nameDraft}
+                  onChange={(e) => setNameDraft(e.target.value)}
+                  onKeyDown={handleNameKeyDown}
+                  disabled={savingName}
+                  className="input-field text-sm py-1 px-2 w-full max-w-[260px]"
+                />
+                <button
+                  type="button"
+                  onClick={commitEditName}
+                  disabled={savingName || nameDraft.trim().length < 2}
+                  className="rounded-md p-1 text-teal-400 hover:bg-teal-500/15 disabled:opacity-50 disabled:cursor-not-allowed"
+                  aria-label="Guardar nombre"
+                  title="Guardar (Enter)"
+                >
+                  <Check className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelEditName}
+                  disabled={savingName}
+                  className="rounded-md p-1 text-rose-400 hover:bg-rose-500/15 disabled:opacity-50"
+                  aria-label="Cancelar edición"
+                  title="Cancelar (Esc)"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <p className="font-medium text-slate-100 truncate">{member.full_name ?? '—'}</p>
+                <button
+                  type="button"
+                  onClick={startEditName}
+                  className="rounded-md p-1 text-slate-500 hover:bg-surface-700 hover:text-slate-200 transition-colors"
+                  aria-label="Editar nombre"
+                  title="Editar nombre"
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+            {!editingName && (
+              <p className="text-xs text-slate-500">
+                {isSelf ? 'Tú' : ''}
+                {inactive ? <span className="ml-1.5 text-amber-400">· Inactivo</span> : null}
+              </p>
+            )}
           </div>
         </div>
       </td>
       <td className="px-5 py-3 hidden md:table-cell">
-        <span className="text-slate-400 text-xs break-all">{member.email ?? '—'}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-slate-400 text-xs break-all">{member.email ?? '—'}</span>
+          {member.email && (
+            <button
+              type="button"
+              onClick={onEditEmail}
+              className="rounded-md p-1 text-slate-500 hover:bg-surface-700 hover:text-slate-200 transition-colors shrink-0"
+              aria-label="Editar email"
+              title="Editar email"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+          )}
+        </div>
       </td>
       <td className="px-5 py-3">
         <div className="relative inline-block">
@@ -295,6 +451,13 @@ function TeamRow({ member, currentUserId, isOnlyOwner, saving, menuOpen, onOpenM
           </button>
           {menuOpen && (
             <div className="absolute right-0 top-full mt-1 z-20 w-48 rounded-lg border border-surface-700 bg-surface-800 py-1 shadow-xl">
+              <button
+                type="button"
+                onClick={() => { onCloseMenu(); startEditName() }}
+                className="flex w-full items-center px-3 py-2 text-sm text-slate-300 hover:bg-surface-700"
+              >
+                Editar perfil
+              </button>
               <button
                 type="button"
                 onClick={() => { onCloseMenu(); alert('Próxima versión') }}
