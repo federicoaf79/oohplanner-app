@@ -34,6 +34,20 @@ const SLOT_RULES = {
 }
 
 /**
+ * Simplifica una proporción ancho:alto a su forma reducida (ej. 800×600 → "4:3").
+ */
+function gcd(a, b) {
+  return b === 0 ? a : gcd(b, a % b)
+}
+function ratioStr(width, height) {
+  const w = Math.round(width)
+  const h = Math.round(height)
+  if (!w || !h) return `${w}:${h}`
+  const g = gcd(w, h)
+  return `${w / g}:${h / g}`
+}
+
+/**
  * Lee las dimensiones reales de una imagen File.
  * @param {File} file
  * @returns {Promise<{width: number, height: number}>}
@@ -64,13 +78,14 @@ function getImageDimensions(file) {
 export async function validateArtwork(file, slot) {
   // Validar tipo
   if (!file.type || !['image/jpeg', 'image/png'].includes(file.type)) {
-    return { valid: false, error: 'Solo se aceptan archivos PNG o JPG.' }
+    const got = file.type ? file.type.split('/')[1].toUpperCase() : 'desconocido'
+    return { valid: false, error: `Formato no soportado: solo PNG o JPG (actualmente ${got}).` }
   }
 
   // Validar peso (2MB)
   if (file.size > 2 * 1024 * 1024) {
     const sizeMB = (file.size / 1024 / 1024).toFixed(1)
-    return { valid: false, error: `La imagen pesa ${sizeMB} MB. Máximo permitido: 2 MB.` }
+    return { valid: false, error: `El archivo supera el límite de 2 MB (actualmente ${sizeMB} MB).` }
   }
 
   const rules = SLOT_RULES[slot]
@@ -95,18 +110,17 @@ export async function validateArtwork(file, slot) {
       valid: false,
       width,
       height,
-      error: `La imagen es muy chica (${width} × ${height} px). Para ${rules.label} el mínimo es ${rules.minW} × ${rules.minH} px (recomendado: ${rules.example}).`,
+      error: `Resolución insuficiente para ${rules.label}: mínimo ${rules.minW} × ${rules.minH} px, recomendado ${rules.example} px (actualmente ${width} × ${height} px).`,
     }
   }
 
   // Validar ratio
   if (ratio < rules.minRatio || ratio > rules.maxRatio) {
-    const orientation = ratio > rules.targetRatio ? 'ancha' : 'alta'
     return {
       valid: false,
       width,
       height,
-      error: `La proporción no es correcta para ${rules.label} — la imagen es demasiado ${orientation} (${width} × ${height}). Necesitás una imagen con proporción cercana a ${rules.example}.`,
+      error: `Ratio incorrecto para ${rules.label}: actualmente ${ratioStr(width, height)} (${width} × ${height} px), recomendado ${rules.example} px.`,
     }
   }
 

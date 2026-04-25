@@ -29,6 +29,14 @@ const FORMAT_TO_ART = {
   mobile_screen: 'sq',
 }
 
+// Specs visibles cuando el slot de arte está vacío.
+// El peso refleja el límite real de validateArtwork.js (2 MB).
+const SLOT_SPECS = {
+  h:  { px: '1920 × 1080 px', ratio: '16:9', peso: 'Máx 2 MB' },
+  v:  { px: '1080 × 1920 px', ratio: '9:16', peso: 'Máx 2 MB' },
+  sq: { px: '1080 × 1080 px', ratio: '1:1',  peso: 'Máx 2 MB' },
+}
+
 function fmtNum(n) {
   if (!n && n !== 0) return '—'
   return Math.round(Number(n)).toLocaleString('es-AR')
@@ -1086,11 +1094,15 @@ export default function WizardStep3Results({ results, setResults, formData, onSa
                         onChange={e => { handleClientArt(slot.key, e.target.files?.[0]); e.target.value = '' }} />
                     </label>
                   ) : (
-                    /* Sin arte */
+                    /* Sin arte — mostrar specs recomendadas */
                     <label className="cursor-pointer">
-                      <div className={`${slot.ratio} w-full rounded-lg border-2 border-dashed border-surface-600 bg-surface-800/30 flex flex-col items-center justify-center gap-1 hover:border-brand/40 transition-colors`}>
-                        <Upload className="h-4 w-4 text-slate-600" />
-                        <span className="text-[10px] text-slate-600">Subir</span>
+                      <div className={`${slot.ratio} w-full rounded-lg border-2 border-dashed border-surface-600 bg-surface-800/30 flex flex-col items-center justify-center gap-2 p-2 hover:border-brand/40 transition-colors text-center`}>
+                        <Upload className="h-4 w-4 text-slate-500" />
+                        <div className="space-y-0.5">
+                          <p className="text-[10px] font-medium text-slate-400 leading-tight">{SLOT_SPECS[slot.key].px}</p>
+                          <p className="text-[10px] text-slate-600 leading-tight">{SLOT_SPECS[slot.key].ratio} · {SLOT_SPECS[slot.key].peso}</p>
+                        </div>
+                        <span className="text-[10px] text-brand font-medium">Subir</span>
                       </div>
                       <input type="file" accept="image/jpeg,image/png" className="hidden"
                         onChange={e => { handleClientArt(slot.key, e.target.files?.[0]); e.target.value = '' }} />
