@@ -82,10 +82,10 @@ export async function validateArtwork(file, slot) {
     return { valid: false, error: `Formato no soportado: solo PNG o JPG (actualmente ${got}).` }
   }
 
-  // Validar peso (2MB)
-  if (file.size > 2 * 1024 * 1024) {
+  // Validar peso (5MB)
+  if (file.size > 5 * 1024 * 1024) {
     const sizeMB = (file.size / 1024 / 1024).toFixed(1)
-    return { valid: false, error: `El archivo supera el límite de 2 MB (actualmente ${sizeMB} MB).` }
+    return { valid: false, error: `El archivo supera el límite de 5 MB (actualmente ${sizeMB} MB).` }
   }
 
   const rules = SLOT_RULES[slot]

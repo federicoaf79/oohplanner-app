@@ -30,11 +30,11 @@ const FORMAT_TO_ART = {
 }
 
 // Specs visibles cuando el slot de arte está vacío.
-// El peso refleja el límite real de validateArtwork.js (2 MB).
+// El peso refleja el límite real de validateArtwork.js (5 MB).
 const SLOT_SPECS = {
-  h:  { px: '1920 × 1080 px', ratio: '16:9', peso: 'Máx 2 MB' },
-  v:  { px: '1080 × 1920 px', ratio: '9:16', peso: 'Máx 2 MB' },
-  sq: { px: '1080 × 1080 px', ratio: '1:1',  peso: 'Máx 2 MB' },
+  h:  { px: '1920 × 1080 px', ratio: '16:9', peso: 'Máx 5 MB' },
+  v:  { px: '1080 × 1920 px', ratio: '9:16', peso: 'Máx 5 MB' },
+  sq: { px: '1080 × 1080 px', ratio: '1:1',  peso: 'Máx 5 MB' },
 }
 
 function fmtNum(n) {
