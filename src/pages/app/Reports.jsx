@@ -129,7 +129,7 @@ export default function Reports() {
   const [error,     setError]     = useState('')
 
   // filters
-  const [dateRange,   setDateRange]   = useState('last_6_months')
+  const [dateRange,   setDateRange]   = useState('current_month')
   const [customStart, setCustomStart] = useState('')
   const [customEnd,   setCustomEnd]   = useState('')
 
@@ -1020,11 +1020,31 @@ export default function Reports() {
                             }
                             const c = site.activeCampaign
                             const fmt = d => new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+
+                            let daysLeft = null
+                            if (c?.end_date) {
+                              const today = new Date()
+                              today.setHours(0, 0, 0, 0)
+                              const endDate = new Date(c.end_date)
+                              endDate.setHours(0, 0, 0, 0)
+                              daysLeft = Math.round((endDate - today) / 86400000)
+                            }
+                            const showSoon = daysLeft !== null && daysLeft <= 7
+                            const soonLabel =
+                              daysLeft === 0 ? 'Disponible mañana'
+                              : `Disponible en ${daysLeft} día${daysLeft > 1 ? 's' : ''}`
+
                             return (
                               <div className="text-right">
                                 <span className="text-xs text-amber-400 font-medium block">Ocupado</span>
                                 {c?.start_date && c?.end_date && (
                                   <span className="text-[10px] text-slate-500">{fmt(c.start_date)} → {fmt(c.end_date)}</span>
+                                )}
+                                {showSoon && (
+                                  <span className="text-[10px] text-amber-300 block mt-0.5">
+                                    {soonLabel}
+                                    <span className="text-slate-600"> · salvo renovación</span>
+                                  </span>
                                 )}
                               </div>
                             )
