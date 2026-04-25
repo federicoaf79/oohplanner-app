@@ -278,12 +278,7 @@ export default function Reports() {
 
   // ── KPIs ─────────────────────────────────────────────────────────────────
   const kpis = useMemo(() => {
-    const revIds    = new Set(filteredProposals.filter(p => REV_STATUSES.has(p.status)).map(p => p.id))
     const activeIds = new Set(filteredProposals.filter(p => ACTIVE_STATUSES.has(p.status)).map(p => p.id))
-
-    const revenue = filteredItems
-      .filter(pi => revIds.has(pi.proposal_id))
-      .reduce((s, pi) => s + (pi.client_price ?? pi.rate ?? 0), 0)
 
     // Propuestas activas: filtradas por período
     const activeCount = filteredProposals.filter(p => p.status === 'accepted').length
@@ -348,6 +343,11 @@ export default function Reports() {
       utilityRevenue += result.revenue_total
     })
     const utilityPct = utilityRevenue > 0 ? (utilityMargin / utilityRevenue) * 100 : 0
+
+    // Facturación total leída del mismo cálculo que Utilidad para que los
+    // KPIs sean consistentes (rate × meses según start/end_date del item,
+    // vía calculateProposalProfitability).
+    const revenue = utilityRevenue
 
     return {
       revenue,
@@ -958,7 +958,16 @@ export default function Reports() {
                           {FORMAT_MAP[site.format]?.label ?? site.format ?? '—'}
                         </td>
                         <td className="py-3 text-right font-medium text-white">
-                          {fmtARS(site.revenue)}
+                          {site.revenue === 0 && site.isOccupied ? (
+                            <span
+                              className="text-slate-600 text-xs"
+                              title="Campaña vendida en otro período — sigue ocupado pero no facturó dentro del rango seleccionado"
+                            >
+                              Período anterior
+                            </span>
+                          ) : (
+                            fmtARS(site.revenue)
+                          )}
                         </td>
                         <td className="py-3 text-right text-slate-400 hidden md:table-cell">
                           {fmtARS(site.totalCosts)}
