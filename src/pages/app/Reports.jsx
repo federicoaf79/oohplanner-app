@@ -660,7 +660,7 @@ export default function Reports() {
           icon={TrendingUp}
           label="Facturación total"
           value={fmtARS(kpis.revenue)}
-          sub="Propuestas enviadas / activas"
+          sub="Propuestas aceptadas en el período"
         />
         <KPICard
           icon={FileText}
