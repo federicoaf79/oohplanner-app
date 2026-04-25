@@ -26,6 +26,14 @@ const C = {
   mandBg:  [80,  50,  10],
 }
 
+// ── Tamaño normalizado de fotos de carteles en single-column ──
+// Toda foto/mockup que viva en el layout de "Carteles seleccionados" se
+// recorta a 4:3 (cover) para que las filas tengan altura consistente.
+const PHOTO_W    = 60   // mm
+const PHOTO_H    = 45   // mm — 4:3 universal
+const PHOTO_PX_W = 600  // 60 mm × 10 px/mm
+const PHOTO_PX_H = 450  // 45 mm × 10 px/mm
+
 // ── Helpers de valor ─────────────────────────────────────────
 async function toB64(url) {
   try {
@@ -40,6 +48,30 @@ async function toB64(url) {
       rd.readAsDataURL(blob)
     })
   } catch { return null }
+}
+
+// Recorta un dataURL a la relación PHOTO_PX_W:PHOTO_PX_H aplicando
+// "object-fit: cover" centrado. Devuelve un dataURL JPEG.
+async function cropToCover(dataUrl, pxW = PHOTO_PX_W, pxH = PHOTO_PX_H) {
+  if (!dataUrl) return null
+  return new Promise(resolve => {
+    const img = new Image()
+    img.onload = () => {
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width  = pxW
+        canvas.height = pxH
+        const ctx = canvas.getContext('2d')
+        const scale = Math.max(pxW / img.width, pxH / img.height)
+        const sw = img.width  * scale
+        const sh = img.height * scale
+        ctx.drawImage(img, (pxW - sw) / 2, (pxH - sh) / 2, sw, sh)
+        resolve(canvas.toDataURL('image/jpeg', 0.85))
+      } catch { resolve(null) }
+    }
+    img.onerror = () => resolve(null)
+    img.src = dataUrl
+  })
 }
 
 function peso(n) { return formatCurrency(Number(n ?? 0)) }
@@ -479,24 +511,10 @@ async function renderStrategy(doc, {
       if (hasMockup) {
         let imgData = photoUrl
         if (imgData && !imgData.startsWith('data:')) imgData = await toB64(imgData)
+        if (imgData) imgData = await cropToCover(imgData)
 
-        const IM_W = 65, IM_H = 48
-        let imgW = IM_W, imgH = IM_H
-        if (imgData) {
-          const dims = await new Promise(res => {
-            const img = new Image()
-            img.onload  = () => res({ w: img.naturalWidth, h: img.naturalHeight })
-            img.onerror = () => res(null)
-            img.src = imgData
-          })
-          if (dims?.w > 0 && dims?.h > 0) {
-            const rat = dims.w / dims.h
-            if (rat >= IM_W / IM_H) { imgW = IM_W; imgH = IM_W / rat }
-            else                    { imgH = IM_H; imgW = IM_H * rat }
-          }
-        }
-
-        const rowH = Math.max(imgH + 4, hasJ ? 42 : 35)
+        const imgW = PHOTO_W, imgH = PHOTO_H
+        const rowH = Math.max(imgH + 4, hasJ ? 52 : 49)
         if (y + rowH > 278) {
           doc.addPage(); pageBg(doc); pageHeader(doc, orgName, `Propuesta ${label}`); y = 18
         }
@@ -510,8 +528,8 @@ async function renderStrategy(doc, {
         fnt(doc, 'bold', 4.5); tc(doc, C.white)
         doc.text('MOCKUP', 17.5, imgY + imgH - 1.5)
 
-        // Info derecha — tX fijo para no depender de imgW variable
-        const tX = 16 + IM_W + 4
+        // Info derecha — tX fijo (basado en ancho normalizado de la foto)
+        const tX = 16 + PHOTO_W + 4
         const rW = 192 - tX
         let tY = y + 5
 
@@ -584,10 +602,11 @@ async function renderStrategy(doc, {
       } else {
         // Tarjeta normal (sin mockup)
         const hasPhoto = !!photoUrl
-        const PW = hasPhoto ? 32 : 0, PH = 22
+        const PW = hasPhoto ? PHOTO_W : 0
+        const PH = hasPhoto ? PHOTO_H : 0
         const hasImpacts = (site.monthly_impacts ?? 0) > 0
         const rowH = hasPhoto
-          ? Math.max(PH + 4, hasJ ? 35 : (hasImpacts ? 28 : 26))
+          ? Math.max(PH + 4, hasJ ? 52 : 49)
           : (hasJ ? 28 : (hasImpacts ? 22 : 19))
 
         if (y + rowH > 278) {
@@ -598,7 +617,9 @@ async function renderStrategy(doc, {
         if (hasPhoto) {
           let imgData = photoUrl
           if (!imgData.startsWith('data:')) imgData = await toB64(imgData)
-          addImg(doc, imgData, 16, y + 2, PW, PH)
+          if (imgData) imgData = await cropToCover(imgData)
+          const imgY = y + (rowH - PH) / 2
+          addImg(doc, imgData, 16, imgY, PW, PH)
         }
 
         const tX = 18 + PW
