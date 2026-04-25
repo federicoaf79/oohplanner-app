@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
-import { CheckCircle, Upload, X, ChevronDown, AlertTriangle, Info, Search, MapPin } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { CheckCircle, X, ChevronDown, AlertTriangle, Info, Search, MapPin } from 'lucide-react'
 import {
   OOH_FORMATS, CAMPAIGN_OBJECTIVES, AUDIENCE_INTERESTS,
   NSE_OPTIONS, DIGITAL_FREQUENCIES, PROVINCES_CITIES,
@@ -8,6 +8,7 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
+import ClientArtworkSlots from './ClientArtworkSlots'
 
 // ── Presupuesto con formato ARS ──────────────────────────────
 // Muestra: $20.000.000   Almacena: "20000000" (solo dígitos)
@@ -80,11 +81,14 @@ function Toggle({ label, checked, onChange }) {
 
 // ── Main form ────────────────────────────────────────────────
 
-export default function WizardStep1Form({ formData, setFormData, onSubmit }) {
+export default function WizardStep1Form({
+  formData, setFormData, onSubmit,
+  clientArtH, setClientArtH,
+  clientArtV, setClientArtV,
+  clientArtSq, setClientArtSq,
+}) {
   const { role, org } = useAuth()
   const [errors, setErrors] = useState({})
-  const [imagePreview, setImagePreview] = useState(null)
-  const fileRef = useRef(null)
 
   // Corredores
   const [corridors, setCorridors] = useState([])
@@ -152,15 +156,6 @@ export default function WizardStep1Form({ formData, setFormData, onSubmit }) {
   function toggleAudienceItem(field, value) {
     const arr = formData.audience?.[field] ?? []
     updateAudience(field, arr.includes(value) ? arr.filter(v => v !== value) : [...arr, value])
-  }
-
-  function handleImageChange(e) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = ev => setImagePreview(ev.target.result)
-    reader.readAsDataURL(file)
-    update('adImageFile', file)
   }
 
   function validate() {
@@ -721,33 +716,15 @@ export default function WizardStep1Form({ formData, setFormData, onSubmit }) {
         </div>
       </div>
 
-      {/* ── 7. Imagen del anuncio ───────────────────────────── */}
+      {/* ── 7. Arte del cliente ─────────────────────────────── */}
       <div className="card p-5">
-        <SectionHeader number="7" title="Imagen del anuncio"
-          subtitle="Referencia visual (opcional) para contextualizar la propuesta" />
-
-        {imagePreview ? (
-          <div className="relative inline-block">
-            <img src={imagePreview} alt="Preview" className="h-40 w-auto rounded-xl object-cover border border-surface-700" />
-            <button type="button"
-              onClick={() => { setImagePreview(null); update('adImageFile', null) }}
-              className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white hover:bg-red-600">
-              <X className="h-3 w-3" />
-            </button>
-          </div>
-        ) : (
-          <button type="button" onClick={() => fileRef.current?.click()}
-            className="flex w-full flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-surface-700 py-10 transition-colors hover:border-brand/50 hover:bg-brand/5">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-surface-700">
-              <Upload className="h-5 w-5 text-slate-400" />
-            </div>
-            <div className="text-center">
-              <p className="text-sm font-medium text-slate-400">Hacé click para subir una imagen</p>
-              <p className="text-xs text-slate-600">PNG, JPG, WEBP hasta 5 MB</p>
-            </div>
-          </button>
-        )}
-        <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
+        <SectionHeader number="7" title="Arte del cliente (opcional)"
+          subtitle="Subí los artes para generar mockups personalizados en el PDF. Si no tenés los artes ahora, podés cargarlos en el paso 3." />
+        <ClientArtworkSlots
+          clientArtH={clientArtH}   setClientArtH={setClientArtH}
+          clientArtV={clientArtV}   setClientArtV={setClientArtV}
+          clientArtSq={clientArtSq} setClientArtSq={setClientArtSq}
+        />
       </div>
 
       {/* ── Submit ──────────────────────────────────────────── */}

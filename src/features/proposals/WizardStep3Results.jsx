@@ -3,7 +3,7 @@ import {
   MapPin, TrendingUp, DollarSign, Target, Users,
   Save, Printer, MessageCircle, Star,
   Clock, CheckCircle, Tag, Loader2, Info,
-  AlertTriangle, RefreshCw, Upload, Image, Sun, Moon,
+  AlertTriangle, RefreshCw, Image, Sun, Moon,
 } from 'lucide-react'
 import ProposalMap from './ProposalMap'
 import { FORMAT_MAP } from '../../lib/constants'
@@ -12,9 +12,9 @@ import Button from '../../components/ui/Button'
 import { useAuth } from '../../context/AuthContext'
 import { generateProposalPDF, fetchStaticMap } from './generateProposalPDF'
 import { generateMockup } from '../../lib/generateMockup'
-import { validateArtwork } from '../../lib/validateArtwork'
 import { supabase } from '../../lib/supabase'
 import AudienceMetrics from '../../components/AudienceMetrics'
+import ClientArtworkSlots from './ClientArtworkSlots'
 
 const DIGITAL_FORMATS = new Set(['digital', 'urban_furniture_digital'])
 
@@ -27,14 +27,6 @@ const FORMAT_TO_ART = {
   urban_furniture_digital: 'v',
   poster: 'v',
   mobile_screen: 'sq',
-}
-
-// Specs visibles cuando el slot de arte está vacío.
-// El peso refleja el límite real de validateArtwork.js (5 MB).
-const SLOT_SPECS = {
-  h:  { px: '1920 × 1080 px', ratio: '16:9', peso: 'Máx 5 MB' },
-  v:  { px: '1080 × 1920 px', ratio: '9:16', peso: 'Máx 5 MB' },
-  sq: { px: '1080 × 1080 px', ratio: '1:1',  peso: 'Máx 5 MB' },
 }
 
 function fmtNum(n) {
@@ -562,7 +554,12 @@ function PriceBreakdown({ formData, option, onAddNextBillboard }) {
   )
 }
 
-export default function WizardStep3Results({ results, setResults, formData, onSave, saving }) {
+export default function WizardStep3Results({
+  results, setResults, formData, onSave, saving,
+  clientArtH,  setClientArtH,
+  clientArtV,  setClientArtV,
+  clientArtSq, setClientArtSq,
+}) {
   const { profile, org, user } = useAuth()
   const [saved, setSaved] = useState(false)
   const [generatingPDF, setGeneratingPDF] = useState(false)
@@ -585,48 +582,13 @@ export default function WizardStep3Results({ results, setResults, formData, onSa
     })
   }
 
-  // ── Artworks del cliente (override) ──
-  const [clientArtH, setClientArtH]   = useState(null) // { file, preview }
-  const [clientArtV, setClientArtV]   = useState(null)
-  const [clientArtSq, setClientArtSq] = useState(null)
+  // ── Artworks del cliente — vienen como props desde ProposalNew ──
+  // Se cargan opcionalmente en Step 1; acá se pueden agregar/cambiar.
   const [artExpanded, setArtExpanded] = useState(false)
-  const [clientArtError, setClientArtError] = useState(null)
   const [pdfTheme, setPdfTheme] = useState('dark')
 
-  async function handleClientArt(slot, file) {
-    if (!file) return
-    setClientArtError(null)
-
-    const result = await validateArtwork(file, slot)
-    if (!result.valid) {
-      setClientArtError({ slot, message: result.error })
-      return
-    }
-
-    const preview = URL.createObjectURL(file)
-    const obj = { file, preview }
-    if (slot === 'h') setClientArtH(obj)
-    else if (slot === 'v') setClientArtV(obj)
-    else setClientArtSq(obj)
-  }
-
-  function removeClientArt(slot) {
-    setClientArtError(null)
-    if (slot === 'h') { if (clientArtH?.preview) URL.revokeObjectURL(clientArtH.preview); setClientArtH(null) }
-    else if (slot === 'v') { if (clientArtV?.preview) URL.revokeObjectURL(clientArtV.preview); setClientArtV(null) }
-    else { if (clientArtSq?.preview) URL.revokeObjectURL(clientArtSq.preview); setClientArtSq(null) }
-  }
-
-  // Resolver arte por formato: cliente > org fallback > null
-  function getArtworkForFormat(format) {
-    const slot = FORMAT_TO_ART[format] ?? 'h'
-    if (slot === 'h') return clientArtH?.preview ?? org?.artwork_h_url ?? null
-    if (slot === 'v') return clientArtV?.preview ?? org?.artwork_v_url ?? null
-    return clientArtSq?.preview ?? org?.artwork_sq_url ?? null
-  }
-
   const hasAnyClientArt = !!(clientArtH || clientArtV || clientArtSq)
-  const hasAnyOrgArt = !!(org?.artwork_h_url || org?.artwork_v_url || org?.artwork_sq_url)
+  const hasAnyOrgArt    = !!(org?.artwork_h_url || org?.artwork_v_url || org?.artwork_sq_url)
 
   useEffect(() => {
     const physicalSites = (results?.sites ?? []).filter(s => !DIGITAL_FORMATS.has(s.format))
@@ -1042,84 +1004,11 @@ export default function WizardStep3Results({ results, setResults, formData, onSa
             <p className="text-xs text-slate-500 mb-3">
               Subí el arte del cliente para generar mockups en el PDF. Si no subís nada, se usan los artes de empresa como fallback.
             </p>
-            {clientArtError && (
-              <div className="mb-3 flex items-start gap-2.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2.5">
-                <svg className="h-4 w-4 text-red-400 shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
-                <p className="text-xs text-red-300 leading-relaxed">{clientArtError.message}</p>
-              </div>
-            )}
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                { key: 'h',  label: 'Horizontal', aspect: '16:9', state: clientArtH, orgFallback: org?.artwork_h_url, ratio: 'aspect-video' },
-                { key: 'v',  label: 'Vertical',   aspect: '9:16', state: clientArtV, orgFallback: org?.artwork_v_url, ratio: 'aspect-[9/16]' },
-                { key: 'sq', label: 'Cuadrado',   aspect: '1:1',  state: clientArtSq, orgFallback: org?.artwork_sq_url, ratio: 'aspect-square' },
-              ].map(slot => (
-                <div key={slot.key} className="flex flex-col gap-1.5">
-                  <p className="text-xs font-medium text-slate-400 text-center">{slot.label} ({slot.aspect})</p>
-
-                  {slot.state ? (
-                    /* Arte del cliente subido */
-                    <div className="relative rounded-lg overflow-hidden border border-brand/40 bg-surface-700">
-                      <div className={`${slot.ratio} w-full`}>
-                        <img src={slot.state.preview} alt={slot.label}
-                          className="absolute inset-0 w-full h-full object-cover" />
-                      </div>
-                      <button onClick={() => removeClientArt(slot.key)}
-                        className="absolute top-1 right-1 rounded-full bg-slate-900/80 p-0.5 text-slate-400 hover:text-red-400 transition-colors">
-                        <span className="sr-only">Quitar</span>
-                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                      </button>
-                      <div className="absolute bottom-1 left-1 rounded bg-brand px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                        Cliente
-                      </div>
-                    </div>
-                  ) : slot.orgFallback ? (
-                    /* Fallback de empresa */
-                    <label className="cursor-pointer">
-                      <div className="relative rounded-lg overflow-hidden border border-surface-600 bg-surface-700 opacity-70 hover:opacity-100 transition-opacity">
-                        <div className={`${slot.ratio} w-full`}>
-                          <img src={slot.orgFallback} alt={slot.label}
-                            className="absolute inset-0 w-full h-full object-cover" />
-                        </div>
-                        <div className="absolute bottom-1 left-1 rounded bg-surface-800/90 px-1.5 py-0.5 text-[10px] font-medium text-slate-400">
-                          Empresa
-                        </div>
-                        <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 hover:opacity-100 transition-opacity">
-                          <Upload className="h-5 w-5 text-white" />
-                        </div>
-                      </div>
-                      <input type="file" accept="image/jpeg,image/png" className="hidden"
-                        onChange={e => { handleClientArt(slot.key, e.target.files?.[0]); e.target.value = '' }} />
-                    </label>
-                  ) : (
-                    /* Sin arte — mostrar specs recomendadas */
-                    <label className="cursor-pointer">
-                      <div className={`${slot.ratio} w-full rounded-lg border-2 border-dashed border-surface-600 bg-surface-800/30 flex flex-col items-center justify-center gap-2 p-2 hover:border-brand/40 transition-colors text-center`}>
-                        <Upload className="h-4 w-4 text-slate-500" />
-                        <div className="space-y-0.5">
-                          <p className="text-[10px] font-medium text-slate-400 leading-tight">{SLOT_SPECS[slot.key].px}</p>
-                          <p className="text-[10px] text-slate-600 leading-tight">{SLOT_SPECS[slot.key].ratio} · {SLOT_SPECS[slot.key].peso}</p>
-                        </div>
-                        <span className="text-[10px] text-brand font-medium">Subir</span>
-                      </div>
-                      <input type="file" accept="image/jpeg,image/png" className="hidden"
-                        onChange={e => { handleClientArt(slot.key, e.target.files?.[0]); e.target.value = '' }} />
-                    </label>
-                  )}
-
-                  {/* Botón cambiar si hay arte de cliente */}
-                  {slot.state && (
-                    <label className="cursor-pointer text-center">
-                      <span className="text-[10px] text-slate-500 hover:text-slate-300 transition-colors">Cambiar</span>
-                      <input type="file" accept="image/jpeg,image/png" className="hidden"
-                        onChange={e => { handleClientArt(slot.key, e.target.files?.[0]); e.target.value = '' }} />
-                    </label>
-                  )}
-                </div>
-              ))}
-            </div>
+            <ClientArtworkSlots
+              clientArtH={clientArtH}   setClientArtH={setClientArtH}
+              clientArtV={clientArtV}   setClientArtV={setClientArtV}
+              clientArtSq={clientArtSq} setClientArtSq={setClientArtSq}
+            />
           </div>
         )}
       </div>

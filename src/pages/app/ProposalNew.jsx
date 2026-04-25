@@ -33,7 +33,6 @@ const EMPTY_FORM = {
   startDate: '',
   endDate: '',
   audience: { ageMin: 18, ageMax: 55, gender: 'all', interests: [], nse: [] },
-  adImageFile: null,
 }
 
 export default function ProposalNew() {
@@ -53,6 +52,11 @@ export default function ProposalNew() {
   const [selectedStrategy, setSelectedStrategy] = useState('A')
   // ID del draft auto-guardado al recibir el resultado del LLM.
   const [draftProposalId, setDraftProposalId] = useState(null)
+
+  // ── Artes del cliente — compartidos entre Step 1 (carga inicial) y Step 3 (override) ──
+  const [clientArtH,  setClientArtH]  = useState(null) // { file, preview } | null
+  const [clientArtV,  setClientArtV]  = useState(null)
+  const [clientArtSq, setClientArtSq] = useState(null)
 
   // ── Load existing proposal for editing ─────────────────────
   useEffect(() => {
@@ -90,7 +94,6 @@ export default function ProposalNew() {
           startDate:        b.startDate ?? '',
           endDate:          b.endDate ?? (data.valid_until ?? ''),
           audience:         b.audience ?? { ageMin: 18, ageMax: 55, gender: 'all', interests: [], nse: [] },
-          adImageFile:      null,
         })
         setLoadingEdit(false)
       })
@@ -472,6 +475,9 @@ export default function ProposalNew() {
           formData={formData}
           setFormData={setFormData}
           onSubmit={() => setStep(2)}
+          clientArtH={clientArtH}   setClientArtH={setClientArtH}
+          clientArtV={clientArtV}   setClientArtV={setClientArtV}
+          clientArtSq={clientArtSq} setClientArtSq={setClientArtSq}
         />
       )}
 
@@ -491,6 +497,9 @@ export default function ProposalNew() {
           formData={formData}
           onSave={handleSave}
           saving={saving}
+          clientArtH={clientArtH}   setClientArtH={setClientArtH}
+          clientArtV={clientArtV}   setClientArtV={setClientArtV}
+          clientArtSq={clientArtSq} setClientArtSq={setClientArtSq}
         />
       )}
     </div>
