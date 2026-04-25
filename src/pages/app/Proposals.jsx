@@ -203,24 +203,11 @@ export default function Proposals() {
         await Promise.all(mockupTasks.slice(i, i + 5))
       }
 
-      // ── 6. Ocupados (excluir la propuesta actual) ─────────────────────────
-      let occupiedSiteIds = new Set()
-      if (siteIds.length > 0 && formData.startDate && formData.endDate) {
-        const { data: conflicts } = await supabase
-          .from('proposal_items')
-          .select('site_id, start_date, end_date, proposal:proposals!proposal_id(id, status)')
-          .in('site_id', siteIds)
-          .neq('proposal_id', p.id)
-
-        for (const item of conflicts ?? []) {
-          if (item.proposal?.status !== 'accepted') continue
-          if (!item.start_date || !item.end_date) continue
-          const overlaps =
-            new Date(item.start_date) <= new Date(formData.endDate) &&
-            new Date(item.end_date)   >= new Date(formData.startDate)
-          if (overlaps) occupiedSiteIds.add(item.site_id)
-        }
-      }
+      // ── 6. Ocupados ────────────────────────────────────────────────────────
+      // Lo guardado en proposal_items representa una decisión comercial confirmada.
+      // El PDF muestra todo lo guardado sin re-filtrar por disponibilidad en runtime
+      // (los conflictos sobrevenidos se avisan en la vista de /propuestas, no acá).
+      const occupiedSiteIds = new Set()
 
       // ── 7. Generar PDF ────────────────────────────────────────────────────
       await generateProposalPDF({
