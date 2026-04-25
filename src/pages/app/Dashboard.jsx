@@ -106,7 +106,7 @@ function WorkflowSemaphore({ counts }) {
 // ─── Derived data computation ─────────────────────────────────
 
 function computeDerived(
-  { inventory, items, proposals, allProposals, userProfile, upcomingCampaigns },
+  { inventory, items, proposals, allProposals, userProfile, upcomingCampaigns, extraProposals = [] },
   period,
   userId,
   isCompany   // FIX 5: owner/manager ven todas las campañas
@@ -116,9 +116,14 @@ function computeDerived(
   const { start: prS, end: prE } = periodBounds(offset - 1)
 
   // Lookups
+  // extraProposals trae las propuestas referenciadas por items que quedaron
+  // fuera de los dos fetches principales (creadas hace > 60 días con end_date
+  // > 60 días en el futuro). Sin esto, el lookup de status fallaría y los items
+  // se descartarían del conteo de ocupación.
   const propById = {}
   proposals.forEach(p => { propById[p.id] = p })
   upcomingCampaigns.forEach(p => { if (!propById[p.id]) propById[p.id] = p })
+  extraProposals.forEach(p => { if (!propById[p.id]) propById[p.id] = p })
   const invById = {}
   inventory.forEach(i => { invById[i.id] = i })
 
@@ -146,16 +151,19 @@ function computeDerived(
   const prevRevenue = items.filter(pi => prevAcceptedIds.has(pi.proposal_id)).reduce((s, pi) => s + (pi.client_price ?? pi.rate ?? 0), 0)
   const revDelta    = prevRevenue > 0 ? (revenue - prevRevenue) / prevRevenue * 100 : null
 
-  // Items solapando período — solo para ocupación física
-  function overlap(start, end) {
-    return items.filter(pi => {
-      if (!pi.start_date || !pi.end_date) return false
-      const p = propById[pi.proposal_id]
-      if (p?.status !== 'accepted') return false
-      return new Date(pi.start_date) <= end && new Date(pi.end_date) >= start
-    })
-  }
-  const currItems = overlap(pS, pE)
+  // Items que ocupan algún cartel HOY — base para los widgets de ocupación.
+  // Vigente: workflow_status en active/approved/printing y rango de fechas
+  // que abarca hoy (NULL en cualquier extremo se asume vigente indefinidamente).
+  const ACTIVE_WORKFLOWS = new Set(['active', 'approved', 'printing'])
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const currItems = items.filter(pi => {
+    const p = propById[pi.proposal_id]
+    if (!ACTIVE_WORKFLOWS.has(p?.workflow_status)) return false
+    const startOk = !pi.start_date || new Date(pi.start_date) <= today
+    const endOk   = !pi.end_date   || new Date(pi.end_date)   >= today
+    return startOk && endOk
+  })
 
   // ── Tasa de cierre del MES: propuestas cerradas en el período / creadas en el período ──
   // Usa allProposals para contemplar todas (KPI empresa ve todo, salesperson ve solo las suyas)
@@ -289,8 +297,7 @@ function computeDerived(
     if (!sitesPerProp[pi.proposal_id]) sitesPerProp[pi.proposal_id] = new Set()
     sitesPerProp[pi.proposal_id].add(pi.site_id)
   })
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
+  // `today` ya fue declarado arriba para el filtro de ocupación
   const activeCampaigns = upcomingCampaigns
     .filter(p => p.end_date)
     // FIX 5: salesperson solo ve sus propias campañas
@@ -391,12 +398,35 @@ export default function Dashboard() {
         .select('id, status')
         .eq('org_id', profile.org_id),
 
-    ]).then(([invR, itemsR, propsR, profileR, campaignsR, allPropsR]) => {
+    ]).then(async ([invR, itemsR, propsR, profileR, campaignsR, allPropsR]) => {
+      const itemsData     = itemsR.data     ?? []
+      const propsData     = propsR.data     ?? []
+      const campaignsData = campaignsR.data ?? []
+
+      // Traer las propuestas que el ítem referencia pero no están en los dos
+      // fetches principales (creadas hace > 60 días y con end_date > 60 días
+      // en el futuro). Necesario para que el widget de ocupación cuente sus items.
+      const knownIds = new Set([
+        ...propsData.map(p => p.id),
+        ...campaignsData.map(p => p.id),
+      ])
+      const missingIds = [...new Set(
+        itemsData.map(pi => pi.proposal_id).filter(id => id && !knownIds.has(id))
+      )]
+      let extraProposals = []
+      if (missingIds.length > 0) {
+        const { data } = await supabase
+          .from('proposals')
+          .select('id, status, workflow_status, accepted_at, created_by')
+          .in('id', missingIds)
+        extraProposals = data ?? []
+      }
+
       // Enriquecer items con client_price (aplicar descuento de la propuesta)
       const discountMap = {}
-      ;(propsR.data ?? []).forEach(p => { discountMap[p.id] = p.discount_pct ?? 0 })
+      propsData.forEach(p => { discountMap[p.id] = p.discount_pct ?? 0 })
 
-      const enrichedItems = (itemsR.data ?? []).map(pi => ({
+      const enrichedItems = itemsData.map(pi => ({
         ...pi,
         client_price: Math.round((pi.rate ?? 0) * (1 - (discountMap[pi.proposal_id] ?? 0) / 100)),
       }))
@@ -404,10 +434,11 @@ export default function Dashboard() {
       setRaw({
         inventory:         invR.data      ?? [],
         items:             enrichedItems,
-        proposals:         propsR.data    ?? [],
+        proposals:         propsData,
         allProposals:      allPropsR.data ?? [],
         userProfile:       profileR.error  ? {} : (profileR.data ?? {}),
-        upcomingCampaigns: campaignsR.data ?? [],
+        upcomingCampaigns: campaignsData,
+        extraProposals,
       })
       setLoading(false)
     })
