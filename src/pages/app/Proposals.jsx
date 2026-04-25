@@ -133,6 +133,7 @@ export default function Proposals() {
       }
 
       const results = {
+        ...singleOption,        // spread plano: sites, total_list_price, total_client_price, etc.
         optionA:       singleOption,
         optionB:       null,
         audience_mode: 'full',
