@@ -154,7 +154,7 @@ export default function Reports() {
         { data: invData,  error: e4 },
       ] = await Promise.all([
         supabase.from('proposals')
-          .select('id, status, created_at, accepted_at, created_by, discount_pct, total_value, title, client_name')
+          .select('id, status, workflow_status, created_at, accepted_at, created_by, discount_pct, total_value, title, client_name')
           .eq('org_id', orgId)
           .order('created_at', { ascending: false }),
 
@@ -490,10 +490,33 @@ export default function Reports() {
   // the shared calculateSiteProfitability helper. Now includes cost_colocation
   // + cost_design + full owner commission (previously omitted).
   const siteProfit = useMemo(() => {
+    // Estado de ocupación: contra HOY, no contra el filtro de período. Un cartel
+    // está ocupado hoy si hay al menos un proposal_item con workflow_status
+    // active/approved/printing y rango de fechas que abarca la fecha actual.
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const ACTIVE_WORKFLOWS = new Set(['active', 'approved', 'printing'])
+    const propById = {}
+    proposals.forEach(p => { propById[p.id] = p })
+
     return inventory.map(inv => {
       const siteItems = filteredItems.filter(pi => pi.site_id === inv.id)
       const revItems  = siteItems.filter(pi => REV_STATUSES.has(filteredStatusMap[pi.proposal_id]))
-      const isOccupied = siteItems.some(pi => ACTIVE_STATUSES.has(filteredStatusMap[pi.proposal_id]))
+
+      // Búsqueda de campaña activa HOY sobre el dataset completo (propItems),
+      // independiente del filtro de período del usuario.
+      const activeCampaign = propItems.find(pi => {
+        if (pi.site_id !== inv.id) return false
+        const prop = propById[pi.proposal_id]
+        if (!prop) return false
+        if (!ACTIVE_WORKFLOWS.has(prop.workflow_status)) return false
+        const start = pi.start_date ? new Date(pi.start_date) : null
+        const end   = pi.end_date   ? new Date(pi.end_date)   : null
+        const startOk = !start || start <= today
+        const endOk   = !end   || end   >= today
+        return startOk && endOk
+      })
+      const isOccupied = !!activeCampaign
 
       // Aggregate profitability per item using the shared helper.
       const agg = revItems.reduce((acc, pi) => {
@@ -544,9 +567,10 @@ export default function Reports() {
         asociComm:  agg.ownerComm,                    // UI backwards-compat key
         totalComm,
         netProfit, roi, margin, isOccupied,
+        activeCampaign,   // para mostrar fechas en la columna Estado
       }
     }).sort((a, b) => b.revenue - a.revenue)
-  }, [inventory, filteredItems, filteredStatusMap])
+  }, [inventory, filteredItems, filteredStatusMap, propItems, proposals])
 
   // ── chart formatters ──────────────────────────────────────────────────────
   function axisFormatter(value) {
@@ -922,6 +946,9 @@ export default function Reports() {
           />
         ) : (
           <div className="overflow-x-auto">
+            <p className="text-xs text-slate-500 mb-2 text-right">
+              Estado de ocupación al {new Date().toLocaleDateString('es-AR', { day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
             <table className="w-full text-sm min-w-[600px]">
               <thead>
                 <tr className="text-xs text-slate-500 uppercase tracking-wide border-b border-surface-700">
@@ -970,7 +997,9 @@ export default function Reports() {
                           )}
                         </td>
                         <td className="py-3 text-right text-slate-400 hidden md:table-cell">
-                          {fmtARS(site.totalCosts)}
+                          {site.revenue === 0 && site.isOccupied
+                            ? <span className="text-slate-600">—</span>
+                            : fmtARS(site.totalCosts)}
                         </td>
                         <td className="py-3 text-right">
                           {site.margin !== null ? (
@@ -986,30 +1015,17 @@ export default function Reports() {
                         </td>
                         <td className="py-3 text-right hidden lg:table-cell">
                           {(() => {
-                            const { from, to } = getDateBounds(dateRange, customStart, customEnd)
-                            if (!from || !to) {
+                            if (!site.isOccupied) {
                               return <span className="text-xs text-teal-400 font-medium">Disponible</span>
                             }
-                            const activeCampaigns = propItems.filter(pi => {
-                              if (pi.site_id !== site.id) return false
-                              if (!pi.start_date || !pi.end_date) return false
-                              const piStart = new Date(pi.start_date)
-                              const piEnd   = new Date(pi.end_date)
-                              const pStatus = proposals.find(p => p.id === pi.proposal_id)?.status
-                              return piStart <= to && piEnd >= from && pStatus === 'accepted'
-                            })
-                            if (activeCampaigns.length === 0) {
-                              return <span className="text-xs text-teal-400 font-medium">Disponible</span>
-                            }
-                            const earliest = activeCampaigns.reduce((a, b) =>
-                              new Date(a.start_date) < new Date(b.start_date) ? a : b)
-                            const latest = activeCampaigns.reduce((a, b) =>
-                              new Date(a.end_date) > new Date(b.end_date) ? a : b)
+                            const c = site.activeCampaign
                             const fmt = d => new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
                             return (
                               <div className="text-right">
                                 <span className="text-xs text-amber-400 font-medium block">Ocupado</span>
-                                <span className="text-[10px] text-slate-500">{fmt(earliest.start_date)} → {fmt(latest.end_date)}</span>
+                                {c?.start_date && c?.end_date && (
+                                  <span className="text-[10px] text-slate-500">{fmt(c.start_date)} → {fmt(c.end_date)}</span>
+                                )}
                               </div>
                             )
                           })()}
