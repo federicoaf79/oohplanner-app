@@ -44,6 +44,50 @@ function normalize(str) {
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
 }
 
+// ─── Fuzzy duplicate detection ────────────────────────────────────────────────
+function levenshtein(a, b) {
+  const m = a.length, n = b.length
+  const dp = Array.from({ length: m + 1 }, (_, i) =>
+    Array.from({ length: n + 1 }, (_, j) => i === 0 ? j : j === 0 ? i : 0)
+  )
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = a[i-1] === b[j-1]
+        ? dp[i-1][j-1]
+        : 1 + Math.min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1])
+  return dp[m][n]
+}
+
+function similarity(a, b) {
+  const na = normalize(a), nb = normalize(b)
+  if (!na || !nb) return 0
+  const maxLen = Math.max(na.length, nb.length)
+  return (maxLen - levenshtein(na, nb)) / maxLen
+}
+
+// Detecta pares con similitud >80% y sin CUIT/email compartido
+export function detectFuzzyDuplicates(contacts) {
+  const pairs = []
+  const seen  = new Set()
+  for (let i = 0; i < contacts.length; i++) {
+    for (let j = i + 1; j < contacts.length; j++) {
+      const a = contacts[i], b = contacts[j]
+      const key = [a.id, b.id].sort().join('|')
+      if (seen.has(key)) continue
+      // Saltar si comparten CUIT o email (ya los manejamos como update)
+      if (a.tax_id && a.tax_id === b.tax_id) continue
+      if (a.email  && a.email  === b.email)  continue
+      const score = similarity(a.name, b.name)
+      if (score >= 0.8) {
+        seen.add(key)
+        pairs.push({ a, b, score: Math.round(score * 100) })
+      }
+    }
+  }
+  // Máximo 10 pares para no abrumar
+  return pairs.slice(0, 10)
+}
+
 // ─── Parsers ──────────────────────────────────────────────────────────────────
 async function loadWorkbook(file) {
   const XLSXmod = await import('xlsx')
@@ -408,6 +452,35 @@ function StepConfirm({ mapped, existingContacts, onImport, importing, importResu
               </span>
             </div>
           )}
+
+          {/* Posibles duplicados fuzzy */}
+          {importResult.fuzzyPairs?.length > 0 && (
+            <div className="mt-4 rounded-xl border border-surface-700 overflow-hidden text-left max-w-sm mx-auto">
+              <div className="flex items-center gap-2 px-4 py-2.5 bg-surface-800 border-b border-surface-700">
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                <p className="text-xs font-medium text-amber-400">
+                  {importResult.fuzzyPairs.length} posibles duplicados detectados
+                </p>
+              </div>
+              <div className="divide-y divide-surface-700 bg-surface-900">
+                {importResult.fuzzyPairs.map((pair, i) => (
+                  <div key={i} className="px-4 py-2.5">
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-slate-200 font-medium truncate max-w-[120px]">{pair.a.name}</span>
+                      <span className="text-slate-600 shrink-0">≈</span>
+                      <span className="text-slate-200 font-medium truncate max-w-[120px]">{pair.b.name}</span>
+                      <span className="ml-auto shrink-0 text-slate-500">{pair.score}%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="px-4 py-2.5 bg-surface-800 border-t border-surface-700">
+                <p className="text-xs text-slate-500">
+                  Revisalos en la lista y fusionalos manualmente si son el mismo contacto.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     )
@@ -573,7 +646,13 @@ export default function ContactOnboardingWizard({ existingContacts = [], onClose
 
     setImportResult({ inserted, updated, skipped, errors, needsReview })
     setImporting(false)
-    if (inserted + updated > 0) onDone(newContacts)
+    if (inserted + updated > 0) {
+      // Detección fuzzy sobre todos los contactos (existentes + nuevos)
+      const allContacts = [...existingContacts, ...newContacts]
+      const fuzzyPairs  = detectFuzzyDuplicates(allContacts)
+      setImportResult({ inserted, updated, skipped, errors, needsReview, fuzzyPairs })
+      onDone(newContacts)
+    }
   }
 
   const STEP_LABELS = {
