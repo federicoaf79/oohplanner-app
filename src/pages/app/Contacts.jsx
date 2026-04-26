@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Plus, Search, BookUser, MoreVertical, ChevronUp, ChevronDown, Mail, Phone, Lock } from 'lucide-react'
+import { Plus, Search, BookUser, MoreVertical, ChevronUp, ChevronDown, Mail, Phone, Lock, Upload } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { ROLE_LABEL_MAP, ROLE_CATEGORY_MAP, CONTACT_ROLE_CATEGORIES } from '../../lib/contactRoles'
 import ContactCard from '../../features/contacts/ContactCard'
 import ContactFormModal from '../../features/contacts/ContactFormModal'
+import ContactOnboardingWizard from '../../features/contacts/ContactOnboardingWizard'
 
 const ALL = '__all__'
 const CAT_COLOR = Object.fromEntries(CONTACT_ROLE_CATEGORIES.map(c => [c.id, c.color]))
@@ -44,16 +45,17 @@ export default function Contacts() {
   const { profile, isOwner, isManager } = useAuth()
   const canEdit = isOwner || isManager
 
-  const [contacts, setContacts]       = useState([])
-  const [loading, setLoading]         = useState(true)
-  const [search, setSearch]           = useState('')
-  const [filterRole, setFilterRole]   = useState(ALL)
+  const [contacts, setContacts]         = useState([])
+  const [loading, setLoading]           = useState(true)
+  const [search, setSearch]             = useState('')
+  const [filterRole, setFilterRole]     = useState(ALL)
   const [filterStatus, setFilterStatus] = useState(ALL)
   const [visibilityFilter, setVisibilityFilter] = useState('all')
-  const [sortDir, setSortDir]         = useState('asc')
-  const [modal, setModal]             = useState(null)
+  const [sortDir, setSortDir]           = useState('asc')
+  const [modal, setModal]               = useState(null)
   const [deleteConfirm, setDeleteConfirm] = useState(null)
-  const [openMenu, setOpenMenu]       = useState(null)
+  const [openMenu, setOpenMenu]         = useState(null)
+  const [showImport, setShowImport]     = useState(false)
 
   async function fetchContacts() {
     if (!profile?.org_id) return
@@ -119,6 +121,15 @@ export default function Contacts() {
     setContacts(cs => cs.map(c => c.id === contact.id ? { ...c, is_active: next } : c))
   }
 
+  function handleImportDone(imported) {
+    setContacts(cs => {
+      const ids = new Set(imported.map(c => c.id))
+      return [...cs.filter(c => !ids.has(c.id)), ...imported]
+        .sort((a, b) => a.name.localeCompare(b.name, 'es'))
+    })
+    setShowImport(false)
+  }
+
   return (
     <div className="space-y-6">
 
@@ -129,12 +140,20 @@ export default function Contacts() {
           <span className="ml-2 text-sm font-normal text-slate-500">({contacts.length})</span>
         </h1>
         {canEdit && (
-          <button
-            onClick={() => setModal({ mode: 'create' })}
-            className="btn-primary flex shrink-0 items-center gap-2"
-          >
-            <Plus className="h-4 w-4" /> Nuevo contacto
-          </button>
+          <div className="flex shrink-0 items-center gap-2">
+            <button
+              onClick={() => setShowImport(true)}
+              className="btn-secondary flex items-center gap-2"
+            >
+              <Upload className="h-4 w-4" /> Importar
+            </button>
+            <button
+              onClick={() => setModal({ mode: 'create' })}
+              className="btn-primary flex items-center gap-2"
+            >
+              <Plus className="h-4 w-4" /> Nuevo contacto
+            </button>
+          </div>
         )}
       </div>
 
@@ -181,9 +200,14 @@ export default function Contacts() {
             {contacts.length === 0 ? 'Todavía no hay contactos' : 'Sin resultados para esa búsqueda'}
           </p>
           {contacts.length === 0 && canEdit && (
-            <button onClick={() => setModal({ mode: 'create' })} className="btn-primary mt-2">
-              Agregar primer contacto
-            </button>
+            <div className="flex gap-3 mt-2">
+              <button onClick={() => setShowImport(true)} className="btn-secondary flex items-center gap-2">
+                <Upload className="h-4 w-4" /> Importar lista
+              </button>
+              <button onClick={() => setModal({ mode: 'create' })} className="btn-primary">
+                Agregar primer contacto
+              </button>
+            </div>
           )}
         </div>
 
@@ -192,7 +216,6 @@ export default function Contacts() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-surface-700 bg-surface-800/50">
-                {/* Nombre — sortable */}
                 <th className="px-4 py-3 text-left">
                   <button
                     onClick={() => setSortDir(d => d === 'asc' ? 'desc' : 'asc')}
@@ -222,8 +245,6 @@ export default function Contacts() {
                     className={`cursor-pointer hover:bg-surface-800/50 transition-colors ${inactive ? 'opacity-60' : ''}`}
                     onClick={() => setModal({ mode: 'edit', contact })}
                   >
-
-                    {/* Nombre */}
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         {inactive && (
@@ -235,24 +256,15 @@ export default function Contacts() {
                         <span className="font-medium text-white">{contact.name}</span>
                       </div>
                     </td>
-
-                    {/* Razón social — hidden mobile */}
                     <td className="hidden md:table-cell px-4 py-3 text-slate-300">
                       {contact.legal_name || <span className="text-slate-500">—</span>}
                     </td>
-
-                    {/* Roles */}
                     <td className="px-4 py-3">
                       <RoleChips roles={contact.roles ?? []} inactive={inactive} />
                     </td>
-
-                    {/* Contacto: email + phone */}
                     <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                       {contact.visibility === 'owner_only' ? (
-                        <span
-                          className="text-xs text-slate-600 cursor-default"
-                          title="Datos confidenciales · abrir contacto para ver"
-                        >
+                        <span className="text-xs text-slate-600 cursor-default" title="Datos confidenciales · abrir contacto para ver">
                           •••
                         </span>
                       ) : (
@@ -280,16 +292,12 @@ export default function Contacts() {
                         </div>
                       )}
                     </td>
-
-                    {/* CUIT — hidden mobile */}
                     <td className="hidden md:table-cell px-4 py-3 font-mono text-xs text-slate-400">
                       {contact.visibility === 'owner_only'
                         ? <span className="font-sans text-slate-600" title="Datos confidenciales · abrir contacto para ver">•••</span>
                         : (contact.tax_id || <span className="font-sans text-slate-500">—</span>)
                       }
                     </td>
-
-                    {/* Acciones */}
                     {canEdit && (
                       <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                         <div className="relative flex justify-end">
@@ -341,6 +349,15 @@ export default function Contacts() {
           contact={modal.contact ?? null}
           onClose={() => setModal(null)}
           onSaved={handleSaved}
+        />
+      )}
+
+      {/* Import wizard */}
+      {showImport && (
+        <ContactOnboardingWizard
+          existingContacts={contacts}
+          onClose={() => setShowImport(false)}
+          onDone={handleImportDone}
         />
       )}
 
