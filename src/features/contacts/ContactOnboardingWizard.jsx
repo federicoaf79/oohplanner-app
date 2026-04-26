@@ -1,13 +1,14 @@
 import { useState, useRef } from 'react'
 import {
   X, Upload, FileSpreadsheet, AlertTriangle, Check,
-  RefreshCw, Users, Sparkles, Info, ChevronRight
+  RefreshCw, Users, Sparkles, Info, ChevronRight, ChevronLeft,
+  Table2
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { CONTACT_ROLES, ROLE_LABEL_MAP } from '../../lib/contactRoles'
 
-// ─── Schema fields que la IA puede asignar ────────────────────────────────────
+// ─── Schema fields ────────────────────────────────────────────────────────────
 const SCHEMA_FIELDS = [
   'name', 'legal_name', 'tax_id', 'email', 'phone', 'whatsapp',
   'website', 'address', 'city', 'province',
@@ -21,11 +22,11 @@ const AUTO_MAP = {
   'nombre': 'name', 'name': 'name', 'empresa': 'name', 'compania': 'name',
   'company': 'name', 'cliente': 'name', 'nombre fantasia': 'name',
   'nombre de fantasia': 'name', 'fantasia': 'name',
-  'razon social': 'legal_name', 'razon_social': 'legal_name', 'legal name': 'legal_name',
+  'razon social': 'legal_name', 'razon_social': 'legal_name',
   'cuit': 'tax_id', 'cuil': 'tax_id', 'cuit/cuil': 'tax_id', 'nro cuit': 'tax_id',
   'email': 'email', 'mail': 'email', 'correo': 'email', 'e-mail': 'email',
-  'telefono': 'phone', 'telefonos': 'phone', 'teléfono': 'phone', 'tel': 'phone',
-  'phone': 'phone', 'celular': 'phone', 'movil': 'phone',
+  'telefono': 'phone', 'telefonos': 'phone', 'teléfono': 'phone',
+  'tel': 'phone', 'phone': 'phone', 'celular': 'phone', 'movil': 'phone',
   'whatsapp': 'whatsapp', 'wsp': 'whatsapp',
   'web': 'website', 'website': 'website', 'sitio': 'website', 'url': 'website',
   'direccion': 'address', 'dirección': 'address', 'domicilio': 'address',
@@ -44,29 +45,31 @@ function normalize(str) {
 }
 
 // ─── Parsers ──────────────────────────────────────────────────────────────────
-async function parseSpreadsheet(file) {
+async function loadWorkbook(file) {
   const XLSXmod = await import('xlsx')
   const XLSX = XLSXmod.default ?? XLSXmod
   const buf = await file.arrayBuffer()
   const wb = XLSX.read(buf, { type: 'array' })
-  const ws = wb.Sheets[wb.SheetNames[0]]
+  return { wb, XLSX }
+}
 
-  // Leer como array crudo primero
+function parseSheet(wb, XLSX, sheetName) {
+  const ws = wb.Sheets[sheetName]
   const raw = XLSX.utils.sheet_to_json(ws, { defval: '', header: 1 })
-  if (!raw.length) throw new Error('El archivo está vacío.')
+  if (!raw.length) return []
 
-  // Encontrar la primera fila que tenga al menos 2 celdas no vacías → headers
+  // Encontrar fila de headers: primera con al menos 2 celdas no vacías
   let headerRowIdx = 0
-  for (let i = 0; i < Math.min(raw.length, 5); i++) {
-    const nonEmpty = raw[i].filter(v => v !== '' && v != null).length
-    if (nonEmpty >= 2) { headerRowIdx = i; break }
+  for (let i = 0; i < Math.min(raw.length, 6); i++) {
+    if (raw[i].filter(v => v !== '' && v != null).length >= 2) {
+      headerRowIdx = i; break
+    }
   }
 
   const headers = raw[headerRowIdx].map((h, i) =>
     String(h ?? '').trim() || `Col_${i + 1}`
   )
 
-  // Filtrar filas vacías y construir objetos
   return raw.slice(headerRowIdx + 1)
     .filter(row => row.some(v => v !== '' && v != null))
     .map(row => Object.fromEntries(headers.map((h, i) => [h, row[i] ?? ''])))
@@ -85,24 +88,38 @@ async function parseDocx(file) {
   if (rows.length < 2) throw new Error('La tabla del documento está vacía.')
   const headers = Array.from(rows[0].querySelectorAll('td,th'))
     .map((c, i) => c.textContent.trim() || `Col_${i + 1}`)
-  return rows.slice(1)
-    .map(row => {
-      const cells = Array.from(row.querySelectorAll('td,th')).map(c => c.textContent.trim())
-      const obj = {}
-      headers.forEach((h, i) => { obj[h] = cells[i] ?? '' })
-      return obj
-    })
-    .filter(r => Object.values(r).some(v => v))
+  return {
+    sheetNames: ['Tabla Word'],
+    rows: rows.slice(1)
+      .map(row => {
+        const cells = Array.from(row.querySelectorAll('td,th')).map(c => c.textContent.trim())
+        const obj = {}
+        headers.forEach((h, i) => { obj[h] = cells[i] ?? '' })
+        return obj
+      })
+      .filter(r => Object.values(r).some(v => v))
+  }
 }
 
-async function parseFile(file) {
+async function parseFile(file, sheetName = null) {
   const name = file.name.toLowerCase()
-  if (/\.(xlsx|xls|csv|ods)$/.test(name)) return parseSpreadsheet(file)
-  if (/\.docx$/.test(name)) return parseDocx(file)
+
+  if (/\.docx$/.test(name)) {
+    return parseDocx(file)
+  }
+
+  if (/\.(xlsx|xls|csv|ods)$/.test(name)) {
+    const { wb, XLSX } = await loadWorkbook(file)
+    const sheetNames = wb.SheetNames
+    const targetSheet = sheetName ?? sheetNames[0]
+    const rows = parseSheet(wb, XLSX, targetSheet)
+    return { sheetNames, rows }
+  }
+
   throw new Error('Formato no soportado. Usá .xlsx, .xls, .csv, .ods o .docx')
 }
 
-// ─── AI mapping — invisible para el usuario ───────────────────────────────────
+// ─── AI mapping ───────────────────────────────────────────────────────────────
 async function aiMapColumns(columns, sampleRows) {
   const samples = columns.slice(0, 30).map(col => {
     const vals = sampleRows.map(r => String(r[col] ?? '')).filter(Boolean).slice(0, 3)
@@ -114,10 +131,10 @@ async function aiMapColumns(columns, sampleRows) {
 Schema válido: ${SCHEMA_FIELDS.join(', ')}, __ignore__
 
 Reglas:
-- Si la columna parece un nombre de empresa o persona → "name"
+- Si la columna tiene nombres de empresa o persona → "name"
 - Si todos los valores son iguales o genéricos (ej: todos dicen "cliente") → "__ignore__"
-- Si es número de fax, canal de TV, código postal, número correlativo → "__ignore__"
-- Si no corresponde a ningún campo útil → "__ignore__"
+- Fax, canal, código postal, número correlativo, días de visita, horarios → "__ignore__"
+- Si no corresponde a ningún campo → "__ignore__"
 
 Columnas con muestras:
 ${samples}
@@ -150,14 +167,13 @@ Respondé SOLO con JSON: {"columna": "campo"}. Sin markdown.`
     })
     return safe
   } catch {
-    // Fallback silencioso
     const safe = {}
     columns.forEach(col => { safe[col] = AUTO_MAP[normalize(col)] ?? '__ignore__' })
     return safe
   }
 }
 
-// ─── Roles helpers ────────────────────────────────────────────────────────────
+// ─── Roles ────────────────────────────────────────────────────────────────────
 const ROLE_ALIASES = {}
 CONTACT_ROLES.forEach(r => {
   ROLE_ALIASES[normalize(r.id)] = r.id
@@ -173,10 +189,8 @@ function parseRoleValue(val) {
     .map(v => ROLE_ALIASES[normalize(v)] ?? null).filter(Boolean)
 }
 
-// ─── Aplicar mapping a filas ──────────────────────────────────────────────────
 function applyMapping(rows, mapping) {
   const rolesCol = Object.entries(mapping).find(([, v]) => v === 'roles')?.[0]
-
   return rows.map(row => {
     const contact = {}
     Object.entries(mapping).forEach(([col, field]) => {
@@ -184,23 +198,19 @@ function applyMapping(rows, mapping) {
       const val = String(row[col] ?? '').trim()
       if (val) contact[field] = val
     })
-    if (rolesCol) {
-      contact.roles = parseRoleValue(row[rolesCol])
-    } else {
-      contact.roles = []
-    }
+    contact.roles = rolesCol ? parseRoleValue(row[rolesCol]) : []
     contact.__key__ = contact.tax_id || contact.email || null
     return contact
-  }).filter(c => c.name) // solo filas con nombre
+  }).filter(c => c.name)
 }
 
-// ─── Detectar si un contacto necesita revisión ────────────────────────────────
+// ─── Helper exportado ─────────────────────────────────────────────────────────
 export function contactNeedsReview(contact) {
   return !contact.email && !contact.phone && !contact.whatsapp
 }
 
-// ─── PASO 1: Upload ───────────────────────────────────────────────────────────
-function StepUpload({ onReady }) {
+// ─── STEP 0: Upload ───────────────────────────────────────────────────────────
+function StepUpload({ onFileLoaded }) {
   const [dragging, setDragging] = useState(false)
   const [loading, setLoading]   = useState(false)
   const [error, setError]       = useState(null)
@@ -215,14 +225,8 @@ function StepUpload({ onReady }) {
     setError(null)
     setLoading(true)
     try {
-      const rows = await parseFile(file)
-      if (!rows.length) throw new Error('El archivo no tiene datos.')
-      const columns = Object.keys(rows[0])
-      // AI mapping — invisible
-      const mapping = await aiMapColumns(columns, rows.slice(0, 8))
-      const mapped = applyMapping(rows, mapping)
-      if (!mapped.length) throw new Error('No se encontraron contactos con nombre en el archivo.')
-      onReady(mapped)
+      const result = await parseFile(file)
+      onFileLoaded({ file, ...result })
     } catch (e) {
       setError(e.message ?? 'Error al procesar el archivo.')
     }
@@ -234,7 +238,7 @@ function StepUpload({ onReady }) {
       <div>
         <h2 className="text-lg font-semibold text-white">Importar contactos</h2>
         <p className="mt-1 text-sm text-slate-400">
-          Subí tu lista. El sistema detecta las columnas automáticamente y prepara todo para importar.
+          Subí tu lista. El sistema detecta las columnas automáticamente.
         </p>
       </div>
 
@@ -244,22 +248,21 @@ function StepUpload({ onReady }) {
         onDrop={e => { e.preventDefault(); setDragging(false); handleFile(e.dataTransfer.files[0]) }}
         onClick={() => !loading && inputRef.current?.click()}
         className={`flex flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed p-12 transition-colors ${
-          loading ? 'border-blue-400/50 bg-blue-500/5 cursor-default' :
-          dragging ? 'border-blue-400 bg-blue-500/10 cursor-copy' :
+          loading   ? 'border-blue-400/50 bg-blue-500/5 cursor-default' :
+          dragging  ? 'border-blue-400 bg-blue-500/10 cursor-copy' :
           'border-surface-600 hover:border-surface-500 bg-surface-800/50 cursor-pointer'
         }`}
       >
         <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv,.ods,.docx"
           className="hidden" onChange={e => handleFile(e.target.files[0])} />
-
         {loading ? (
           <>
             <div className="flex h-14 w-14 items-center justify-center rounded-full bg-blue-500/10">
               <Sparkles className="h-7 w-7 text-blue-400 animate-pulse" />
             </div>
             <div className="text-center">
-              <p className="font-medium text-slate-200">Analizando tu archivo…</p>
-              <p className="mt-1 text-xs text-slate-500">La IA está detectando las columnas</p>
+              <p className="font-medium text-slate-200">Leyendo archivo…</p>
+              <p className="mt-1 text-xs text-slate-500">Detectando estructura</p>
             </div>
           </>
         ) : (
@@ -291,10 +294,82 @@ function StepUpload({ onReady }) {
   )
 }
 
-// ─── PASO 2: Confirmar e importar ─────────────────────────────────────────────
-function StepConfirm({ mapped, existingContacts, onImport, importing, importResult }) {
-  const withContact  = mapped.filter(c => c.email || c.phone || c.whatsapp).length
-  const incomplete   = mapped.length - withContact
+// ─── STEP 1: Selector de pestaña (solo si hay más de 1) ───────────────────────
+function StepSheetSelector({ sheetNames, file, onSheetSelected, onBack }) {
+  const [selected, setSelected] = useState(sheetNames[0])
+  const [loading, setLoading]   = useState(false)
+  const [error, setError]       = useState(null)
+
+  async function confirm() {
+    setLoading(true)
+    setError(null)
+    try {
+      const result = await parseFile(file, selected)
+      onSheetSelected(result.rows, selected)
+    } catch (e) {
+      setError(e.message ?? 'Error al leer la pestaña.')
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-lg font-semibold text-white">Elegir pestaña</h2>
+        <p className="mt-1 text-sm text-slate-400">
+          Tu archivo tiene {sheetNames.length} pestañas. ¿Cuál contiene los contactos?
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        {sheetNames.map((name, i) => (
+          <button
+            key={name}
+            onClick={() => setSelected(name)}
+            className={`w-full flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors ${
+              selected === name
+                ? 'border-blue-500/40 bg-blue-500/10 text-white'
+                : 'border-surface-700 bg-surface-800 text-slate-300 hover:border-surface-600'
+            }`}
+          >
+            <Table2 className={`h-4 w-4 shrink-0 ${selected === name ? 'text-blue-400' : 'text-slate-500'}`} />
+            <div className="min-w-0 flex-1">
+              <p className="font-medium truncate">{name}</p>
+              <p className="text-xs text-slate-500">Pestaña {i + 1}</p>
+            </div>
+            {selected === name && (
+              <div className="h-2 w-2 rounded-full bg-blue-400 shrink-0" />
+            )}
+          </button>
+        ))}
+      </div>
+
+      {error && (
+        <div className="flex items-center gap-2 rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-400">
+          <AlertTriangle className="h-4 w-4 shrink-0" /> {error}
+        </div>
+      )}
+
+      <div className="flex gap-3">
+        <button onClick={onBack} className="btn-secondary flex items-center gap-2">
+          <ChevronLeft className="h-4 w-4" /> Anterior
+        </button>
+        <button onClick={confirm} disabled={loading}
+          className="btn-primary flex-1 flex items-center justify-center gap-2">
+          {loading
+            ? <><RefreshCw className="h-4 w-4 animate-spin" /> Analizando…</>
+            : <>Usar esta pestaña <ChevronRight className="h-4 w-4" /></>
+          }
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── STEP 2: Analizar + Confirmar ─────────────────────────────────────────────
+function StepConfirm({ mapped, existingContacts, onImport, importing, importResult, onBack }) {
+  const withContact   = mapped.filter(c => c.email || c.phone || c.whatsapp).length
+  const incomplete    = mapped.length - withContact
   const conflictCount = mapped.filter(c =>
     c.__key__ && existingContacts.some(e => e.tax_id === c.__key__ || e.email === c.__key__)
   ).length
@@ -320,12 +395,12 @@ function StepConfirm({ mapped, existingContacts, onImport, importing, importResu
             )}
             {importResult.skipped > 0 && (
               <span className="text-slate-400">
-                <span className="text-slate-500 font-semibold text-base">{importResult.skipped}</span> duplicados salteados
+                <span className="text-slate-500 font-semibold text-base">{importResult.skipped}</span> salteados
               </span>
             )}
           </div>
           {importResult.needsReview > 0 && (
-            <div className="mt-4 flex items-center justify-center gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 px-4 py-3 text-sm text-amber-400 mx-auto max-w-sm">
+            <div className="mt-4 flex items-center gap-2 rounded-lg bg-amber-500/10 border border-amber-500/20 px-4 py-3 text-sm text-amber-400 max-w-sm mx-auto">
               <AlertTriangle className="h-4 w-4 shrink-0" />
               <span>
                 <strong>{importResult.needsReview}</strong> contactos sin datos de contacto —
@@ -342,12 +417,9 @@ function StepConfirm({ mapped, existingContacts, onImport, importing, importResu
     <div className="space-y-5">
       <div>
         <h2 className="text-lg font-semibold text-white">Listo para importar</h2>
-        <p className="mt-1 text-sm text-slate-400">
-          Revisá el resumen y confirmá la importación.
-        </p>
+        <p className="mt-1 text-sm text-slate-400">Revisá el resumen y confirmá.</p>
       </div>
 
-      {/* Resumen */}
       <div className="grid grid-cols-2 gap-3">
         <div className="rounded-xl bg-surface-800 border border-surface-700 p-4 text-center">
           <p className="text-2xl font-bold text-white">{mapped.length}</p>
@@ -371,11 +443,12 @@ function StepConfirm({ mapped, existingContacts, onImport, importing, importResu
         )}
       </div>
 
-      {/* Preview primeros 5 */}
+      {/* Preview */}
       <div className="rounded-xl border border-surface-700 overflow-hidden">
-        <div className="px-4 py-2 bg-surface-800 border-b border-surface-700 flex items-center gap-2">
-          <p className="text-xs text-slate-400 font-medium">Vista previa</p>
-          <span className="text-xs text-slate-600">— primeros {Math.min(mapped.length, 5)} de {mapped.length}</span>
+        <div className="px-4 py-2 bg-surface-800 border-b border-surface-700">
+          <p className="text-xs text-slate-400 font-medium">
+            Vista previa · primeros {Math.min(mapped.length, 5)} de {mapped.length}
+          </p>
         </div>
         <div className="divide-y divide-surface-700">
           {mapped.slice(0, 5).map((c, i) => (
@@ -396,8 +469,8 @@ function StepConfirm({ mapped, existingContacts, onImport, importing, importResu
 
       {incomplete > 0 && (
         <p className="text-xs text-slate-500">
-          Los contactos sin datos de contacto se importan igual y quedan marcados
-          con <span className="text-amber-400">"Completar datos"</span> en la lista.
+          Los contactos sin datos se importan igual y quedan marcados con{' '}
+          <span className="text-amber-400">"Completar datos"</span> en la lista.
         </p>
       )}
 
@@ -408,6 +481,11 @@ function StepConfirm({ mapped, existingContacts, onImport, importing, importResu
           : <><Upload className="h-4 w-4" /> Importar {mapped.length} contactos</>
         }
       </button>
+
+      <button onClick={onBack}
+        className="w-full text-center text-xs text-slate-500 hover:text-slate-400 transition-colors">
+        ← Subir otro archivo
+      </button>
     </div>
   )
 }
@@ -415,14 +493,42 @@ function StepConfirm({ mapped, existingContacts, onImport, importing, importResu
 // ─── Componente principal ─────────────────────────────────────────────────────
 export default function ContactOnboardingWizard({ existingContacts = [], onClose, onDone }) {
   const { profile } = useAuth()
-  const [step, setStep]             = useState(0)  // 0=upload 1=confirm
-  const [mapped, setMapped]         = useState([])
-  const [importing, setImporting]   = useState(false)
+
+  // step: 'upload' | 'sheet' | 'confirm'
+  const [step, setStep]           = useState('upload')
+  const [fileData, setFileData]   = useState(null)   // { file, sheetNames }
+  const [rows, setRows]           = useState([])
+  const [mapped, setMapped]       = useState([])
+  const [analyzing, setAnalyzing] = useState(false)
+  const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState(null)
 
-  function handleReady(contacts) {
-    setMapped(contacts)
-    setStep(1)
+  async function analyzeAndConfirm(rawRows) {
+    setAnalyzing(true)
+    const columns = rawRows.length ? Object.keys(rawRows[0]) : []
+    const mapping = await aiMapColumns(columns, rawRows.slice(0, 8))
+    const result  = applyMapping(rawRows, mapping)
+    setMapped(result)
+    setAnalyzing(false)
+    setStep('confirm')
+  }
+
+  async function handleFileLoaded(data) {
+    setFileData(data)
+    setRows(data.rows)
+
+    // Si hay más de una pestaña → mostrar selector
+    if (data.sheetNames.length > 1) {
+      setStep('sheet')
+    } else {
+      // Pestaña única → analizar directo
+      await analyzeAndConfirm(data.rows)
+    }
+  }
+
+  async function handleSheetSelected(sheetRows) {
+    setRows(sheetRows)
+    await analyzeAndConfirm(sheetRows)
   }
 
   async function handleImport() {
@@ -437,7 +543,7 @@ export default function ContactOnboardingWizard({ existingContacts = [], onClose
 
     for (const row of mapped) {
       const { __key__, ...contact } = row
-      contact.org_id    = profile.org_id
+      contact.org_id     = profile.org_id
       contact.created_by = profile.id
 
       try {
@@ -470,7 +576,15 @@ export default function ContactOnboardingWizard({ existingContacts = [], onClose
     if (inserted + updated > 0) onDone(newContacts)
   }
 
-  const STEPS = ['Subir archivo', 'Importar']
+  const STEP_LABELS = {
+    upload:  'Subir archivo',
+    sheet:   'Elegir pestaña',
+    confirm: 'Importar',
+  }
+  const STEP_ORDER = ['upload', 'sheet', 'confirm']
+  const visibleSteps = fileData?.sheetNames?.length > 1
+    ? STEP_ORDER
+    : ['upload', 'confirm']
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
@@ -482,7 +596,7 @@ export default function ContactOnboardingWizard({ existingContacts = [], onClose
             <Users className="h-5 w-5 text-blue-400" />
             <div>
               <p className="font-semibold text-white">Importar contactos</p>
-              <p className="text-xs text-slate-500">{STEPS[step]}</p>
+              <p className="text-xs text-slate-500">{STEP_LABELS[step]}</p>
             </div>
           </div>
           <button onClick={onClose}
@@ -491,21 +605,45 @@ export default function ContactOnboardingWizard({ existingContacts = [], onClose
           </button>
         </div>
 
-        {/* Progress */}
+        {/* Progress tabs */}
         <div className="flex border-b border-surface-700">
-          {STEPS.map((label, i) => (
-            <div key={i} className={`flex-1 py-2 text-center text-xs font-medium transition-colors ${
-              i === step ? 'text-blue-400 border-b-2 border-blue-400' :
-              i < step   ? 'text-slate-400' : 'text-slate-600'
-            }`}>{label}</div>
+          {visibleSteps.map((s, i) => (
+            <div key={s} className={`flex-1 py-2 text-center text-xs font-medium transition-colors ${
+              s === step         ? 'text-blue-400 border-b-2 border-blue-400' :
+              i < visibleSteps.indexOf(step) ? 'text-slate-400' : 'text-slate-600'
+            }`}>{STEP_LABELS[s]}</div>
           ))}
         </div>
 
+        {/* Loader overlay cuando analiza IA */}
+        {analyzing && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 rounded-2xl bg-surface-900/95">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-blue-500/10">
+              <Sparkles className="h-7 w-7 text-blue-400 animate-pulse" />
+            </div>
+            <div className="text-center">
+              <p className="font-medium text-slate-200">La IA está analizando…</p>
+              <p className="mt-1 text-xs text-slate-500">Detectando y mapeando columnas</p>
+            </div>
+          </div>
+        )}
+
         {/* Content */}
         <div className="p-6">
-          {step === 0 && <StepUpload onReady={handleReady} />}
+          {step === 'upload' && (
+            <StepUpload onFileLoaded={handleFileLoaded} />
+          )}
 
-          {step === 1 && (
+          {step === 'sheet' && fileData && (
+            <StepSheetSelector
+              sheetNames={fileData.sheetNames}
+              file={fileData.file}
+              onSheetSelected={handleSheetSelected}
+              onBack={() => setStep('upload')}
+            />
+          )}
+
+          {step === 'confirm' && (
             <>
               <StepConfirm
                 mapped={mapped}
@@ -513,16 +651,12 @@ export default function ContactOnboardingWizard({ existingContacts = [], onClose
                 onImport={handleImport}
                 importing={importing}
                 importResult={importResult}
+                onBack={() => setStep('upload')}
               />
-              {importResult ? (
+              {importResult && (
                 <div className="mt-4">
                   <button onClick={onClose} className="btn-primary w-full">Cerrar</button>
                 </div>
-              ) : (
-                <button onClick={() => setStep(0)}
-                  className="mt-3 w-full text-center text-xs text-slate-500 hover:text-slate-400 transition-colors">
-                  ← Subir otro archivo
-                </button>
               )}
             </>
           )}
