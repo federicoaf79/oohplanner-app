@@ -5,16 +5,16 @@ import { useAuth } from '../../context/AuthContext'
 import { ROLE_LABEL_MAP, ROLE_CATEGORY_MAP, CONTACT_ROLE_CATEGORIES } from '../../lib/contactRoles'
 import ContactCard from '../../features/contacts/ContactCard'
 import ContactFormModal from '../../features/contacts/ContactFormModal'
-import ContactOnboardingWizard from '../../features/contacts/ContactOnboardingWizard'
+import ContactOnboardingWizard, { contactNeedsReview } from '../../features/contacts/ContactOnboardingWizard'
 
 const ALL = '__all__'
 const CAT_COLOR = Object.fromEntries(CONTACT_ROLE_CATEGORIES.map(c => [c.id, c.color]))
 
-function RoleChips({ roles = [], inactive = false }) {
+function RoleChips({ roles = [], incomplete = false }) {
   const first = roles[0]
   const color = first ? (CAT_COLOR[ROLE_CATEGORY_MAP[first]] ?? '#64748b') : null
   const overflow = roles.length - 1
-  if (!first && !inactive) return <span className="text-slate-500">—</span>
+  if (!first && !incomplete) return <span className="text-slate-500">—</span>
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {first && (
@@ -26,9 +26,9 @@ function RoleChips({ roles = [], inactive = false }) {
         </span>
       )}
       {overflow > 0 && <span className="text-xs text-slate-500">+{overflow}</span>}
-      {inactive && (
-        <span className="rounded-full bg-surface-700 px-2 py-0.5 text-xs text-slate-400">
-          Inactivo
+      {incomplete && (
+        <span className="rounded-full bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-xs text-amber-400 whitespace-nowrap">
+          Completar datos
         </span>
       )}
     </div>
@@ -50,6 +50,7 @@ export default function Contacts() {
   const [search, setSearch]             = useState('')
   const [filterRole, setFilterRole]     = useState(ALL)
   const [filterStatus, setFilterStatus] = useState(ALL)
+  const [filterIncomplete, setFilterIncomplete] = useState(false)
   const [visibilityFilter, setVisibilityFilter] = useState('all')
   const [sortDir, setSortDir]           = useState('asc')
   const [modal, setModal]               = useState(null)
@@ -76,6 +77,11 @@ export default function Contacts() {
     return [...seen].sort()
   }, [contacts])
 
+  const incompleteCount = useMemo(
+    () => contacts.filter(c => c.is_active && contactNeedsReview(c)).length,
+    [contacts]
+  )
+
   const filtered = useMemo(() => contacts.filter(c => {
     if (search) {
       const q = search.toLowerCase()
@@ -90,10 +96,11 @@ export default function Contacts() {
       if (filterStatus === 'active'   && !c.is_active) return false
       if (filterStatus === 'inactive' &&  c.is_active) return false
     }
+    if (filterIncomplete && !contactNeedsReview(c)) return false
     if (visibilityFilter === 'org')        return c.visibility === 'org' || !c.visibility
     if (visibilityFilter === 'owner_only') return c.visibility === 'owner_only'
     return true
-  }), [contacts, search, filterRole, filterStatus, visibilityFilter])
+  }), [contacts, search, filterRole, filterStatus, filterIncomplete, visibilityFilter])
 
   const sorted = useMemo(() => [...filtered].sort((a, b) => {
     const cmp = (a.name ?? '').localeCompare(b.name ?? '', 'es')
@@ -141,16 +148,10 @@ export default function Contacts() {
         </h1>
         {canEdit && (
           <div className="flex shrink-0 items-center gap-2">
-            <button
-              onClick={() => setShowImport(true)}
-              className="btn-secondary flex items-center gap-2"
-            >
+            <button onClick={() => setShowImport(true)} className="btn-secondary flex items-center gap-2">
               <Upload className="h-4 w-4" /> Importar
             </button>
-            <button
-              onClick={() => setModal({ mode: 'create' })}
-              className="btn-primary flex items-center gap-2"
-            >
+            <button onClick={() => setModal({ mode: 'create' })} className="btn-primary flex items-center gap-2">
               <Plus className="h-4 w-4" /> Nuevo contacto
             </button>
           </div>
@@ -169,17 +170,34 @@ export default function Contacts() {
             className="input-field pl-9"
           />
         </div>
-        <select value={filterRole} onChange={e => setFilterRole(e.target.value)} className="input-field sm:w-52">
+        <select value={filterRole} onChange={e => setFilterRole(e.target.value)} className="input-field sm:w-48">
           <option value={ALL}>Todos los roles</option>
           {usedRoles.map(roleId => (
             <option key={roleId} value={roleId}>{ROLE_LABEL_MAP[roleId] ?? roleId}</option>
           ))}
         </select>
-        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="input-field sm:w-40">
+        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="input-field sm:w-36">
           <option value={ALL}>Todos</option>
           <option value="active">Activos</option>
           <option value="inactive">Inactivos</option>
         </select>
+        {incompleteCount > 0 && (
+          <button
+            onClick={() => setFilterIncomplete(v => !v)}
+            className={`flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+              filterIncomplete
+                ? 'border-amber-500/40 bg-amber-500/10 text-amber-400'
+                : 'border-surface-600 bg-surface-800 text-slate-400 hover:border-surface-500'
+            }`}
+          >
+            Completar datos
+            <span className={`rounded-full px-1.5 py-0.5 text-xs ${
+              filterIncomplete ? 'bg-amber-500/20 text-amber-400' : 'bg-surface-700 text-slate-500'
+            }`}>
+              {incompleteCount}
+            </span>
+          </button>
+        )}
         {isOwner && (
           <select value={visibilityFilter} onChange={e => setVisibilityFilter(e.target.value)} className="input-field sm:w-44">
             <option value="all">Todos</option>
@@ -222,10 +240,7 @@ export default function Contacts() {
                     className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-200 transition-colors"
                   >
                     Nombre
-                    {sortDir === 'asc'
-                      ? <ChevronUp className="h-3 w-3" />
-                      : <ChevronDown className="h-3 w-3" />
-                    }
+                    {sortDir === 'asc' ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
                   </button>
                 </th>
                 <TH className="hidden md:table-cell">Razón social</TH>
@@ -237,8 +252,9 @@ export default function Contacts() {
             </thead>
             <tbody className="divide-y divide-surface-700">
               {sorted.map(contact => {
-                const inactive = !contact.is_active
-                const menuOpen = openMenu === contact.id
+                const inactive   = !contact.is_active
+                const incomplete = contactNeedsReview(contact) && contact.is_active
+                const menuOpen   = openMenu === contact.id
                 return (
                   <tr
                     key={contact.id}
@@ -247,11 +263,9 @@ export default function Contacts() {
                   >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
-                        {inactive && (
-                          <span className="shrink-0 text-sm text-slate-500" title="Inactivo">⊘</span>
-                        )}
+                        {inactive && <span className="shrink-0 text-sm text-slate-500" title="Inactivo">⊘</span>}
                         {contact.visibility === 'owner_only' && (
-                          <Lock className="h-3.5 w-3.5 shrink-0 text-amber-400" aria-label="Contacto confidencial" />
+                          <Lock className="h-3.5 w-3.5 shrink-0 text-amber-400" />
                         )}
                         <span className="font-medium text-white">{contact.name}</span>
                       </div>
@@ -260,31 +274,23 @@ export default function Contacts() {
                       {contact.legal_name || <span className="text-slate-500">—</span>}
                     </td>
                     <td className="px-4 py-3">
-                      <RoleChips roles={contact.roles ?? []} inactive={inactive} />
+                      <RoleChips roles={contact.roles ?? []} incomplete={incomplete} />
                     </td>
                     <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                       {contact.visibility === 'owner_only' ? (
-                        <span className="text-xs text-slate-600 cursor-default" title="Datos confidenciales · abrir contacto para ver">
-                          •••
-                        </span>
+                        <span className="text-xs text-slate-600 cursor-default" title="Datos confidenciales">•••</span>
                       ) : (
                         <div className="flex flex-col gap-1">
                           {contact.email ? (
-                            <a
-                              href={`mailto:${contact.email}`}
-                              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors"
-                            >
+                            <a href={`mailto:${contact.email}`}
+                              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors">
                               <Mail className="h-3 w-3 shrink-0 text-slate-600" />
                               <span className="truncate max-w-[180px]">{contact.email}</span>
                             </a>
-                          ) : (
-                            <span className="text-xs text-slate-500">—</span>
-                          )}
+                          ) : <span className="text-xs text-slate-500">—</span>}
                           {contact.phone && (
-                            <a
-                              href={`tel:${contact.phone}`}
-                              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors"
-                            >
+                            <a href={`tel:${contact.phone}`}
+                              className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-200 transition-colors">
                               <Phone className="h-3 w-3 shrink-0 text-slate-600" />
                               <span>{contact.phone}</span>
                             </a>
@@ -294,7 +300,7 @@ export default function Contacts() {
                     </td>
                     <td className="hidden md:table-cell px-4 py-3 font-mono text-xs text-slate-400">
                       {contact.visibility === 'owner_only'
-                        ? <span className="font-sans text-slate-600" title="Datos confidenciales · abrir contacto para ver">•••</span>
+                        ? <span className="font-sans text-slate-600">•••</span>
                         : (contact.tax_id || <span className="font-sans text-slate-500">—</span>)
                       }
                     </td>
@@ -315,7 +321,7 @@ export default function Contacts() {
                                   onClick={() => { setOpenMenu(null); setModal({ mode: 'edit', contact }) }}
                                   className="flex w-full items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-surface-700"
                                 >
-                                  Editar
+                                  {incomplete ? '✏ Completar datos' : 'Editar'}
                                 </button>
                                 <button
                                   onClick={() => { setOpenMenu(null); toggleActive(contact) }}
@@ -343,7 +349,7 @@ export default function Contacts() {
         </div>
       )}
 
-      {/* Create / Edit modal */}
+      {/* Modales */}
       {modal && (
         <ContactFormModal
           contact={modal.contact ?? null}
@@ -352,7 +358,6 @@ export default function Contacts() {
         />
       )}
 
-      {/* Import wizard */}
       {showImport && (
         <ContactOnboardingWizard
           existingContacts={contacts}
@@ -361,20 +366,16 @@ export default function Contacts() {
         />
       )}
 
-      {/* Delete confirm */}
       {deleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-surface-800 p-6 shadow-2xl">
             <h3 className="mb-2 font-semibold text-white">Eliminar contacto</h3>
             <p className="mb-6 text-sm text-slate-400">
-              ¿Confirmás eliminar a{' '}
-              <strong className="text-slate-200">{deleteConfirm.name}</strong>?
+              ¿Confirmás eliminar a <strong className="text-slate-200">{deleteConfirm.name}</strong>?
               Esta acción no se puede deshacer.
             </p>
             <div className="flex gap-3">
-              <button onClick={() => setDeleteConfirm(null)} className="btn-secondary flex-1">
-                Cancelar
-              </button>
+              <button onClick={() => setDeleteConfirm(null)} className="btn-secondary flex-1">Cancelar</button>
               <button
                 onClick={() => confirmDelete(deleteConfirm)}
                 className="flex-1 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500"
