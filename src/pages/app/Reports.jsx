@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid,
+  LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
 } from 'recharts'
 import {
@@ -13,7 +13,6 @@ import { useAuth } from '../../context/AuthContext'
 import { calculateHistoricalCloseRate } from '../../lib/closeRate'
 import {
   calculateSiteProfitability,
-  calculateMonthlyFleetMargin,
   calculateProposalProfitability,
   profitabilityColor,
 } from '../../lib/profitability'
@@ -55,6 +54,21 @@ function getDateBounds(dateRange, customStart, customEnd) {
 }
 
 const MONTH_LABELS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
+
+// Trend chart — métricas seleccionables (sin verde para no chocar con el "Disponible")
+const METRIC_LABELS = {
+  revenue:   'Facturación',
+  costs:     'Costos',
+  margin:    'Margen',
+  occupancy: 'Ocupación',
+}
+const METRIC_COLORS = {
+  revenue:   '#3b82f6', // azul
+  costs:     '#f59e0b', // ámbar
+  margin:    '#06b6d4', // teal
+  occupancy: '#a855f7', // violeta
+}
+const MONEY_METRICS = new Set(['revenue', 'costs', 'margin'])
 
 const DATE_OPTS = [
   { id: 'current_month',  label: 'Mes actual' },
@@ -107,12 +121,12 @@ function Section({ title, description, children }) {
 
 // ─── demo data for empty chart ────────────────────────────────────────────────
 const DEMO_TREND = [
-  { name: 'Nov', revenue: 280000, costs: 190000, occupancy: 42, margin: 32 },
-  { name: 'Dic', revenue: 350000, costs: 200000, occupancy: 55, margin: 43 },
-  { name: 'Ene', revenue: 420000, costs: 210000, occupancy: 61, margin: 50 },
-  { name: 'Feb', revenue: 380000, costs: 205000, occupancy: 57, margin: 46 },
-  { name: 'Mar', revenue: 510000, costs: 215000, occupancy: 72, margin: 58 },
-  { name: 'Abr', revenue: 470000, costs: 220000, occupancy: 68, margin: 53 },
+  { name: 'Nov', revenue: 280000, costs: 190000, occupancy: 42, margin:  90000 },
+  { name: 'Dic', revenue: 350000, costs: 200000, occupancy: 55, margin: 150000 },
+  { name: 'Ene', revenue: 420000, costs: 210000, occupancy: 61, margin: 210000 },
+  { name: 'Feb', revenue: 380000, costs: 205000, occupancy: 57, margin: 175000 },
+  { name: 'Mar', revenue: 510000, costs: 215000, occupancy: 72, margin: 295000 },
+  { name: 'Abr', revenue: 470000, costs: 220000, occupancy: 68, margin: 250000 },
 ]
 
 // ─── main component ──────────────────────────────────────────────────────────
@@ -134,7 +148,20 @@ export default function Reports() {
   const [customEnd,   setCustomEnd]   = useState('')
 
   // UI state
-  const [chartMetric, setChartMetric] = useState('revenue')
+  const [activeMetrics, setActiveMetrics] = useState(() => new Set(['revenue']))
+
+  function toggleMetric(key) {
+    setActiveMetrics(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        if (next.size === 1) return prev   // mínimo 1 métrica activa
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+  }
   const [perfTab,     setPerfTab]     = useState('seller')
   const [expanded,    setExpanded]    = useState(new Set())
 
@@ -365,41 +392,57 @@ export default function Reports() {
   }, [proposals, filteredProposals, filteredItems, propItems, inventory, dateRange, customStart, customEnd])
 
   // ── trend chart (always last 6 months) ───────────────────────────────────
-  // Uses the shared calculateMonthlyFleetMargin helper. Scope: cost is only
-  // attributed to billboards actually occupied in each month (via overlap),
-  // not inventory-wide. Margin now includes print + colocation + design +
-  // all three commission roles on revenue_net.
+  // Facturación / costos / margen se anclan en accepted_at — mismo modelo
+  // que el KPI "Facturación total" para que un mismo mes muestre el mismo
+  // número en ambos lugares (via calculateProposalProfitability).
+  // Ocupación se mantiene en overlap de fechas (operativa, no comercial).
   const trendData = useMemo(() => {
     const now = new Date()
     const DIGITAL_FORMATS = new Set(['digital', 'urban_furniture_digital'])
-    const acceptedProposals = proposals.filter(p => p.status === 'accepted')
 
-    const invMap = {}
-    inventory.forEach(inv => { invMap[inv.id] = inv })
+    const invById = {}
+    inventory.forEach(inv => { invById[inv.id] = inv })
 
     const propStatusMap = {}
     proposals.forEach(p => { propStatusMap[p.id] = p.status })
 
+    const acceptedProposals = proposals.filter(p => p.status === 'accepted')
+
+    // Items agrupados por proposal (para no recorrer N×M veces)
+    const itemsByProposal = {}
+    propItems.forEach(pi => {
+      if (!itemsByProposal[pi.proposal_id]) itemsByProposal[pi.proposal_id] = []
+      itemsByProposal[pi.proposal_id].push(pi)
+    })
+
     const physicalTotal = inventory.filter(inv => !DIGITAL_FORMATS.has(inv.format)).length
 
     return Array.from({ length: 6 }, (_, i) => {
-      const d         = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
+      const d          = new Date(now.getFullYear(), now.getMonth() - (5 - i), 1)
       const monthStart = new Date(d.getFullYear(), d.getMonth(), 1)
       const monthEnd   = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59)
 
-      const fleet = calculateMonthlyFleetMargin({
-        proposals: acceptedProposals,
-        items:     propItems,
-        inventory,
-        monthStart,
-        monthEnd,
+      // Facturación / costos / margen: por accepted_at del mes
+      let revenue = 0, costs = 0, margin = 0
+      acceptedProposals.forEach(p => {
+        if (!p.accepted_at) return
+        const acc = new Date(p.accepted_at)
+        if (acc < monthStart || acc > monthEnd) return
+        const items = (itemsByProposal[p.id] ?? []).map(pi => ({
+          ...pi,
+          site: invById[pi.site_id] || null,
+        }))
+        const result = calculateProposalProfitability({ ...p, items })
+        revenue += result.revenue_total
+        costs   += result.cost_total
+        margin  += result.margin
       })
 
       // Ocupación: solapamiento real de campaña con el mes (solo físicos)
       const occupiedInMonth = new Set(
         propItems.filter(pi => {
           if (!pi.start_date || !pi.end_date) return false
-          const site = invMap[pi.site_id]
+          const site = invById[pi.site_id]
           if (!site || DIGITAL_FORMATS.has(site.format)) return false
           if (propStatusMap[pi.proposal_id] !== 'accepted') return false
           return new Date(pi.start_date) <= monthEnd && new Date(pi.end_date) >= monthStart
@@ -410,11 +453,8 @@ export default function Reports() {
         : 0
 
       return {
-        name:      MONTH_LABELS[d.getMonth()],
-        revenue:   fleet.revenue_net,
-        costs:     fleet.cost_total,
-        occupancy,
-        margin:    fleet.margin_pct,
+        name: MONTH_LABELS[d.getMonth()],
+        revenue, costs, margin, occupancy,
       }
     })
   }, [proposals, propItems, inventory])
@@ -573,15 +613,20 @@ export default function Reports() {
   }, [inventory, filteredItems, filteredStatusMap, propItems, proposals])
 
   // ── chart formatters ──────────────────────────────────────────────────────
-  function axisFormatter(value) {
-    if (chartMetric === 'occupancy' || chartMetric === 'margin') return `${Math.round(value)}%`
+  // Eje Y izquierdo (moneda): abreviado a M/K
+  function moneyAxisFormatter(value) {
     if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`
     if (value >= 1_000)     return `$${(value / 1_000).toFixed(0)}K`
     return fmtARS(value)
   }
-  function tooltipFormatter(value) {
-    if (chartMetric === 'occupancy' || chartMetric === 'margin') return fmtPct(value)
-    return fmtARS(value)
+  // Eje Y derecho (porcentaje)
+  function pctAxisFormatter(value) {
+    return `${Math.round(value)}%`
+  }
+  // Tooltip por métrica (se decide por el `name` del Line, que es el label)
+  function tooltipFormatter(value, name) {
+    if (name === METRIC_LABELS.occupancy) return [fmtPct(value), name]
+    return [fmtARS(value), name]
   }
 
   function toggleExpanded(id) {
@@ -723,26 +768,27 @@ export default function Reports() {
         title="Evolución de tendencia"
         description="Últimos 6 meses"
       >
-        {/* metric pills */}
+        {/* metric pills — selección múltiple, mínimo 1 activa */}
         <div className="flex items-center gap-2 flex-wrap mb-5">
-          {[
-            { id: 'revenue',   label: 'Facturación' },
-            { id: 'costs',     label: 'Costos' },
-            { id: 'occupancy', label: 'Ocupación' },
-            { id: 'margin',    label: 'Margen' },
-          ].map(opt => (
-            <button
-              key={opt.id}
-              onClick={() => setChartMetric(opt.id)}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                chartMetric === opt.id
-                  ? 'bg-brand text-white'
-                  : 'bg-surface-700 text-slate-400 hover:text-white'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
+          {['revenue', 'costs', 'margin', 'occupancy'].map(key => {
+            const active = activeMetrics.has(key)
+            const color  = METRIC_COLORS[key]
+            return (
+              <button
+                key={key}
+                onClick={() => toggleMetric(key)}
+                className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                  active
+                    ? 'border text-white'
+                    : 'border border-transparent bg-surface-700 text-slate-400 hover:text-white'
+                }`}
+                style={active ? { backgroundColor: `${color}33`, borderColor: color } : undefined}
+              >
+                <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                {METRIC_LABELS[key]}
+              </button>
+            )
+          })}
           {!hasRealTrend && (
             <span className="ml-auto text-xs text-slate-600 border border-surface-600 rounded px-2 py-0.5">
               Demo
@@ -758,49 +804,68 @@ export default function Reports() {
               </span>
             </div>
           )}
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={chartData} margin={{ top: 4, right: 4, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id="brandGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor="#6366f1" stopOpacity={0.2} />
-                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-              <XAxis
-                dataKey="name"
-                tick={{ fill: '#64748b', fontSize: 11 }}
-                axisLine={false}
-                tickLine={false}
-              />
-              <YAxis
-                tick={{ fill: '#64748b', fontSize: 11 }}
-                axisLine={false}
-                tickLine={false}
-                tickFormatter={axisFormatter}
-                width={68}
-              />
-              <Tooltip
-                contentStyle={{
-                  background: '#0f172a',
-                  border: '1px solid #334155',
-                  borderRadius: 8,
-                  color: '#f1f5f9',
-                  fontSize: 12,
-                }}
-                formatter={v => [tooltipFormatter(v), '']}
-              />
-              <Area
-                type="monotone"
-                dataKey={chartMetric}
-                stroke="#6366f1"
-                strokeWidth={2}
-                fill="url(#brandGrad)"
-                dot={false}
-                activeDot={{ r: 4, fill: '#6366f1' }}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+          {(() => {
+            const hasMoney = ['revenue', 'costs', 'margin'].some(k => activeMetrics.has(k))
+            const hasPct   = activeMetrics.has('occupancy')
+            return (
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart data={chartData} margin={{ top: 4, right: hasPct && hasMoney ? 8 : 4, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fill: '#64748b', fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  {hasMoney && (
+                    <YAxis
+                      yAxisId="money"
+                      tick={{ fill: '#64748b', fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                      tickFormatter={moneyAxisFormatter}
+                      width={68}
+                    />
+                  )}
+                  {hasPct && (
+                    <YAxis
+                      yAxisId="pct"
+                      orientation="right"
+                      tick={{ fill: '#64748b', fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                      tickFormatter={pctAxisFormatter}
+                      domain={[0, 100]}
+                      width={40}
+                    />
+                  )}
+                  <Tooltip
+                    contentStyle={{
+                      background: '#0f172a',
+                      border: '1px solid #334155',
+                      borderRadius: 8,
+                      color: '#f1f5f9',
+                      fontSize: 12,
+                    }}
+                    formatter={tooltipFormatter}
+                  />
+                  {[...activeMetrics].map(key => (
+                    <Line
+                      key={key}
+                      yAxisId={MONEY_METRICS.has(key) ? 'money' : 'pct'}
+                      type="monotone"
+                      dataKey={key}
+                      name={METRIC_LABELS[key]}
+                      stroke={METRIC_COLORS[key]}
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 4, fill: METRIC_COLORS[key] }}
+                    />
+                  ))}
+                </LineChart>
+              </ResponsiveContainer>
+            )
+          })()}
         </div>
       </Section>
 
