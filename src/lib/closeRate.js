@@ -1,4 +1,4 @@
-﻿const NON_OPPORTUNITY_STATUSES = ['draft']
+const NON_OPPORTUNITY_STATUSES = ['draft', 'rejected']
 
 export function calculateMonthCloseRate(proposals, { monthStart, monthEnd, sellerId } = {}) {
   if (!Array.isArray(proposals)) return null

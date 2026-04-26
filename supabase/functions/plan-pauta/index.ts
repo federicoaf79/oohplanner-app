@@ -31,44 +31,79 @@ interface FormData {
   }
 }
 
-interface InventoryItem {
-  id: string
-  name: string
-  format: string
-  address: string
-  city: string
-  latitude: number | null
-  longitude: number | null
-  daily_traffic: number | null
-  base_rate: number | null
-  illuminated: boolean
-  cluster_audiencia: string | null
+interface OrgProdConfig {
+  colocacion_cost_per_m2: number
+  colocacion_markup_pct: number
+  impresion_cost_per_m2: number
+  impresion_markup_pct: number
+  has_internal_designer: boolean
+  internal_designer_price_per_billboard: number
+  external_designer_cost_per_hour: number
+  external_designer_markup_pct: number
+  external_designer_default_hours: number
 }
 
 const SYSTEM_PROMPT = `Sos un experto en planificación publicitaria OOH en Argentina.
 Conocés el mercado de vía pública, los corredores publicitarios y la comercialización por agencias.
 Respondé EXCLUSIVAMENTE con JSON válido. No uses markdown, no uses bloques de código, no uses comillas triples. Solo el objeto JSON puro.`
 
-// CAMBIO 3 — Calcular margen neto por cartel
-function calcMargin(item: any, discountPct: number): number {
+// ─── Profitability V2 ─────────────────────────────────────────────────────────
+function calcMarginV2(item: any, discountPct: number, orgConfig: OrgProdConfig | null): number {
   const revenue = (item.base_rate ?? 0) * (1 - discountPct / 100)
   if (revenue <= 0) return 0
+
   const area = (item.width_m ?? 0) * (item.height_m ?? 0)
-  const fixedCosts = (item.cost_rent ?? 0) + (item.cost_electricity ?? 0) +
-    (item.cost_taxes ?? 0) + (item.cost_maintenance ?? 0) + (item.cost_imponderables ?? 0)
-  const campaignCosts = (item.cost_print_per_m2 ?? 0) * area +
-    (item.cost_colocation ?? 0) + (item.cost_design ?? 0)
+
+  // Costos fijos del cartel
+  const fixedCosts =
+    (item.cost_rent ?? 0) +
+    (item.cost_electricity ?? 0) +
+    (item.cost_taxes ?? 0) +
+    (item.cost_maintenance ?? 0) +
+    (item.cost_imponderables ?? 0)
+
+  let campaignCosts = 0
+
+  if (orgConfig) {
+    // V2: costos desde config org con markup
+    const impresionStd = orgConfig.impresion_cost_per_m2 * area *
+      (1 + orgConfig.impresion_markup_pct / 100)
+
+    const colocacionStd = orgConfig.colocacion_cost_per_m2 * area *
+      (1 + orgConfig.colocacion_markup_pct / 100)
+
+    const disenoStd = orgConfig.has_internal_designer
+      ? orgConfig.internal_designer_price_per_billboard
+      : orgConfig.external_designer_cost_per_hour *
+        orgConfig.external_designer_default_hours *
+        (1 + orgConfig.external_designer_markup_pct / 100)
+
+    campaignCosts = impresionStd + colocacionStd + disenoStd
+  } else {
+    // Backwards compat V1: usar columnas del cartel si existen
+    campaignCosts =
+      (item.cost_print_per_m2 ?? 0) * area +
+      (item.cost_colocation ?? 0) +
+      (item.cost_design ?? 0)
+  }
+
+  // Comisiones sobre base_rate (no sobre revenue neto)
   const commissions = (item.base_rate ?? 0) * (
     ((item.cost_seller_commission_pct ?? 0) +
-     (item.cost_agency_commission_pct ?? 0) +
-     (item.asociado_comision_pct ?? 0)) / 100
+     (item.cost_agency_commission_pct ?? 0)) / 100
   )
+
   const totalCosts = fixedCosts + campaignCosts + commissions
   return (revenue - totalCosts) / revenue
 }
 
-// CAMBIO 5 — buildUserPrompt recibe any[] para soportar margin_pct
-function buildUserPrompt(fd: FormData, inventory: any[], mandatoryIds: Set<string>, corridorName: string | null, audienceMode: string): string {
+function buildUserPrompt(
+  fd: FormData,
+  inventory: any[],
+  mandatoryIds: Set<string>,
+  corridorName: string | null,
+  audienceMode: string
+): string {
   const budget = Number(fd.budget) || 0
   const discountPct = fd.discountPct ?? 0
   const multiplier = 1 - discountPct / 100
@@ -95,21 +130,21 @@ function buildUserPrompt(fd: FormData, inventory: any[], mandatoryIds: Set<strin
       ? `audiencia: ${item.cluster_audiencia}`
       : 'sin datos de audiencia'
     return JSON.stringify({
-      id: item.id,
-      name: item.name,
-      address: item.address,
-      city: item.city,
-      format: item.format,
-      illuminated: item.illuminated,
-      daily_traffic: item.daily_traffic ?? 0,
+      id:              item.id,
+      name:            item.name,
+      address:         item.address,
+      city:            item.city,
+      format:          item.format,
+      illuminated:     item.illuminated,
+      daily_traffic:   item.daily_traffic ?? 0,
       monthly_impacts: impacts ?? 0,
-      list_price: item.base_rate ?? 0,
-      client_price: clientPrice ?? 0,
-      latitude: item.latitude,
-      longitude: item.longitude,
-      audience_info: audienceInfo,
-      is_mandatory: mandatory,
-      margin_pct: item.margin_pct ?? 0,
+      list_price:      item.base_rate ?? 0,
+      client_price:    clientPrice ?? 0,
+      latitude:        item.latitude,
+      longitude:       item.longitude,
+      audience_info:   audienceInfo,
+      is_mandatory:    mandatory,
+      margin_pct:      item.margin_pct ?? 0,
     })
   }).join('\n')
 
@@ -122,8 +157,8 @@ function buildUserPrompt(fd: FormData, inventory: any[], mandatoryIds: Set<strin
 - Formatos solicitados: ${fd.formats.join(', ')}
 ${fd.digitalFrequency ? `- Frecuencia digital: ${fd.digitalFrequency}` : ''}
 - Audiencia: ${audienceStr}
-${corridorName ? `- Corredor preferido: "${corridorName}" — priorizar sus carteles` : ''}
-${mandatoryIds.size > 0 ? `- CARTELES OBLIGATORIOS: ${[...mandatoryIds].join(', ')} — incluir en ambas opciones` : ''}
+${corridorName ? `- Corredor preferido: "${corridorName}" – priorizar sus carteles` : ''}
+${mandatoryIds.size > 0 ? `- CARTELES OBLIGATORIOS: ${[...mandatoryIds].join(', ')} – incluir en ambas opciones` : ''}
 
 INVENTARIO DISPONIBLE (${inventory.length} carteles):
 ${inventoryLines}
@@ -135,11 +170,11 @@ INSTRUCCIONES:
 4. Opción A "Máximo Alcance": cobertura geográfica diversa, mix de formatos. Prioridad: billboard > digital > ambient > urban_furniture > poster
 5. Opción B "Máximo Impacto": mayor daily_traffic absoluto, ubicaciones premium
 6. Carteles digitales (digital, urban_furniture_digital): siempre disponibles aunque tengan otros clientes
-7. El descuento reduce el precio de cada cartel — NO expande el presupuesto
-8. NO inventar IDs — usar solo los IDs exactos del inventario
-9. RENTABILIDAD: al menos el 35% de los carteles seleccionados deben ser los de mayor margin_pct. No es excluyente — si no hay suficientes carteles rentables para cubrir el presupuesto, completar con el resto.
+7. El descuento reduce el precio de cada cartel – NO expande el presupuesto
+8. NO inventar IDs – usar solo los IDs exactos del inventario
+9. RENTABILIDAD: al menos el 35% de los carteles seleccionados deben ser los de mayor margin_pct. No es excluyente.
 
-RESPUESTA — devolvé ÚNICAMENTE este JSON:
+RESPUESTA – devolvé ÚNICAMENTE este JSON:
 {"audience_mode":"${audienceMode}","audience_note":${audienceMode === 'geographic_only' ? '"No hay datos de audiencia para esta zona."' : 'null'},"optionA":{"title":"Máximo Alcance","rationale":"estrategia en 2-3 oraciones","sites":[{"id":"UUID_EXACTO","name":"nombre","address":"dirección","city":"ciudad","province":"","format":"formato","latitude":0.0,"longitude":0.0,"monthly_impacts":0,"list_price":0,"client_price":0,"audience_score":75,"is_mandatory":false,"justification":"razón breve"}],"total_list_price":0,"total_client_price":0,"discount_amount":0,"budget_remaining":0,"next_billboard_gap":0,"total_impacts":0,"estimated_reach":0,"cpm":0,"format_mix":{}},"optionB":{"title":"Máximo Impacto","rationale":"estrategia en 2-3 oraciones","sites":[],"total_list_price":0,"total_client_price":0,"discount_amount":0,"budget_remaining":0,"next_billboard_gap":0,"total_impacts":0,"estimated_reach":0,"cpm":0,"format_mix":{}}}`
 }
 
@@ -150,14 +185,10 @@ function extractJSON(text: string): string {
     .trim()
   const start = clean.indexOf('{')
   if (start === -1) throw new Error('No se encontró JSON en la respuesta')
-  let depth = 0
-  let end = -1
+  let depth = 0, end = -1
   for (let i = start; i < clean.length; i++) {
     if (clean[i] === '{') depth++
-    else if (clean[i] === '}') {
-      depth--
-      if (depth === 0) { end = i; break }
-    }
+    else if (clean[i] === '}') { depth--; if (depth === 0) { end = i; break } }
   }
   if (end === -1) throw new Error('JSON incompleto en la respuesta')
   return clean.slice(start, end + 1)
@@ -183,13 +214,38 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     )
 
+    // ─── Fetch org production config (V2) ────────────────────────────────────
+    const { data: orgData } = await supabase
+      .from('organisations')
+      .select(`
+        colocacion_cost_per_m2, colocacion_markup_pct,
+        impresion_cost_per_m2, impresion_markup_pct,
+        has_internal_designer, internal_designer_price_per_billboard,
+        external_designer_cost_per_hour, external_designer_markup_pct,
+        external_designer_default_hours
+      `)
+      .eq('id', orgId)
+      .single()
+
+    const orgConfig: OrgProdConfig | null = (orgData?.impresion_cost_per_m2 > 0 ||
+      orgData?.colocacion_cost_per_m2 > 0)
+      ? orgData as OrgProdConfig
+      : null
+
     const cities  = formData.cities  ?? []
     const formats = formData.formats ?? []
 
-    // CAMBIO 1 — Query con campos de costos ampliados
+    // ─── Query inventario (sin columnas deprecadas de costos V1) ─────────────
     let query = supabase
       .from('inventory')
-      .select('id, name, format, address, city, latitude, longitude, daily_traffic, base_rate, illuminated, cluster_audiencia, cost_rent, cost_electricity, cost_taxes, cost_maintenance, cost_imponderables, cost_print_per_m2, cost_colocation, cost_design, cost_seller_commission_pct, cost_agency_commission_pct, asociado_comision_pct, width_m, height_m')
+      .select(`
+        id, name, format, address, city, latitude, longitude,
+        daily_traffic, base_rate, illuminated, cluster_audiencia,
+        width_m, height_m,
+        cost_rent, cost_electricity, cost_taxes, cost_maintenance, cost_imponderables,
+        cost_seller_commission_pct, cost_agency_commission_pct,
+        cost_print_per_m2, cost_colocation, cost_design
+      `)
       .eq('org_id', orgId)
       .eq('is_available', true)
       .gte('base_rate', 100000)
@@ -217,7 +273,7 @@ serve(async (req) => {
       )
     }
 
-    // CAMBIO 2 — Excluir carteles ocupados en las fechas de la campaña
+    // ─── Excluir carteles ocupados ────────────────────────────────────────────
     const { data: occupiedItems } = await supabase
       .from('proposal_items')
       .select('site_id, proposals!inner(status)')
@@ -260,24 +316,32 @@ serve(async (req) => {
       const presentIds = new Set(availableInventory.map((i: any) => i.id))
       const missingMandatory = [...mandatoryIds].filter(id => !presentIds.has(id))
       if (missingMandatory.length > 0) {
-        // CAMBIO 1 — mismo select ampliado para los obligatorios faltantes
         const { data: extra } = await supabase
           .from('inventory')
-          .select('id, name, format, address, city, latitude, longitude, daily_traffic, base_rate, illuminated, cluster_audiencia, cost_rent, cost_electricity, cost_taxes, cost_maintenance, cost_imponderables, cost_print_per_m2, cost_colocation, cost_design, cost_seller_commission_pct, cost_agency_commission_pct, asociado_comision_pct, width_m, height_m')
+          .select(`
+            id, name, format, address, city, latitude, longitude,
+            daily_traffic, base_rate, illuminated, cluster_audiencia,
+            width_m, height_m,
+            cost_rent, cost_electricity, cost_taxes, cost_maintenance, cost_imponderables,
+            cost_seller_commission_pct, cost_agency_commission_pct,
+            cost_print_per_m2, cost_colocation, cost_design
+          `)
           .in('id', missingMandatory)
-        // CAMBIO 7 — push a availableInventory
         if (extra) availableInventory.push(...extra)
       }
     }
 
-    // CAMBIO 7 — hasAudienceData desde availableInventory
-    const hasAudienceData = availableInventory.some((item: any) => item.cluster_audiencia != null && item.cluster_audiencia !== '')
+    const hasAudienceData = availableInventory.some(
+      (item: any) => item.cluster_audiencia != null && item.cluster_audiencia !== ''
+    )
     const audienceMode = hasAudienceData ? 'full' : 'geographic_only'
 
-    // CAMBIO 4 — Enriquecer con margin_pct
+    // ─── Enriquecer con margin_pct V2 ─────────────────────────────────────────
     const enrichedInventory = availableInventory.map((item: any) => ({
       ...item,
-      margin_pct: Math.round(calcMargin(item, formData.discountPct ?? 0) * 100)
+      margin_pct: Math.round(
+        calcMarginV2(item, formData.discountPct ?? 0, orgConfig) * 100
+      ),
     }))
 
     const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
@@ -289,8 +353,7 @@ serve(async (req) => {
       max_tokens:  16000,
       temperature: 0.2,
       system:      SYSTEM_PROMPT,
-      // CAMBIO 7 — usar enrichedInventory
-      messages:    [{ role: 'user', content: buildUserPrompt(formData as FormData, enrichedInventory, mandatoryIds, corridorName, audienceMode) }],
+      messages:    [{ role: 'user', content: buildUserPrompt(formData, enrichedInventory, mandatoryIds, corridorName, audienceMode) }],
     })
 
     const rawText = (message.content[0] as { text: string }).text.trim()
@@ -315,21 +378,20 @@ serve(async (req) => {
       )
     }
 
-    // CAMBIO 6 — capBudget + auto-fill restante + next_billboard server-side
+    // ─── capBudget + auto-fill + next_billboard ───────────────────────────────
     const budget = Number(formData.budget) || 0
-    const disc = formData.discountPct ?? 0
-    const mult = 1 - disc / 100
+    const disc   = formData.discountPct ?? 0
+    const mult   = 1 - disc / 100
 
-    // Enriquecer enrichedInventory con client_price para comparar fácil
     const invWithPrice = enrichedInventory.map((item: any) => ({
       ...item,
       client_price: Math.round((item.base_rate ?? 0) * mult),
     }))
 
     for (const [optIndex, opt] of [result.optionA, result.optionB].entries()) {
-      // 1. capBudget — validar los sites que seleccionó la IA
       let remaining = budget
       const kept: any[] = []
+
       for (const site of (opt.sites ?? [])) {
         const cp = site.client_price > 0
           ? site.client_price
@@ -340,16 +402,13 @@ serve(async (req) => {
         }
       }
 
-      // 2. Auto-fill — agregar carteles del inventario que quepan en el saldo
       const selectedIds = new Set(kept.map((s: any) => s.id))
-
-      // Ordenar candidatos: optionB por daily_traffic DESC, optionA por mix de formato
       const candidates = invWithPrice
         .filter((item: any) => !selectedIds.has(item.id) && item.client_price > 0 && item.client_price <= remaining)
         .sort((a: any, b: any) =>
           optIndex === 1
-            ? (b.daily_traffic ?? 0) - (a.daily_traffic ?? 0)   // Máximo Impacto: mayor tráfico
-            : (b.monthly_impacts ?? b.daily_traffic * 30 ?? 0) - (a.monthly_impacts ?? a.daily_traffic * 30 ?? 0)
+            ? (b.daily_traffic ?? 0) - (a.daily_traffic ?? 0)
+            : (b.daily_traffic * 30 ?? 0) - (a.daily_traffic * 30 ?? 0)
         )
 
       for (const candidate of candidates) {
@@ -368,26 +427,24 @@ serve(async (req) => {
           audience_score:  75,
           is_mandatory:    false,
           justification:   optIndex === 1
-            ? `Mayor tráfico disponible${candidate.daily_traffic ? ` (${candidate.daily_traffic.toLocaleString('es-AR')} diarios)` : ''}, completando presupuesto`
+            ? `Mayor tráfico disponible, completando presupuesto`
             : `Cobertura adicional, completando presupuesto`,
-          illuminated:     candidate.illuminated,
+          illuminated: candidate.illuminated,
         })
         remaining -= candidate.client_price
         selectedIds.add(candidate.id)
         if (remaining <= 0) break
       }
 
-      // 3. Recalcular totales
-      opt.sites = kept
+      opt.sites              = kept
       opt.total_client_price = kept.reduce((s: number, x: any) => s + x.client_price, 0)
       opt.total_list_price   = kept.reduce((s: number, x: any) => s + (x.list_price ?? 0), 0)
       opt.discount_amount    = opt.total_list_price - opt.total_client_price
       opt.budget_remaining   = budget - opt.total_client_price
-      const ti = kept.reduce((s: number, x: any) => s + (x.monthly_impacts ?? 0), 0)
-      opt.total_impacts = ti
-      opt.cpm = ti > 0 ? Math.round(opt.total_client_price / (ti / 1000)) : 0
+      const ti               = kept.reduce((s: number, x: any) => s + (x.monthly_impacts ?? 0), 0)
+      opt.total_impacts      = ti
+      opt.cpm                = ti > 0 ? Math.round(opt.total_client_price / (ti / 1000)) : 0
 
-      // 4. next_billboard — el más barato no seleccionado
       const nextBillboard = invWithPrice
         .filter((item: any) => !selectedIds.has(item.id) && item.client_price > 0)
         .sort((a: any, b: any) => a.client_price - b.client_price)[0]
@@ -399,9 +456,9 @@ serve(async (req) => {
         opt.next_billboard_price      = nextBillboard.client_price
         opt.next_billboard_list_price = nextBillboard.base_rate ?? 0
       } else {
-        opt.next_billboard_gap  = 0
-        opt.next_billboard_id   = null
-        opt.next_billboard_name = null
+        opt.next_billboard_gap   = 0
+        opt.next_billboard_id    = null
+        opt.next_billboard_name  = null
         opt.next_billboard_price = 0
       }
     }
