@@ -1,13 +1,13 @@
-/**
- * generateProposalPDF — v3
+﻿/**
+ * generateProposalPDF â€” v3
  * Arquitectura limpia, sin duplicados.
  */
 
 import { formatCurrency } from '../../lib/utils'
 import { FORMAT_MAP } from '../../lib/constants'
 
-// ── Paleta dark (default) ────────────────────────────────────
-const C_DARK = {
+// â”€â”€ Paleta â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const C = {
   bg:      [15,  23,  42],
   surface: [30,  41,  59],
   surface2:[40,  50,  70],
@@ -26,38 +26,15 @@ const C_DARK = {
   mandBg:  [80,  50,  10],
 }
 
-// ── Paleta light ─────────────────────────────────────────────
-const C_LIGHT = {
-  bg:      [255, 255, 255],
-  surface: [241, 245, 249],
-  surface2:[226, 232, 240],
-  accent:  [99,  102, 241],
-  green:   [22,  163, 74],
-  amber:   [180, 120, 0],
-  orange:  [194, 65,  12],
-  white:   [15,  23,  42],
-  light:   [71,  85,  105],
-  muted:   [148, 163, 184],
-  warnBg:  [254, 243, 199],
-  infoBg:  [219, 234, 254],
-  infoTxt: [29,  78,  216],
-  strike:  [148, 163, 184],
-  justTxt: [100, 116, 139],
-  mandBg:  [254, 215, 170],
-}
-
-// C se reasigna en generateProposalPDF según pdfTheme
-let C = C_DARK
-
-// ── Tamaño normalizado de fotos de carteles en single-column ──
+// â”€â”€ TamaÃ±o normalizado de fotos de carteles en single-column â”€â”€
 // Toda foto/mockup que viva en el layout de "Carteles seleccionados" se
 // recorta a 4:3 (cover) para que las filas tengan altura consistente.
 const PHOTO_W    = 60   // mm
-const PHOTO_H    = 45   // mm — 4:3 universal
-const PHOTO_PX_W = 600  // 60 mm × 10 px/mm
-const PHOTO_PX_H = 450  // 45 mm × 10 px/mm
+const PHOTO_H    = 45   // mm â€” 4:3 universal
+const PHOTO_PX_W = 600  // 60 mm Ã— 10 px/mm
+const PHOTO_PX_H = 450  // 45 mm Ã— 10 px/mm
 
-// ── Helpers de valor ─────────────────────────────────────────
+// â”€â”€ Helpers de valor â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function toB64(url) {
   try {
     if (!url) return null
@@ -73,7 +50,7 @@ async function toB64(url) {
   } catch { return null }
 }
 
-// Recorta un dataURL a la relación PHOTO_PX_W:PHOTO_PX_H aplicando
+// Recorta un dataURL a la relaciÃ³n PHOTO_PX_W:PHOTO_PX_H aplicando
 // "object-fit: cover" centrado. Devuelve un dataURL JPEG.
 async function cropToCover(dataUrl, pxW = PHOTO_PX_W, pxH = PHOTO_PX_H) {
   if (!dataUrl) return null
@@ -128,7 +105,7 @@ function clip(doc, text, maxW) {
   return t + '...'
 }
 
-// ── Draw helpers ─────────────────────────────────────────────
+// â”€â”€ Draw helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function fr(doc, x, y, w, h, color) {
   doc.setFillColor(...color); doc.rect(x, y, w, h, 'F')
 }
@@ -157,7 +134,7 @@ function hexToRgb(hex) {
   return [r, g, b]
 }
 
-// ── Estructura de página ──────────────────────────────────────
+// â”€â”€ Estructura de pÃ¡gina â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function pageBg(doc) { fr(doc, 0, 0, 210, 297, C.bg) }
 
 function pageHeader(doc, orgName, pageLabel) {
@@ -173,11 +150,11 @@ function pageHeader(doc, orgName, pageLabel) {
 
 function pageFooter(doc, vendorName, orgName, pageNum, totalPages) {
   fnt(doc, 'normal', 7); tc(doc, C.muted)
-  doc.text(san(`${vendorName} · ${orgName}`), 14, 289)
+  doc.text(san(`${vendorName} Â· ${orgName}`), 14, 289)
   doc.text(`${pageNum} / ${totalPages}`, 196, 289, { align: 'right' })
 }
 
-// ── Portada ───────────────────────────────────────────────────
+// â”€â”€ Portada â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function renderCover(doc, { formData, profile, org, logoB64, generatedAt, validUntil, summaryData }) {
   pageBg(doc)
   const orgName    = san(org?.name ?? 'OOH Planner')
@@ -190,10 +167,10 @@ function renderCover(doc, { formData, profile, org, logoB64, generatedAt, validU
   fnt(doc, 'bold', 16);    tc(doc, C.white);           doc.text(orgName, tx, 19)
   fnt(doc, 'normal', 9);   tc(doc, [199, 210, 254]);   doc.text('Propuesta Publicitaria OOH', tx, 27)
 
-  // Título
+  // TÃ­tulo
   let y = 56
   fnt(doc, 'bold', 20);    tc(doc, C.white);           doc.text('Propuesta OOH', 14, y);  y += 10
-  fnt(doc, 'normal', 13);  tc(doc, C.accent);           doc.text(san(formData.clientName ?? '-'), 14, y);  y += 12
+  fnt(doc, 'normal', 13);  tc(doc, [165, 180, 252]);   doc.text(san(formData.clientName ?? '-'), 14, y);  y += 12
   hl(doc, y, C.surface2);  y += 6
 
   // Grilla de datos
@@ -229,7 +206,7 @@ function renderCover(doc, { formData, profile, org, logoB64, generatedAt, validU
   if (fmtList.length > 0) {
     const fmtY = y + 4 * 7.5
     fnt(doc, 'bold', 7); tc(doc, C.white)
-    const lines = doc.splitTextToSize(san(fmtList.join(' · ')), 48)
+    const lines = doc.splitTextToSize(san(fmtList.join(' Â· ')), 48)
     doc.text(lines.slice(0, 2), 146, fmtY)
     if (lines.length > 2) doc.text('...', 146, fmtY + 8)
   }
@@ -264,20 +241,20 @@ function renderCover(doc, { formData, profile, org, logoB64, generatedAt, validU
   doc.text('Propuesta valida por 15 dias corridos desde la fecha de emision.', 18, y + 6.5)
   y += 14
 
-  // Resumen de inversión
+  // Resumen de inversiÃ³n
   frr(doc, 14, y, 182, 28, 2, C.surface)
   fnt(doc, 'bold', 10);    tc(doc, C.light);  doc.text('Resumen de inversion', 18, y + 8)
   fnt(doc, 'bold', 15);    tc(doc, C.white);  doc.text(peso(formData.budget), 18, y + 19)
   fnt(doc, 'normal', 7.5); tc(doc, C.light);  doc.text('Presupuesto total', 18, y + 24)
   if (fmtList.length > 0) {
     fnt(doc, 'normal', 7.5); tc(doc, [165, 180, 252])
-    doc.text(clip(doc, san(fmtList.join(' · ')), 88), 100, y + 19)
+    doc.text(clip(doc, san(fmtList.join(' Â· ')), 88), 100, y + 19)
   }
   fnt(doc, 'normal', 7.5); tc(doc, C.light)
   doc.text(san(`${formData.startDate ?? '-'} al ${formData.endDate ?? '-'}`), 100, y + 24)
   y += 28
 
-  // KPIs de la opción (si caben)
+  // KPIs de la opciÃ³n (si caben)
   if (summaryData && y + 54 < 282) {
     y += 6
     fnt(doc, 'bold', 8.5); tc(doc, C.light)
@@ -304,7 +281,7 @@ function renderCover(doc, { formData, profile, org, logoB64, generatedAt, validU
   }
 }
 
-// ── Card individual (para grid 2 columnas) ────────────────────
+// â”€â”€ Card individual (para grid 2 columnas) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const CARD_H = 82
 const CARD_W = (182 - 5) / 2  // ~88.5 mm
 
@@ -350,7 +327,7 @@ function drawCard(doc, site, cx, cy, w, { mockupDataUrl, photoUrl, siteData } = 
     doc.text('OBLIGATORIO', cx + 4, textY + 5.5)
   }
 
-  // Dirección
+  // DirecciÃ³n
   fnt(doc, 'normal', 6.5); tc(doc, C.light)
   doc.text(clip(doc, san(site.address ?? ''), w - 6), cx + 3, textY + 8)
 
@@ -373,10 +350,10 @@ function drawCard(doc, site, cx, cy, w, { mockupDataUrl, photoUrl, siteData } = 
   if (siteData?.illuminated) specParts.push('Ilum.')
   if (specParts.length > 0) {
     fnt(doc, 'normal', 5.5); tc(doc, C.infoTxt)
-    doc.text(specParts.join(' · '), cx + 3, textY + 19)
+    doc.text(specParts.join(' Â· '), cx + 3, textY + 19)
   }
 
-  // Justificación
+  // JustificaciÃ³n
   if (hasJ) {
     fnt(doc, 'italic', 6); tc(doc, C.justTxt)
     const jLines = doc.splitTextToSize(san(`"${site.justification}"`), w - 6)
@@ -384,7 +361,7 @@ function drawCard(doc, site, cx, cy, w, { mockupDataUrl, photoUrl, siteData } = 
   }
 }
 
-// ── Grid de carteles (2 columnas) ─────────────────────────────
+// â”€â”€ Grid de carteles (2 columnas) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function renderGrid(doc, { sites, orgName, label, mockupMap, siteCarasMap, occupiedIds }, startY) {
   let y = startY
   const cols = 2
@@ -410,7 +387,7 @@ async function renderGrid(doc, { sites, orgName, label, mockupMap, siteCarasMap,
   return y
 }
 
-// ── Estrategia / Opción ────────────────────────────────────────
+// â”€â”€ Estrategia / OpciÃ³n â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function renderStrategy(doc, {
   option, label, formData, orgName,
   occupiedIds = new Set(), mockupMap = {}, siteCarasMap = {},
@@ -423,7 +400,7 @@ async function renderStrategy(doc, {
   const DIGITAL_FMT = new Set(['digital', 'urban_furniture_digital'])
   let y = 18
 
-  // Título de la opción
+  // TÃ­tulo de la opciÃ³n
   frr(doc, 14, y, 182, 12, 2, C.accent)
   fnt(doc, 'bold', 12); tc(doc, C.white)
   doc.text(san(`${label} - ${option.title ?? `Opcion ${label}`}`), 18, y + 8.5)
@@ -449,7 +426,7 @@ async function renderStrategy(doc, {
   const offInversion  = physicalSites.reduce((s, x) => s + (x.client_price ?? 0), 0)
   const totalInversion = doohInversion + offInversion
 
-  // KPI rows DOOH / OFF / Total — calculado después de availSites
+  // KPI rows DOOH / OFF / Total â€” calculado despuÃ©s de availSites
   const kpiListTotal = availSites.reduce((s, x) => s + (x.list_price ?? 0), 0)
   const kpiRows = []
   if (digitalSites.length > 0)  kpiRows.push(['DOOH',  `Impactos: ${impStr(doohImpacts)}`,  `Inversion: ${peso(doohInversion)}`,  `${digitalSites.length} pantalla${digitalSites.length > 1 ? 's' : ''}`])
@@ -467,7 +444,7 @@ async function renderStrategy(doc, {
   })
   y += kpiRows.length * (kH + 2) + 3
 
-  // Desglose financiero — calculado desde availSites (excluye ocupados)
+  // Desglose financiero â€” calculado desde availSites (excluye ocupados)
   const discount    = formData.discountPct ?? 0
   const listTotal   = availSites.reduce((s, x) => s + (x.list_price   ?? 0), 0)
   const clientTotal = availSites.reduce((s, x) => s + (x.client_price ?? 0), 0)
@@ -551,7 +528,7 @@ async function renderStrategy(doc, {
         fnt(doc, 'bold', 4.5); tc(doc, C.white)
         doc.text('MOCKUP', 17.5, imgY + imgH - 1.5)
 
-        // Info derecha — tX fijo (basado en ancho normalizado de la foto)
+        // Info derecha â€” tX fijo (basado en ancho normalizado de la foto)
         const tX = 16 + PHOTO_W + 4
         const rW = 192 - tX
         let tY = y + 5
@@ -567,8 +544,8 @@ async function renderStrategy(doc, {
           fnt(doc, 'bold', 5); tc(doc, C.amber); doc.text('OBLIGATORIO', mX + 1, tY + 0.5)
         }
         if (site.justification === 'Agregado manualmente') {
-          // Badge "+ AGREGADO" — diferenciado del "OBLIGATORIO" para indicar que es un cartel
-          // sumado posteriormente al brief original (típicamente fuera del presupuesto inicial)
+          // Badge "+ AGREGADO" â€” diferenciado del "OBLIGATORIO" para indicar que es un cartel
+          // sumado posteriormente al brief original (tÃ­picamente fuera del presupuesto inicial)
           const aX = 192 - 22 - (fmt ? 35 : 0) - (site.is_mandatory ? 26 : 0)
           frr(doc, aX, tY - 3, 20, 5, 1, C.mandBg)
           fnt(doc, 'bold', 5); tc(doc, C.amber); doc.text('+ AGREGADO', aX + 1, tY + 0.5)
@@ -653,7 +630,7 @@ async function renderStrategy(doc, {
           fnt(doc, 'bold', 6); tc(doc, C.amber); doc.text('OBLIGATORIO', 149, y + 6.5)
         }
         if (site.justification === 'Agregado manualmente') {
-          // Posición: corrida hacia la izquierda si hay OBLIGATORIO, sino misma posición que él
+          // PosiciÃ³n: corrida hacia la izquierda si hay OBLIGATORIO, sino misma posiciÃ³n que Ã©l
           const aXBase = site.is_mandatory ? 120 : 148
           frr(doc, aXBase, y + 2, 26, 6, 1, C.mandBg)
           fnt(doc, 'bold', 6); tc(doc, C.amber); doc.text('+ AGREGADO', aXBase + 1, y + 6.5)
@@ -678,7 +655,7 @@ async function renderStrategy(doc, {
       }
     }
   } else {
-    // Sin mockups → grid 2 columnas
+    // Sin mockups â†’ grid 2 columnas
     y = await renderGrid(doc, { sites: availSites, orgName, label, mockupMap, siteCarasMap, occupiedIds }, y)
   }
 
@@ -700,8 +677,8 @@ async function renderStrategy(doc, {
   return y
 }
 
-// ── Página de cierre ──────────────────────────────────────────
-// ── Audiencia ─────────────────────────────────────────────────
+// â”€â”€ PÃ¡gina de cierre â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â”€â”€ Audiencia â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function calculateWeightedDemographics(billboards) {
   const list = Array.isArray(billboards) ? billboards : []
   const totalReach = list.reduce((s, b) => s + (b.filtered_daily_reach || 0), 0)
@@ -733,13 +710,13 @@ function renderAudience(doc, { audienceData, orgName }) {
 
   let y = 24
 
-  // Título
+  // TÃ­tulo
   frr(doc, 14, y, 182, 14, 2, C.accent)
   fnt(doc, 'bold', 13); tc(doc, C.white)
   doc.text('Alcance de audiencia', 18, y + 10)
   y += 18
 
-  // Subtítulo
+  // SubtÃ­tulo
   fnt(doc, 'normal', 8.5); tc(doc, C.light)
   doc.text(san('Estimacion basada en datos de Censo 2022 y patrones de movilidad urbana'), 18, y)
   y += 10
@@ -762,12 +739,12 @@ function renderAudience(doc, { audienceData, orgName }) {
   })
   y += cardH + 12
 
-  // Composición
+  // ComposiciÃ³n
   fnt(doc, 'bold', 11); tc(doc, C.white)
   doc.text('Composicion de audiencia', 14, y)
   y += 8
 
-  // Distribución por edad
+  // DistribuciÃ³n por edad
   fnt(doc, 'bold', 9); tc(doc, C.light)
   doc.text('Distribucion por edad', 14, y)
   y += 6
@@ -882,7 +859,7 @@ function renderClosing(doc, { formData, profile, org, results, activeOption, occ
   const overrunAmount = isOverrun ? totalClient - budget : 0
   const addedCount    = availSites.filter(s => s.justification === 'Agregado manualmente').length
 
-  // Resumen financiero — alto dinámico según haya overrun (necesita una línea extra de aviso)
+  // Resumen financiero â€” alto dinÃ¡mico segÃºn haya overrun (necesita una lÃ­nea extra de aviso)
   const summaryHeight = isOverrun ? 60 : 50
   frr(doc, 14, y, 182, summaryHeight, 2, C.surface)
   fnt(doc, 'bold', 10); tc(doc, C.light)
@@ -942,17 +919,17 @@ function renderClosing(doc, { formData, profile, org, results, activeOption, occ
   }
 }
 
-// ── Enriquecimiento de sites ──────────────────────────────────
+// â”€â”€ Enriquecimiento de sites â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function enrichSites(sites, artworks = {}, _org) {
   // Los sites ya vienen enriquecidos desde WizardStep3Results
-  // Esta función es extensible para fetch adicional si fuera necesario
+  // Esta funciÃ³n es extensible para fetch adicional si fuera necesario
   return sites
 }
 
-// ── Exports ───────────────────────────────────────────────────
+// â”€â”€ Exports â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 export async function fetchStaticMap(_sites) {
-  // Deshabilitado — sin dependencia de servicios externos
+  // Deshabilitado â€” sin dependencia de servicios externos
   return null
 }
 
@@ -968,14 +945,11 @@ export async function generateProposalPDF({
   mockupMap       = {},
   siteCarasMap    = {},
   mapImage        = null,
-  mapA, mapB, formatToArt, pdfTheme = 'dark',
+  // eslint-disable-next-line no-unused-vars
+  mapA, mapB, formatToArt, pdfTheme,
   audienceData    = null,
 }) {
   const { jsPDF } = await import('jspdf')
-
-  // Aplicar paleta según tema
-  C = pdfTheme === 'light' ? C_LIGHT : C_DARK
-
   const doc = new jsPDF({ unit: 'mm', format: 'a4', compress: true })
 
   const orgName    = org?.name ?? 'OOH Planner'
@@ -1016,7 +990,7 @@ export async function generateProposalPDF({
   // Portada
   renderCover(doc, { formData, profile, org, logoB64, generatedAt, validUntil, summaryData })
 
-  // Página de opción
+  // PÃ¡gina de opciÃ³n
   doc.addPage()
   await renderStrategy(doc, {
     option: selectedOpt,
@@ -1028,17 +1002,17 @@ export async function generateProposalPDF({
     siteCarasMap,
   })
 
-  // Página de audiencia (si hay datos)
+  // PÃ¡gina de audiencia (si hay datos)
   if (audienceData?.aggregate) {
     doc.addPage()
     renderAudience(doc, { audienceData, orgName })
   }
 
-  // Página de cierre
+  // PÃ¡gina de cierre
   doc.addPage()
   renderClosing(doc, { formData, profile, org, results, activeOption, occupiedSiteIds })
 
-  // Página de mapa (si se capturó)
+  // PÃ¡gina de mapa (si se capturÃ³)
   if (mapImage) {
     doc.addPage()
     pageBg(doc)
@@ -1048,7 +1022,7 @@ export async function generateProposalPDF({
     fnt(doc, 'bold', 11); tc(doc, C.white)
     doc.text('Ubicaciones en el mapa', 14, y); y += 10
 
-    // Imagen del mapa — ocupa el ancho completo
+    // Imagen del mapa â€” ocupa el ancho completo
     const mapW = 182
     const mapH = 110
     try {
@@ -1074,7 +1048,7 @@ export async function generateProposalPDF({
     }
   }
 
-  // Footers en todas las páginas
+  // Footers en todas las pÃ¡ginas
   const totalPages = doc.getNumberOfPages()
   for (let p = 1; p <= totalPages; p++) {
     doc.setPage(p)
@@ -1082,6 +1056,6 @@ export async function generateProposalPDF({
   }
 
   const safeName = (formData.clientName ?? 'cliente')
-    .replace(/[^a-z0-9áéíóúñü\s]/gi, '').replace(/\s+/g, '_')
+    .replace(/[^a-z0-9Ã¡Ã©Ã­Ã³ÃºÃ±Ã¼\s]/gi, '').replace(/\s+/g, '_')
   doc.save(`Propuesta_${safeName}_${now.toISOString().slice(0, 10)}.pdf`)
 }
