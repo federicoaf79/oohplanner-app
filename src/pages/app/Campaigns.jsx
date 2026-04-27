@@ -996,12 +996,10 @@ function CampaignModal({ campaign, onClose, onItemsUpdated }) {
 
 function CampaignCard({ proposal, canAdvance, canJump, onStatusChange, onAdvance, onOpen, advancing }) {
   const { isOwner, isManager } = useAuth()
-  const canSeeProfitability = isOwner || isManager
   const [showMeasures, setShowMeasures] = useState(false)
   const timeStatus = getCampaignTimeStatus(proposal)
   const next       = getNextStatus(proposal.workflow_status)
-  const { revenue, costs } = canSeeProfitability ? calculateProfitability(proposal) : { revenue: 0, costs: 0 }
-  const isActive = timeStatus.isActive
+  const isActive   = timeStatus.isActive
 
   return (
     <div
@@ -1018,23 +1016,12 @@ function CampaignCard({ proposal, canAdvance, canJump, onStatusChange, onAdvance
         </span>
       )}
 
-      {/* Header: título + cliente | donut (owner/manager) */}
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">
-          <p className={`font-semibold text-white truncate ${isActive ? 'pr-5' : 'pr-1'}`}>
-            {proposal.title}
-          </p>
-          <p className="mt-0.5 text-sm text-slate-500 truncate">{proposal.client_name}</p>
-        </div>
-        {canSeeProfitability && (
-          <div className="shrink-0" onClick={e => e.stopPropagation()}>
-            <ProfitabilityChart
-              campaignId={proposal.id}
-              revenue={revenue}
-              costs={costs}
-            />
-          </div>
-        )}
+      {/* Header: título + cliente */}
+      <div className="min-w-0">
+        <p className={`font-semibold text-white truncate ${isActive ? 'pr-5' : ''}`}>
+          {proposal.title}
+        </p>
+        <p className="mt-0.5 text-sm text-slate-500 truncate">{proposal.client_name}</p>
       </div>
 
       {/* Badge temporal + meta info */}
@@ -1404,18 +1391,33 @@ export default function Campaigns() {
               {/* Campañas en curso */}
               {enCurso.length > 0 && (
                 <div className="space-y-3">
-                  {enCurso.map(p => (
-                    <CampaignCard
-                      key={p.id}
-                      proposal={p}
-                      canAdvance={canAdvance(p)}
-                      canJump={isOwner || isManager}
-                      onStatusChange={handleStatusChange}
-                      onAdvance={handleAdvance}
-                      onOpen={() => setSelectedCampaign(p)}
-                      advancing={advancing}
-                    />
-                  ))}
+                  {enCurso.map(p => {
+                    const { revenue, costs } = (isOwner || isManager) ? calculateProfitability(p) : { revenue: 0, costs: 0 }
+                    return (
+                      <div key={p.id} className="flex items-start gap-3">
+                        <div className="flex-1 min-w-0">
+                          <CampaignCard
+                            proposal={p}
+                            canAdvance={canAdvance(p)}
+                            canJump={isOwner || isManager}
+                            onStatusChange={handleStatusChange}
+                            onAdvance={handleAdvance}
+                            onOpen={() => setSelectedCampaign(p)}
+                            advancing={advancing}
+                          />
+                        </div>
+                        {(isOwner || isManager) && (
+                          <div className="shrink-0 pt-2" onClick={() => setSelectedCampaign(p)}>
+                            <ProfitabilityChart
+                              campaignId={p.id}
+                              revenue={revenue}
+                              costs={costs}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
               )}
 
@@ -1438,18 +1440,33 @@ export default function Campaigns() {
 
                   {historialOpen && (
                     <div className="mt-3 space-y-3">
-                      {historial.map(p => (
-                        <CampaignCard
-                          key={p.id}
-                          proposal={p}
-                          canAdvance={canAdvance(p)}
-                          canJump={isOwner || isManager}
-                          onStatusChange={handleStatusChange}
-                          onAdvance={handleAdvance}
-                          onOpen={() => setSelectedCampaign(p)}
-                          advancing={advancing}
-                        />
-                      ))}
+                      {historial.map(p => {
+                        const { revenue, costs } = (isOwner || isManager) ? calculateProfitability(p) : { revenue: 0, costs: 0 }
+                        return (
+                          <div key={p.id} className="flex items-start gap-3">
+                            <div className="flex-1 min-w-0">
+                              <CampaignCard
+                                proposal={p}
+                                canAdvance={canAdvance(p)}
+                                canJump={isOwner || isManager}
+                                onStatusChange={handleStatusChange}
+                                onAdvance={handleAdvance}
+                                onOpen={() => setSelectedCampaign(p)}
+                                advancing={advancing}
+                              />
+                            </div>
+                            {(isOwner || isManager) && (
+                              <div className="shrink-0 pt-2" onClick={() => setSelectedCampaign(p)}>
+                                <ProfitabilityChart
+                                  campaignId={p.id}
+                                  revenue={revenue}
+                                  costs={costs}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
                 </div>
