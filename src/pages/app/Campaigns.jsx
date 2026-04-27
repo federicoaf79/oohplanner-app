@@ -78,11 +78,11 @@ function getCampaignStartDate(proposal) {
 
 // ── Workflow stepper ──────────────────────────────────────────
 
-function WorkflowStepper({ status, onChange, readOnly = false }) {
+function WorkflowStepper({ status, onChange, readOnly = false, showLabels = false }) {
   const currentIdx = STATUS_IDX[status] ?? -1
 
   return (
-    <div className="flex items-start">
+    <div className="flex items-center">
       {WORKFLOW_STATUSES.map((step, idx) => {
         const isActive = idx === currentIdx
         const isDone   = idx < currentIdx
@@ -90,21 +90,21 @@ function WorkflowStepper({ status, onChange, readOnly = false }) {
         return (
           <Fragment key={step.id}>
             {idx > 0 && (
-              <div className={`flex-1 h-px mt-[9px] transition-colors ${
+              <div className={`flex-1 h-px transition-colors ${
                 isDone ? 'bg-slate-600' : 'bg-surface-700'
               }`} />
             )}
             <button
               type="button"
               onClick={readOnly ? undefined : () => onChange(step.id)}
-              className={`flex flex-col items-center gap-1 ${
+              className={`flex flex-col items-center gap-0.5 ${
                 readOnly ? 'cursor-default' : 'group'
               }`}
               style={{ minWidth: 0 }}
-              title={readOnly ? step.label : `Mover a: ${step.label}`}
+              title={step.label}
             >
               <div
-                className={`h-[18px] w-[18px] shrink-0 rounded-full border-2 transition-all ${
+                className={`h-[14px] w-[14px] shrink-0 rounded-full border-2 transition-all ${
                   isDone
                     ? 'border-slate-600 bg-slate-700'
                     : isActive
@@ -117,14 +117,16 @@ function WorkflowStepper({ status, onChange, readOnly = false }) {
                   borderColor: step.color,
                 } : {}}
               />
-              <span
-                className={`text-[9px] leading-tight text-center transition-colors ${
-                  isActive ? 'font-bold' : isDone ? 'text-slate-600' : 'text-slate-700'
-                }`}
-                style={isActive ? { color: step.color } : {}}
-              >
-                {step.label}
-              </span>
+              {showLabels && (
+                <span
+                  className={`text-[9px] leading-tight text-center transition-colors ${
+                    isActive ? 'font-bold' : isDone ? 'text-slate-600' : 'text-slate-700'
+                  }`}
+                  style={isActive ? { color: step.color } : {}}
+                >
+                  {step.label}
+                </span>
+              )}
             </button>
           </Fragment>
         )
@@ -1003,28 +1005,20 @@ function CampaignCard({ proposal, canAdvance, canJump, onStatusChange, onAdvance
 
   return (
     <div
-      className={`card p-3 hover:border-brand/30 transition-all cursor-pointer relative ${
-        isActive ? 'shadow-[0_0_16px_2px_rgba(99,102,241,0.12)] border-brand/20' : ''
+      className={`rounded-xl border p-3 cursor-pointer transition-all ${
+        isActive
+          ? 'border-brand/40 bg-gradient-to-r from-brand/5 to-surface-800 shadow-[0_0_20px_4px_rgba(99,102,241,0.15)]'
+          : 'border-surface-700 bg-surface-800 hover:border-surface-600'
       }`}
       onClick={onOpen}
     >
-      {/* Pulse indicator para campañas activas */}
-      {isActive && (
-        <span className="absolute top-3 right-3 flex h-2 w-2">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand opacity-60" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-brand" />
-        </span>
-      )}
-
-      {/* Header: título + cliente */}
-      <div className="min-w-0">
-        <p className={`font-semibold text-white truncate ${isActive ? 'pr-5' : ''}`}>
-          {proposal.title}
-        </p>
-        <p className="mt-0.5 text-sm text-slate-500 truncate">{proposal.client_name}</p>
+      {/* Línea 1: título + cliente */}
+      <div className="flex items-baseline gap-2 min-w-0">
+        <p className="font-semibold text-white truncate text-sm">{proposal.title}</p>
+        <p className="text-xs text-slate-500 truncate shrink-0">{proposal.client_name}</p>
       </div>
 
-      {/* Badge temporal + meta info */}
+      {/* Línea 2: badges + meta */}
       {(() => {
         const items = proposal.proposal_items ?? []
         const starts = items.map(i => i.start_date).filter(Boolean).sort()
@@ -1032,11 +1026,11 @@ function CampaignCard({ proposal, canAdvance, canJump, onStatusChange, onAdvance
         const startDate = starts[0] ?? null
         const endDate   = ends[ends.length - 1] ?? null
         return (
-          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs">
             <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${BADGE_COLORS[timeStatus.color]}`}>
               {timeStatus.label}
             </span>
-            <span className="text-slate-600">
+            <span className="text-slate-600 text-[11px]">
               {WF_LABELS[proposal.workflow_status] ?? proposal.workflow_status}
             </span>
             {proposal.total_value > 0 && (
@@ -1048,16 +1042,14 @@ function CampaignCard({ proposal, canAdvance, canJump, onStatusChange, onAdvance
             {(startDate || endDate) && (
               <span className="flex items-center gap-1 text-slate-600">
                 <Calendar className="h-3 w-3" />
-                {startDate ? formatDate(startDate) : '—'}
-                {' → '}
-                {endDate ? formatDate(endDate) : '—'}
+                {startDate ? formatDate(startDate) : '—'} → {endDate ? formatDate(endDate) : '—'}
               </span>
             )}
             {items.length > 0 && (
               <button
                 type="button"
                 onClick={e => { e.stopPropagation(); setShowMeasures(true) }}
-                className="text-xs font-medium text-brand hover:text-blue-300 transition-colors"
+                className="text-xs font-medium text-brand/70 hover:text-brand transition-colors"
               >
                 📐 Medidas
               </button>
@@ -1066,42 +1058,38 @@ function CampaignCard({ proposal, canAdvance, canJump, onStatusChange, onAdvance
         )
       })()}
 
-      {showMeasures && (
-        <PrintMeasuresModal campaign={proposal} onClose={() => setShowMeasures(false)} />
-      )}
-
-      {/* Stepper */}
-      <div className="mt-2.5" onClick={e => e.stopPropagation()}>
-        <WorkflowStepper
-          status={proposal.workflow_status}
-          onChange={(newStatus) => onStatusChange(proposal.id, newStatus)}
-          readOnly={!canJump}
-        />
-      </div>
-
-      {/* Siguiente paso button */}
-      {canAdvance && next && (
-        <div className="mt-1.5 flex items-center justify-end gap-2" onClick={e => e.stopPropagation()}>
-          <span className="text-xs text-slate-500">Paso siguiente:</span>
+      {/* Línea 3: stepper + botón siguiente inline */}
+      <div className="mt-2 flex items-center gap-3" onClick={e => e.stopPropagation()}>
+        <div className="flex-1">
+          <WorkflowStepper
+            status={proposal.workflow_status}
+            onChange={(newStatus) => onStatusChange(proposal.id, newStatus)}
+            readOnly={!canJump}
+          />
+        </div>
+        {canAdvance && next && (
           <button
             type="button"
             onClick={() => onAdvance(proposal)}
             disabled={advancing === proposal.id}
-            className="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50"
+            className="flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold transition-colors disabled:opacity-50"
             style={{
               borderColor: `${next.color}50`,
               color: next.color,
               background: `${next.color}10`,
             }}
           >
-            {advancing === proposal.id ? (
-              <span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
-            ) : (
-              <ChevronRight className="h-3 w-3" />
-            )}
+            {advancing === proposal.id
+              ? <span className="h-3 w-3 animate-spin rounded-full border border-current border-t-transparent" />
+              : <ChevronRight className="h-3 w-3" />
+            }
             {next.label}
           </button>
-        </div>
+        )}
+      </div>
+
+      {showMeasures && (
+        <PrintMeasuresModal campaign={proposal} onClose={() => setShowMeasures(false)} />
       )}
     </div>
   )
