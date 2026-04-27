@@ -916,6 +916,19 @@ function renderClosing(doc, { formData, profile, org, results, activeOption, occ
   }
   y += summaryHeight + 8
 
+  // Leyenda costos de producción
+  frr(doc, 14, y, 182, 16, 2, C.surface2)
+  fnt(doc, 'normal', 7.5); tc(doc, C.muted)
+  doc.text(
+    san('* Esta propuesta no contempla costos de produccion (impresion, colocacion ni diseno).'),
+    18, y + 6
+  )
+  doc.text(
+    san('  Los mismos se negocian por separado al momento de confirmar la campana.'),
+    18, y + 12
+  )
+  y += 24
+
   // CTA
   frr(doc, 14, y, 182, 28, 3, C.accent)
   fnt(doc, 'bold', 12); tc(doc, C.white)
