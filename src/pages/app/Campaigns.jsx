@@ -44,14 +44,17 @@ function getCampaignTimeStatus(proposal) {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
 
-  if (!startDate || !endDate) return { label: 'Fechas pendientes', color: 'amber' }
+  if (!startDate || !endDate) return { label: 'Fechas pendientes', color: 'amber', isActive: false }
   if (startDate > today) {
     const days = Math.ceil((startDate - today) / 86_400_000)
-    return { label: `En ${days} ${days === 1 ? 'día' : 'días'} inicia`, color: 'blue' }
+    return { label: `Inicio en ${days} ${days === 1 ? 'día' : 'días'}`, color: 'blue', isActive: false }
   }
-  if (endDate < today) return { label: 'Campaña finalizada', color: 'slate' }
-  const daysActive = Math.floor((today - startDate) / 86_400_000) + 1
-  return { label: `Día ${daysActive} de campaña`, color: 'brand' }
+  if (endDate < today) {
+    const days = Math.ceil((today - endDate) / 86_400_000)
+    return { label: `Finalizada hace ${days} ${days === 1 ? 'día' : 'días'}`, color: 'slate', isActive: false }
+  }
+  const daysLeft = Math.ceil((endDate - today) / 86_400_000)
+  return { label: `Activa, restan ${daysLeft} ${daysLeft === 1 ? 'día' : 'días'}`, color: 'brand', isActive: true }
 }
 
 const BADGE_COLORS = {
@@ -992,38 +995,49 @@ function CampaignModal({ campaign, onClose, onItemsUpdated }) {
 // ── Campaign card ─────────────────────────────────────────────
 
 function CampaignCard({ proposal, canAdvance, canJump, onStatusChange, onAdvance, onOpen, advancing }) {
-  const { isOwner } = useAuth()
+  const { isOwner, isManager } = useAuth()
+  const canSeeProfitability = isOwner || isManager
   const [showMeasures, setShowMeasures] = useState(false)
   const timeStatus = getCampaignTimeStatus(proposal)
   const next       = getNextStatus(proposal.workflow_status)
-  const { revenue, costs } = isOwner ? calculateProfitability(proposal) : { revenue: 0, costs: 0 }
+  const { revenue, costs } = canSeeProfitability ? calculateProfitability(proposal) : { revenue: 0, costs: 0 }
+  const isActive = timeStatus.isActive
 
   return (
     <div
-      className="card p-2.5 hover:border-brand/30 transition-colors cursor-pointer"
+      className={`card p-3 hover:border-brand/30 transition-all cursor-pointer relative ${
+        isActive ? 'shadow-[0_0_16px_2px_rgba(99,102,241,0.12)] border-brand/20' : ''
+      }`}
       onClick={onOpen}
     >
-      {/* Header */}
-      <div className="flex items-start justify-between gap-3">
+      {/* Pulse indicator para campañas activas */}
+      {isActive && (
+        <span className="absolute top-3 right-3 flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand opacity-60" />
+          <span className="relative inline-flex h-2 w-2 rounded-full bg-brand" />
+        </span>
+      )}
+
+      {/* Header: título + cliente | donut (owner/manager) */}
+      <div className="flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          <p className="font-semibold text-white truncate">{proposal.title}</p>
-          <p className="mt-0.5 text-sm text-slate-500">{proposal.client_name}</p>
+          <p className={`font-semibold text-white truncate ${isActive ? 'pr-5' : 'pr-1'}`}>
+            {proposal.title}
+          </p>
+          <p className="mt-0.5 text-sm text-slate-500 truncate">{proposal.client_name}</p>
         </div>
-        <div className="flex flex-col items-end gap-1.5 shrink-0">
-          <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${BADGE_COLORS[timeStatus.color]}`}>
-            {timeStatus.label}
-          </span>
-          {isOwner && (
+        {canSeeProfitability && (
+          <div className="shrink-0" onClick={e => e.stopPropagation()}>
             <ProfitabilityChart
               campaignId={proposal.id}
               revenue={revenue}
               costs={costs}
             />
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
-      {/* Meta row */}
+      {/* Badge temporal + meta info */}
       {(() => {
         const items = proposal.proposal_items ?? []
         const starts = items.map(i => i.start_date).filter(Boolean).sort()
@@ -1031,15 +1045,21 @@ function CampaignCard({ proposal, canAdvance, canJump, onStatusChange, onAdvance
         const startDate = starts[0] ?? null
         const endDate   = ends[ends.length - 1] ?? null
         return (
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs">
+          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+            <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${BADGE_COLORS[timeStatus.color]}`}>
+              {timeStatus.label}
+            </span>
+            <span className="text-slate-600">
+              {WF_LABELS[proposal.workflow_status] ?? proposal.workflow_status}
+            </span>
             {proposal.total_value > 0 && (
               <span className="font-semibold text-slate-300">{formatCurrency(proposal.total_value)}</span>
             )}
             {proposal.creator?.full_name && (
-              <span className="text-slate-400">· {proposal.creator.full_name}</span>
+              <span className="text-slate-500">· {proposal.creator.full_name}</span>
             )}
             {(startDate || endDate) && (
-              <span className="flex items-center gap-1 text-slate-500">
+              <span className="flex items-center gap-1 text-slate-600">
                 <Calendar className="h-3 w-3" />
                 {startDate ? formatDate(startDate) : '—'}
                 {' → '}
@@ -1058,12 +1078,13 @@ function CampaignCard({ proposal, canAdvance, canJump, onStatusChange, onAdvance
           </div>
         )
       })()}
+
       {showMeasures && (
         <PrintMeasuresModal campaign={proposal} onClose={() => setShowMeasures(false)} />
       )}
 
       {/* Stepper */}
-      <div className="mt-2" onClick={e => e.stopPropagation()}>
+      <div className="mt-2.5" onClick={e => e.stopPropagation()}>
         <WorkflowStepper
           status={proposal.workflow_status}
           onChange={(newStatus) => onStatusChange(proposal.id, newStatus)}
