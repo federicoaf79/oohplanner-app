@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Search, MapPin, List, LayoutGrid, ChevronDown, ChevronUp, Save, Pencil, RefreshCw, Download, Image, Sparkles, X, AlertCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -457,6 +457,8 @@ export default function Inventory() {
   const [showImportExport, setShowImportExport] = useState(false)
   const [showPhotosUpload, setShowPhotosUpload] = useState(false)
   const [showOnboarding,  setShowOnboarding]   = useState(false)
+  const [showGestionar,   setShowGestionar]    = useState(false)
+  const gestRef = useRef(null)
   const [activeTab, setActiveTab]               = useState('items') // 'items' | 'corridors'
 
   function toggleView(mode) {
@@ -552,27 +554,59 @@ export default function Inventory() {
           <p className="text-sm text-slate-500">{items.length} espacios registrados</p>
         </div>
 
-        {/* Acciones owner/manager */}
+        {/* Acciones owner/manager — menú Gestionar */}
         {canAdmin && (
-          <div className="flex items-center gap-2">
+          <div className="relative" ref={gestRef}>
             <button
               type="button"
-              onClick={() => setShowOnboarding(true)}
+              onClick={() => setShowGestionar(v => !v)}
               className="flex items-center gap-1.5 rounded-lg border border-surface-700 bg-surface-800 px-3 py-2 text-xs font-medium text-slate-300 hover:border-brand/40 hover:text-white transition-colors"
             >
               <Sparkles className="h-3.5 w-3.5 text-brand" />
-              Cargar inventario
+              Gestionar
+              <ChevronDown className="h-3 w-3 text-slate-500" />
             </button>
-            <button type="button" onClick={() => setShowPhotosUpload(true)}
-              className="flex items-center gap-1.5 rounded-lg border border-surface-700 bg-surface-800 px-3 py-1.5 text-xs font-medium text-slate-400 hover:border-brand/50 hover:text-slate-200 transition-colors">
-              <Image className="h-3.5 w-3.5" />
-              Subir fotos
-            </button>
-            <button type="button" onClick={() => setShowImportExport(true)}
-              className="flex items-center gap-1.5 rounded-lg border border-surface-700 bg-surface-800 px-3 py-1.5 text-xs font-medium text-slate-400 hover:border-brand/50 hover:text-slate-200 transition-colors">
-              <Download className="h-3.5 w-3.5" />
-              Importar / Exportar
-            </button>
+            {showGestionar && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowGestionar(false)} />
+                <div className="absolute left-0 top-9 z-20 w-52 rounded-xl border border-surface-700 bg-surface-800 py-1.5 shadow-2xl">
+                  <button
+                    type="button"
+                    onClick={() => { setShowGestionar(false); setShowOnboarding(true) }}
+                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-slate-300 hover:bg-surface-700 transition-colors"
+                  >
+                    <Sparkles className="h-4 w-4 text-brand shrink-0" />
+                    <div className="text-left">
+                      <p className="font-medium">Cargar inventario</p>
+                      <p className="text-xs text-slate-500">Importar desde Excel / CSV</p>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setShowGestionar(false); setShowPhotosUpload(true) }}
+                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-slate-300 hover:bg-surface-700 transition-colors"
+                  >
+                    <Image className="h-4 w-4 text-slate-400 shrink-0" />
+                    <div className="text-left">
+                      <p className="font-medium">Subir fotos</p>
+                      <p className="text-xs text-slate-500">Fotos por cartel</p>
+                    </div>
+                  </button>
+                  <div className="my-1 border-t border-surface-700" />
+                  <button
+                    type="button"
+                    onClick={() => { setShowGestionar(false); setShowImportExport(true) }}
+                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-slate-300 hover:bg-surface-700 transition-colors"
+                  >
+                    <Download className="h-4 w-4 text-slate-400 shrink-0" />
+                    <div className="text-left">
+                      <p className="font-medium">Importar / Exportar</p>
+                      <p className="text-xs text-slate-500">Excel con todos los carteles</p>
+                    </div>
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
 
