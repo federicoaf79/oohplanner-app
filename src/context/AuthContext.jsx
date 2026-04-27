@@ -37,7 +37,8 @@ export function AuthProvider({ children }) {
           external_designer_cost_per_hour, external_designer_markup_pct,
           external_designer_default_hours,
           colocacion_cost_per_m2, colocacion_markup_pct,
-          impresion_cost_per_m2, impresion_markup_pct
+          impresion_cost_per_m2, impresion_markup_pct,
+          sellers_see_own_commission, manager_permissions
         )
       `)
       .eq('id', userId)
@@ -135,6 +136,19 @@ export function AuthProvider({ children }) {
 
   const org = profile?.organisations ?? null
 
+  // Visibilidad de comisiones / asociados / facilitadores / externos.
+  // Field: 'see_site_associates' | 'see_sale_facilitators' |
+  //        'see_external_sellers' | 'see_team_commissions'
+  function canSeeCommissions(field) {
+    const role = profile?.role
+    if (role === 'owner') return true
+    if (role === 'manager') {
+      const perms = org?.manager_permissions
+      return !!(perms?.enabled && perms?.[field])
+    }
+    return false
+  }
+
   const value = {
     session,
     user:          session?.user ?? null,
@@ -147,6 +161,7 @@ export function AuthProvider({ children }) {
     isOwner:       profile?.role === 'owner',
     isManager:     profile?.role === 'manager',
     isSalesperson: profile?.role === 'salesperson',
+    canSeeCommissions,
     signIn,
     signUp,
     signOut,

@@ -42,7 +42,7 @@ const TH = ({ children, className = '' }) => (
 )
 
 export default function Contacts() {
-  const { profile, isOwner, isManager } = useAuth()
+  const { profile, isOwner, isManager, canSeeCommissions } = useAuth()
   const canEdit = isOwner || isManager
 
   const [contacts, setContacts]         = useState([])
@@ -65,7 +65,24 @@ export default function Contacts() {
       .select('*')
       .eq('org_id', profile.org_id)
       .order('name', { ascending: true })
-    setContacts(data ?? [])
+
+    // Filtro de visibilidad para facilitadores con visibility='owner_only':
+    //   - owner: ve todos
+    //   - manager: solo si tiene see_sale_facilitators y confidentiality != 'strict'
+    //   - salesperson: nunca
+    // El resto de contactos pasa sin filtrar.
+    const visible = (data ?? []).filter(c => {
+      const isFacilitator = c.roles?.includes('facilitator')
+      if (!isFacilitator) return true
+      if (c.visibility !== 'owner_only') return true
+      if (isOwner) return true
+      if (isManager
+          && canSeeCommissions('see_sale_facilitators')
+          && c.confidentiality_level !== 'strict') return true
+      return false
+    })
+
+    setContacts(visible)
     setLoading(false)
   }
 

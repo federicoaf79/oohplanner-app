@@ -362,6 +362,70 @@ export default function Proposals() {
       }
     }
 
+    // ── Facilitadores: comisiones por cartel (site_commissions activos) ──
+    // Trae los acuerdos vigentes para cada cartel de la propuesta y crea
+    // un campaign_commission por cada (contact_id, commission_type) único.
+    const { data: piRows } = await supabase
+      .from('proposal_items')
+      .select('site_id')
+      .eq('proposal_id', proposal.id)
+    const siteIds = [...new Set((piRows ?? []).map(pi => pi.site_id).filter(Boolean))]
+
+    if (siteIds.length > 0) {
+      const { data: facilitatorLinks } = await supabase
+        .from('site_commissions')
+        .select(`
+          id, site_id, contact_id, commission_type, commission_pct, agreement_code,
+          agreement:facilitator_agreements!agreement_id(
+            id, contact_id, commission_type, commission_pct, deal_code, is_active
+          )
+        `)
+        .in('site_id', siteIds)
+        .eq('is_active', true)
+
+      // Dedupe por (contact_id, commission_type) — un mismo facilitador no
+      // recibe doble comisión si aparece en varios carteles de la propuesta.
+      const facilitatorByKey = new Map()
+      for (const row of facilitatorLinks ?? []) {
+        const ag         = row.agreement
+        const contactId  = row.contact_id     ?? ag?.contact_id
+        const commType   = row.commission_type ?? ag?.commission_type
+        const pct        = parseFloat(row.commission_pct ?? ag?.commission_pct ?? 0)
+        const dealCode   = ag?.deal_code ?? row.agreement_code ?? row.id
+        // Si está linkeado a un agreement, debe estar activo
+        if (ag && ag.is_active === false) continue
+        if (!contactId || !commType || !(pct > 0)) continue
+        const key = `${contactId}::${commType}`
+        if (!facilitatorByKey.has(key)) {
+          facilitatorByKey.set(key, { contactId, commType, pct, dealCode })
+        }
+      }
+
+      for (const f of facilitatorByKey.values()) {
+        const { data: existing } = await supabase
+          .from('campaign_commissions')
+          .select('id')
+          .eq('proposal_id', proposal.id)
+          .eq('beneficiary_contact_id', f.contactId)
+          .eq('commission_type', f.commType)
+          .maybeSingle()
+        if (existing) continue
+        commissionsToInsert.push({
+          org_id:                 seller.org_id,
+          proposal_id:            proposal.id,
+          commission_type:        f.commType,           // 'location_facilitator' | 'management_contract'
+          beneficiary_profile_id: null,
+          beneficiary_contact_id: f.contactId,
+          commission_pct:         f.pct,
+          amount_fixed:           null,
+          revenue_base:           'rental',             // solo alquiler, no producción
+          status:                 'pending',
+          notes:                  `Auto desde acuerdo: ${f.dealCode}`,
+          created_by:             profile.id,
+        })
+      }
+    }
+
     if (commissionsToInsert.length === 0) {
       console.log('No hay comisiones para auto-crear (pct=0 en todos los niveles)')
       return

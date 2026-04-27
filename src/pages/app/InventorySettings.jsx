@@ -41,6 +41,13 @@ export default function InventorySettings() {
   const [teamMembers,          setTeamMembers]          = useState([])
   const [loadingTeam,          setLoadingTeam]          = useState(false)
   const [sellersSeeCommission, setSellersSeeCommission] = useState(org?.sellers_see_own_commission ?? false)
+  const [managerPerms,         setManagerPerms]         = useState(() => ({
+    enabled:               !!org?.manager_permissions?.enabled,
+    see_site_associates:   !!org?.manager_permissions?.see_site_associates,
+    see_sale_facilitators: !!org?.manager_permissions?.see_sale_facilitators,
+    see_external_sellers:  !!org?.manager_permissions?.see_external_sellers,
+    see_team_commissions:  !!org?.manager_permissions?.see_team_commissions,
+  }))
   const [savingMember,         setSavingMember]         = useState(null) // userId guardando
   const [savedMember,          setSavedMember]          = useState(null) // userId con checkmark
   const commDebounceRef                                 = useRef({})     // { [userId]: timeoutId }
@@ -200,6 +207,17 @@ export default function InventorySettings() {
     setSellersSeeCommission(newValue)
     await supabase.from('organisations')
       .update({ sellers_see_own_commission: newValue })
+      .eq('id', org.id)
+    await refreshProfile()
+  }
+
+  async function handleToggleManagerPerm(field, newValue) {
+    const next = { ...managerPerms, [field]: newValue }
+    // Si se desactiva el master switch, no tocar los granulares (quedan
+    // memorizados; cuando se vuelva a activar, mantienen su último estado).
+    setManagerPerms(next)
+    await supabase.from('organisations')
+      .update({ manager_permissions: next })
       .eq('id', org.id)
     await refreshProfile()
   }
@@ -638,6 +656,67 @@ export default function InventorySettings() {
                   }`} />
                 </button>
               </div>
+            </Card>
+
+            {/* Card 3 — Permisos del Manager */}
+            <Card>
+              <CardHeader
+                title="Permisos del Manager"
+                subtitle="Habilitá visibilidad extendida para los managers sobre datos confidenciales"
+              />
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex-1">
+                  <p className="font-medium text-slate-200">Habilitar permisos extendidos al Manager</p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Por default los managers solo ven info comercial. Activá esto para concederles
+                    visibilidad sobre asociados, facilitadores, externos y comisiones del equipo.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={managerPerms.enabled}
+                  onClick={() => handleToggleManagerPerm('enabled', !managerPerms.enabled)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                    managerPerms.enabled ? 'bg-brand' : 'bg-surface-700'
+                  }`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                    managerPerms.enabled ? 'translate-x-6' : 'translate-x-1'
+                  }`} />
+                </button>
+              </div>
+
+              {managerPerms.enabled && (
+                <div className="mt-5 pl-4 border-l-2 border-surface-700 space-y-3">
+                  {[
+                    { key: 'see_site_associates',   label: 'Ver asociados de carteles' },
+                    { key: 'see_sale_facilitators', label: 'Ver facilitadores de venta' },
+                    { key: 'see_external_sellers',  label: 'Ver comercializadores externos' },
+                    { key: 'see_team_commissions',  label: 'Ver comisiones del equipo' },
+                  ].map(p => {
+                    const checked = !!managerPerms[p.key]
+                    return (
+                      <div key={p.key} className="flex items-center justify-between gap-4">
+                        <p className="text-sm text-slate-300">{p.label}</p>
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={checked}
+                          onClick={() => handleToggleManagerPerm(p.key, !checked)}
+                          className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                            checked ? 'bg-brand' : 'bg-surface-700'
+                          }`}
+                        >
+                          <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform ${
+                            checked ? 'translate-x-5' : 'translate-x-1'
+                          }`} />
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
             </Card>
           </>
         )}
