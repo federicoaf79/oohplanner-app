@@ -155,6 +155,90 @@ function mapHeaders(row) {
   return mapped
 }
 
+// ── AI mapping de columnas (fallback a HEADER_ALIASES si falla) ───────────────
+
+const INVENTORY_SCHEMA_FIELDS = [
+  'code', 'name', 'address', 'city', 'format',
+  'width_m', 'height_m', 'print_width_cm', 'print_height_cm',
+  'owner_type', 'illuminated', 'latitude', 'longitude',
+  'base_rate', 'sale_price', 'faces_count', 'traffic_direction',
+  'is_available', '__ignore__',
+]
+
+async function aiMapColumnsInventory(columns, sampleRows) {
+  const samples = columns.slice(0, 30).map(col => {
+    const vals = sampleRows.map(r => String(r[col] ?? '')).filter(Boolean).slice(0, 3)
+    return `"${col}": [${vals.map(v => `"${String(v).slice(0, 40)}"`).join(', ')}]`
+  }).join('\n')
+
+  const prompt = `Mapeá columnas de una planilla de inventario de carteles publicitarios OOH.
+
+Schema válido: ${INVENTORY_SCHEMA_FIELDS.join(', ')}
+
+Descripción de campos:
+- code: código o ID único del cartel
+- name: nombre o descripción del cartel
+- address: dirección física
+- city: ciudad o localidad
+- format: tipo de soporte (espectacular, digital, medianera, afiche, etc.)
+- width_m / height_m: dimensiones en metros
+- print_width_cm / print_height_cm: medidas de impresión en cm
+- owner_type: propiedad (propio/alquilado)
+- illuminated: si tiene iluminación (booleano)
+- latitude / longitude: coordenadas GPS
+- base_rate: precio mensual / tarifa base
+- sale_price: precio de venta
+- faces_count: cantidad de caras
+- traffic_direction: dirección del tráfico
+- is_available: disponibilidad actual
+- __ignore__: columnas irrelevantes (números correlativos, notas internas, etc.)
+
+Columnas con muestras:
+${samples}
+
+Respondé SOLO con JSON: {"columna": "campo"}. Sin markdown.`
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 600,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    })
+    const data = await res.json()
+    const text = data.content?.[0]?.text ?? ''
+    const parsed = JSON.parse(text.replace(/```json|```/g, '').trim())
+    const validIds = new Set(INVENTORY_SCHEMA_FIELDS)
+    const safe = {}
+    columns.forEach(col => {
+      const s = parsed[col]
+      safe[col] = validIds.has(s) ? s : '__ignore__'
+    })
+    return safe
+  } catch {
+    return null  // fallback a HEADER_ALIASES
+  }
+}
+
+// Aplica AI mapping a una fila cruda → objeto con claves del schema
+function applyAiMapping(row, aiMapping) {
+  const mapped = {}
+  Object.entries(aiMapping).forEach(([col, field]) => {
+    if (field === '__ignore__') return
+    const val = row[col]
+    if (val !== undefined && val !== '') mapped[field] = val
+  })
+  return mapped
+}
+
 // ── Normalización de una fila ─────────────────────────────────────────────────
 
 function normalizeRow(raw) {
@@ -393,21 +477,88 @@ async function parseSpreadsheet(file) {
   const XLSX = XLSXmod.default ?? XLSXmod
   const buffer = await file.arrayBuffer()
   const wb = XLSX.read(buffer, { type: 'array' })
-  const ws = wb.Sheets[wb.SheetNames[0]]
-  const rows = XLSX.utils.sheet_to_json(ws, { defval: '' })
-  return rows.map(row => normalizeRow(mapHeaders(row)))
+
+  // Auto-detectar hoja con más datos
+  let bestSheet = wb.SheetNames[0]
+  let maxRows = 0
+  for (const name of wb.SheetNames) {
+    const ws = wb.Sheets[name]
+    const rows = XLSX.utils.sheet_to_json(ws, { defval: '' })
+    if (rows.length > maxRows) { maxRows = rows.length; bestSheet = name }
+  }
+
+  const ws = wb.Sheets[bestSheet]
+
+  // Detectar si hay headers válidos o son __EMPTY_X
+  const rawAll = XLSX.utils.sheet_to_json(ws, { defval: '', header: 1 })
+  let rows
+  if (rawAll.length > 0) {
+    const firstRow = rawAll[0]
+    const allEmpty = firstRow.every(c => !c || String(c).trim() === '')
+    const hasEmptyHeaders = XLSX.utils.sheet_to_json(ws, { defval: '' })
+      .slice(0, 1)
+      .every(r => Object.keys(r).every(k => /^__EMPTY/.test(k)))
+
+    if (allEmpty || hasEmptyHeaders) {
+      // Primera fila vacía → buscar fila con headers
+      let headerIdx = 0
+      for (let i = 0; i < Math.min(rawAll.length, 6); i++) {
+        if (rawAll[i].filter(v => v !== '' && v != null).length >= 2) {
+          headerIdx = i; break
+        }
+      }
+      const headers = rawAll[headerIdx].map((h, i) => String(h ?? '').trim() || `Col_${i + 1}`)
+      rows = rawAll.slice(headerIdx + 1)
+        .filter(r => r.some(v => v !== '' && v != null))
+        .map(r => Object.fromEntries(headers.map((h, i) => [h, r[i] ?? ''])))
+    } else {
+      rows = XLSX.utils.sheet_to_json(ws, { defval: '' })
+    }
+  } else {
+    rows = []
+  }
+
+  if (!rows.length) return []
+
+  // AI mapping sobre los primeros 8 registros
+  const columns = Object.keys(rows[0])
+  const aiMapping = await aiMapColumnsInventory(columns, rows.slice(0, 8))
+
+  if (aiMapping) {
+    // Usar AI mapping
+    return rows.map(row => normalizeRow(applyAiMapping(row, aiMapping)))
+  } else {
+    // Fallback a HEADER_ALIASES
+    return rows.map(row => normalizeRow(mapHeaders(row)))
+  }
 }
 
-async function parseCsv(file) {
-  const Papa = (await import('papaparse')).default
-  return new Promise((resolve, reject) => {
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: r => resolve(r.data.map(row => normalizeRow(mapHeaders(row)))),
-      error:    reject,
+async function parseDocx(file) {
+  const mammoth = await import('mammoth')
+  const buf = await file.arrayBuffer()
+  const result = await mammoth.convertToHtml({ arrayBuffer: buf })
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(result.value, 'text/html')
+  const tables = doc.querySelectorAll('table')
+  if (!tables.length) throw new Error('No se encontró ninguna tabla en el documento Word.')
+  const table = tables[0]
+  const tableRows = Array.from(table.querySelectorAll('tr'))
+  if (tableRows.length < 2) throw new Error('La tabla del documento está vacía.')
+  const headers = Array.from(tableRows[0].querySelectorAll('td,th'))
+    .map((c, i) => c.textContent.trim() || `Col_${i + 1}`)
+  const rows = tableRows.slice(1)
+    .map(row => {
+      const cells = Array.from(row.querySelectorAll('td,th')).map(c => c.textContent.trim())
+      const obj = {}
+      headers.forEach((h, i) => { obj[h] = cells[i] ?? '' })
+      return obj
     })
-  })
+    .filter(r => Object.values(r).some(v => v))
+
+  if (!rows.length) return []
+  const columns = Object.keys(rows[0])
+  const aiMapping = await aiMapColumnsInventory(columns, rows.slice(0, 8))
+  return rows.map(row => normalizeRow(aiMapping ? applyAiMapping(row, aiMapping) : mapHeaders(row)))
 }
 
 // ── Helpers de formato ───────────────────────────────────────────────────────
@@ -570,12 +721,16 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
       const ext = f.name.split('.').pop().toLowerCase()
       let parsed = []
 
-      if (ext === 'xlsx' || ext === 'xls') {
+      if (ext === 'xlsx' || ext === 'xls' || ext === 'ods') {
         setStep1File(f)
         parsed = await parseSpreadsheet(f)
       } else if (ext === 'csv') {
         setStep1File(f)
-        parsed = await parseCsv(f)
+        // CSV → parseSpreadsheet también lo maneja via XLSX
+        parsed = await parseSpreadsheet(f)
+      } else if (ext === 'docx') {
+        setStep1File(f)
+        parsed = await parseDocx(f)
       } else if (ext === 'pdf' || f.type === 'application/pdf') {
         // PDF → guardar en memoria + renderizar páginas con pdfjs + batches a Claude
         setPdfFile(f)
@@ -1320,7 +1475,7 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
                       Subí tu base de ubicaciones
                     </h3>
                     <p className="text-xs text-slate-500 leading-relaxed">
-                      Aceptamos Excel (.xlsx), CSV, PDF o imagen. Si tu planilla tiene encabezados en español o inglés
+                      Aceptamos Excel (.xlsx .xls), CSV, OpenDocument (.ods), Word (.docx), PDF o imagen. La IA detecta las columnas automáticamente sin importar cómo las hayas nombrado.
                       los mapeamos automáticamente. Para PDF e imágenes usamos IA para extraer la información.
                     </p>
                   </div>
@@ -1404,7 +1559,7 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept=".xlsx,.xls,.csv,.pdf,image/*"
+                    accept=".xlsx,.xls,.csv,.ods,.docx,.pdf,image/*"
                     className="hidden"
                     onChange={handleFileInput}
                   />
