@@ -635,13 +635,17 @@ export default function InventoryImportExport({ items, orgName, orgId, onImporte
           {/* ── Exportar: descripción + botón ── */}
           {tab === 'export' && !showCategorySelector && (
             <>
-              <p className="text-sm text-slate-400">
-                Descargá un Excel con los carteles de tu inventario, incluyendo costos y configuración.
-                Podés editarlo y reimportarlo.
-              </p>
-              <div className="rounded-xl border border-surface-700 bg-surface-800/50 p-4 text-xs text-slate-500 space-y-1">
-                <p className="font-medium text-slate-400">Columnas incluidas ({CSV_COLS_ES.length}):</p>
-                <p className="font-mono leading-relaxed">{CSV_COLS_ES.join(' · ')}</p>
+              <div className="rounded-xl border border-surface-700 bg-surface-800/50 p-4 space-y-3">
+                <p className="text-sm font-semibold text-white">¿Para qué sirve exportar?</p>
+                <ul className="space-y-2 text-xs text-slate-400">
+                  <li className="flex gap-2"><span className="text-brand shrink-0">→</span> Actualizar tarifas de forma masiva: editá el precio mensual de 50 carteles a la vez en Excel y reimportalo.</li>
+                  <li className="flex gap-2"><span className="text-brand shrink-0">→</span> Corregir datos: dimensiones, direcciones, disponibilidad, costos fijos de muchos carteles en un solo archivo.</li>
+                  <li className="flex gap-2"><span className="text-brand shrink-0">→</span> Hacer un backup completo del inventario con todos los datos de configuración.</li>
+                  <li className="flex gap-2"><span className="text-brand shrink-0">→</span> Compartir la planilla con otro equipo para que complete información (costos, medidas, etc.).</li>
+                </ul>
+                <p className="text-xs text-slate-500 border-t border-surface-700 pt-2">
+                  El archivo descargado tiene {CSV_COLS_ES.length} columnas. Editalo y reimportalo desde la tab "Importar".
+                </p>
               </div>
               <Button className="w-full" onClick={() => setShowCategorySelector(true)}>
                 <Download className="h-4 w-4" />
@@ -714,13 +718,17 @@ export default function InventoryImportExport({ items, orgName, orgId, onImporte
           {/* ── Importar ── */}
           {tab === 'import' && (
             <>
-              <p className="text-sm text-slate-400">
-                Subí un CSV o Excel. Si el código (<code className="text-brand">codigo</code>) ya existe,
-                se actualiza. Si es nuevo, se inserta.
-              </p>
-              <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300 space-y-1">
-                <p className="font-semibold">Columnas requeridas: <span className="font-mono">codigo, nombre</span></p>
-                <p>El resto es opcional. También acepta columnas en inglés para compatibilidad con imports anteriores.</p>
+              <div className="rounded-xl border border-surface-700 bg-surface-800/50 p-4 space-y-3">
+                <p className="text-sm font-semibold text-white">¿Para qué sirve importar?</p>
+                <ul className="space-y-2 text-xs text-slate-400">
+                  <li className="flex gap-2"><span className="text-brand shrink-0">→</span> <span><strong className="text-slate-300">Actualización masiva de precios:</strong> exportá, editá los precios en Excel y volvé a importar. Los carteles existentes se actualizan automáticamente.</span></li>
+                  <li className="flex gap-2"><span className="text-brand shrink-0">→</span> <span><strong className="text-slate-300">Corrección de datos:</strong> direcciones, dimensiones, costos fijos, comisiones — todo lo que editaste en el Excel se aplica al cartel correspondiente.</span></li>
+                  <li className="flex gap-2"><span className="text-brand shrink-0">→</span> <span><strong className="text-slate-300">Alta masiva:</strong> si el código del cartel no existe, se crea como nuevo.</span></li>
+                </ul>
+                <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-300 space-y-1">
+                  <p className="font-semibold">Columnas requeridas: <span className="font-mono">codigo, nombre</span></p>
+                  <p>El resto es opcional. El sistema identifica cada cartel por su código — asegurate de que coincida exactamente con el que figura en el inventario.</p>
+                </div>
               </div>
 
               <button
