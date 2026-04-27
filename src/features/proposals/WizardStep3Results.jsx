@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+﻿import { useState, useRef, useEffect } from 'react'
 import {
   MapPin, TrendingUp, DollarSign, Target, Users,
   Save, Printer, MessageCircle, Star,
@@ -18,7 +18,17 @@ import ClientArtworkSlots from './ClientArtworkSlots'
 
 const DIGITAL_FORMATS = new Set(['digital', 'urban_furniture_digital'])
 
-// Mapeo formato → tipo de arte para mockup
+// ── Prorrateo de precio por fechas individuales ───────────────
+function prorratear(listPrice, discountPct, startDate, endDate, globalStart, globalEnd) {
+  if (!startDate || !endDate || !globalStart || !globalEnd) return null
+  const siteDays   = Math.max(1, Math.ceil((new Date(endDate) - new Date(startDate)) / 86400000) + 1)
+  const globalDays = Math.max(1, Math.ceil((new Date(globalEnd) - new Date(globalStart)) / 86400000) + 1)
+  if (siteDays === globalDays) return null
+  const client = Math.round(listPrice * (siteDays / globalDays) * (1 - discountPct / 100))
+  return { siteDays, globalDays, client }
+}
+
+// Mapeo formato â†’ tipo de arte para mockup
 const FORMAT_TO_ART = {
   billboard: 'h',
   digital: 'h',
@@ -30,7 +40,7 @@ const FORMAT_TO_ART = {
 }
 
 function fmtNum(n) {
-  if (!n && n !== 0) return '—'
+  if (!n && n !== 0) return 'â€”'
   return Math.round(Number(n)).toLocaleString('es-AR')
 }
 
@@ -71,17 +81,17 @@ function ScoreBar({ score }) {
   )
 }
 
-// ── Cálculo de precios parciales ────────────────────────────────────────────
+// â”€â”€ CÃ¡lculo de precios parciales â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function calcPartialOptions(listPrice, discountPct, occupiedUntil) {
   const occupied = new Date(occupiedUntil)
   const freeDate = new Date(occupied)
   freeDate.setDate(freeDate.getDate() + 1)
 
-  // días remanentes en el mes de liberación
+  // dÃ­as remanentes en el mes de liberaciÃ³n
   const lastDay = new Date(freeDate.getFullYear(), freeDate.getMonth() + 1, 0)
   const daysRemaining = lastDay.getDate() - freeDate.getDate() + 1
 
-  // primer día del mes siguiente al de liberación
+  // primer dÃ­a del mes siguiente al de liberaciÃ³n
   const nextMonth = new Date(freeDate.getFullYear(), freeDate.getMonth() + 1, 1)
 
   const factor = 1 - discountPct / 100
@@ -90,13 +100,13 @@ function calcPartialOptions(listPrice, discountPct, occupiedUntil) {
     freeDate,
     daysRemaining,
     opt1: {
-      label:       `Días remanentes (${daysRemaining}d) + mes completo`,
+      label:       `DÃ­as remanentes (${daysRemaining}d) + mes completo`,
       clientPrice: Math.round((listPrice / 30 * daysRemaining + listPrice) * factor),
       listPrice:   Math.round(listPrice / 30 * daysRemaining + listPrice),
       startDate:   freeDate.toISOString().slice(0, 10),
     },
     opt2: {
-      label:       'Mes completo desde liberación',
+      label:       'Mes completo desde liberaciÃ³n',
       clientPrice: Math.round(listPrice * factor),
       listPrice:   listPrice,
       startDate:   nextMonth.toISOString().slice(0, 10),
@@ -104,10 +114,18 @@ function calcPartialOptions(listPrice, discountPct, occupiedUntil) {
   }
 }
 
-function BillboardCard({ site, availabilityInfo, discountPct = 0, partialSelection, onSelectPartial }) {
+function BillboardCard({ site, availabilityInfo, discountPct = 0, partialSelection, onSelectPartial, siteDate, onDateChange, globalStart, globalEnd }) {
   const isDigital  = DIGITAL_FORMATS.has(site.format)
   const isOccupied = availabilityInfo?.available === false
   const hasPartial = !!partialSelection
+  const [datesOpen, setDatesOpen] = useState(false)
+
+  const currentStart = siteDate?.startDate ?? globalStart ?? ''
+  const currentEnd   = siteDate?.endDate   ?? globalEnd   ?? ''
+  const hasCustom    = siteDate?.startDate || siteDate?.endDate
+  const prorrateado  = hasCustom
+    ? prorratear(site.list_price ?? 0, discountPct, currentStart, currentEnd, globalStart, globalEnd)
+    : null
 
   const partial = isOccupied && availabilityInfo?.occupiedUntil
     ? calcPartialOptions(site.list_price ?? 0, discountPct, availabilityInfo.occupiedUntil)
@@ -140,7 +158,7 @@ function BillboardCard({ site, availabilityInfo, discountPct = 0, partialSelecti
             <p className="text-sm font-semibold text-white truncate">
               {site.name}
               {site.is_mandatory && (
-                <span className="ml-1.5 text-xs font-medium text-amber-400">★ Obligatorio</span>
+                <span className="ml-1.5 text-xs font-medium text-amber-400">â˜… Obligatorio</span>
               )}
             </p>
             <FormatBadge format={site.format} />
@@ -187,11 +205,72 @@ function BillboardCard({ site, availabilityInfo, discountPct = 0, partialSelecti
         )}
       </div>
 
-      {/* Fila 3: justificación */}
+      {/* Justificación */}
       {site.justification && (
         <p className="mt-1.5 text-xs text-slate-600 italic leading-snug">
           "{site.justification}"
         </p>
+      )}
+
+      {/* Editor de fechas individuales — solo para no ocupados */}
+      {!isOccupied && (
+        <div className="mt-2">
+          <button
+            onClick={() => setDatesOpen(v => !v)}
+            className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+          >
+            <Clock className="h-3 w-3" />
+            {hasCustom
+              ? <span className="text-brand/80">{currentStart} → {currentEnd} (personalizado)</span>
+              : <span>Fechas: {globalStart} → {globalEnd}</span>
+            }
+            <span className="text-slate-600">{datesOpen ? '▲' : '✎'}</span>
+          </button>
+
+          {datesOpen && (
+            <div className="mt-2 rounded-lg border border-surface-600 bg-surface-800/60 p-3 space-y-2">
+              <p className="text-xs text-slate-400 font-medium">Fechas individuales para este cartel</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <p className="text-xs text-slate-500 mb-1">Inicio</p>
+                  <input
+                    type="date"
+                    value={currentStart}
+                    min={globalStart}
+                    max={currentEnd || globalEnd}
+                    onChange={e => onDateChange(site.id, { startDate: e.target.value, endDate: currentEnd })}
+                    className="input-field text-xs py-1.5"
+                  />
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 mb-1">Fin</p>
+                  <input
+                    type="date"
+                    value={currentEnd}
+                    min={currentStart || globalStart}
+                    max={globalEnd}
+                    onChange={e => onDateChange(site.id, { startDate: currentStart, endDate: e.target.value })}
+                    className="input-field text-xs py-1.5"
+                  />
+                </div>
+              </div>
+              {prorrateado && (
+                <div className="flex items-center justify-between text-xs rounded bg-surface-700/50 px-2 py-1.5">
+                  <span className="text-slate-400">{prorrateado.siteDays} días de {prorrateado.globalDays}</span>
+                  <span className="font-semibold text-brand">{formatCurrency(prorrateado.client)}</span>
+                </div>
+              )}
+              {hasCustom && (
+                <button
+                  onClick={() => { onDateChange(site.id, null); setDatesOpen(false) }}
+                  className="text-xs text-slate-600 hover:text-slate-400 transition-colors"
+                >
+                  Restaurar fechas globales
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Aviso ocupado + opciones parciales */}
@@ -200,9 +279,9 @@ function BillboardCard({ site, availabilityInfo, discountPct = 0, partialSelecti
           <div className="flex items-start gap-1.5 rounded border border-amber-500/30 bg-amber-500/10 px-2.5 py-1.5">
             <AlertTriangle className="h-3 w-3 text-amber-400 shrink-0 mt-0.5" />
             <p className="text-xs text-amber-400">
-              <span className="font-semibold">Ocupado · {availabilityInfo.occupiedBy}</span>
+              <span className="font-semibold">Ocupado Â· {availabilityInfo.occupiedBy}</span>
               {freeDateLabel && (
-                <span className="text-amber-600"> · Libre desde: <span className="text-amber-300 font-medium">{freeDateLabel}</span></span>
+                <span className="text-amber-600"> Â· Libre desde: <span className="text-amber-300 font-medium">{freeDateLabel}</span></span>
               )}
             </p>
           </div>
@@ -210,7 +289,7 @@ function BillboardCard({ site, availabilityInfo, discountPct = 0, partialSelecti
           {/* Opciones de venta parcial */}
           {partial && onSelectPartial && (
             <div className="rounded-lg border border-surface-600 bg-surface-800/60 p-2.5 space-y-1.5">
-              <p className="text-xs font-semibold text-slate-400 mb-2">¿Vendés el remanente?</p>
+              <p className="text-xs font-semibold text-slate-400 mb-2">Â¿VendÃ©s el remanente?</p>
               {[
                 { num: 1, data: partial.opt1 },
                 { num: 2, data: partial.opt2 },
@@ -227,13 +306,13 @@ function BillboardCard({ site, availabilityInfo, discountPct = 0, partialSelecti
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="font-semibold">Opción {num}: {data.label}</span>
+                      <span className="font-semibold">OpciÃ³n {num}: {data.label}</span>
                       <span className={`font-bold ${isSelected ? 'text-brand' : 'text-slate-300'}`}>
                         {formatCurrency(data.clientPrice)}
                       </span>
                     </div>
                     <div className="text-[10px] text-slate-500 mt-0.5">
-                      Desde {data.startDate} · Lista {formatCurrency(data.listPrice)}
+                      Desde {data.startDate} Â· Lista {formatCurrency(data.listPrice)}
                     </div>
                   </button>
                 )
@@ -243,7 +322,7 @@ function BillboardCard({ site, availabilityInfo, discountPct = 0, partialSelecti
                   onClick={() => onSelectPartial(site.id, null)}
                   className="text-[10px] text-slate-600 hover:text-slate-400 transition-colors w-full text-right pt-0.5"
                 >
-                  Quitar selección parcial
+                  Quitar selecciÃ³n parcial
                 </button>
               )}
             </div>
@@ -255,14 +334,14 @@ function BillboardCard({ site, availabilityInfo, discountPct = 0, partialSelecti
 }
 
 
-function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}, partialSelections = {}, onSelectPartial }) {
+function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}, partialSelections = {}, onSelectPartial, siteDates = {}, onSiteDateChange }) {
   if (!option) return null
   const { sites = [], rationale } = option
 
   const availableSites = sites.filter(s => {
     if (DIGITAL_FORMATS.has(s.format)) return true
     if (availability[s.id]?.available !== false) return true
-    return !!partialSelections[s.id]  // parcialmente ocupado pero con selección del vendedor
+    return !!partialSelections[s.id]  // parcialmente ocupado pero con selecciÃ³n del vendedor
   })
 
   const formatMix = availableSites.reduce((acc, s) => {
@@ -286,7 +365,7 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
         </div>
       )}
 
-      {/* Rationale — movido al ícono ⓘ en los tabs */}
+      {/* Rationale â€” movido al Ã­cono â“˜ en los tabs */}
 
       {/* Banner de disponibilidad */}
       {(() => {
@@ -302,14 +381,14 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
                 {conflicts.length} cartel{conflicts.length > 1 ? 'es ocupados' : ' ocupado'} en las fechas solicitadas
               </p>
               <p className="text-xs text-amber-600 mt-0.5">
-                Revisá los carteles marcados abajo y coordiná con el cliente antes de guardar.
+                RevisÃ¡ los carteles marcados abajo y coordinÃ¡ con el cliente antes de guardar.
               </p>
             </div>
           </div>
         )
       })()}
 
-      {/* Metrics — separado OFF vs DOOH */}
+      {/* Metrics â€” separado OFF vs DOOH */}
       {(() => {
         const digitalSites  = availableSites.filter(s => DIGITAL_FORMATS.has(s.format))
         const physicalSites = availableSites.filter(s => !DIGITAL_FORMATS.has(s.format))
@@ -343,13 +422,13 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
             {hasDigital && (
               <div>
                 <p className="text-xs font-semibold text-blue-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                  <span>📺</span> Digital Out of Home (DOOH)
+                  <span>ðŸ“º</span> Digital Out of Home (DOOH)
                 </p>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   <MetricCard icon={Users} label="Impactos/mes" color="text-blue-400"
                     value={fmtNum(doohImpacts)}
-                    sub={`${digitalSites.length} pantalla${digitalSites.length > 1 ? 's' : ''} · apariciones de spot`} />
-                  <MetricCard icon={DollarSign} label="Inversión DOOH" color="text-blue-300"
+                    sub={`${digitalSites.length} pantalla${digitalSites.length > 1 ? 's' : ''} Â· apariciones de spot`} />
+                  <MetricCard icon={DollarSign} label="InversiÃ³n DOOH" color="text-blue-300"
                     value={formatCurrency(doohInversion)}
                     sub="Con descuento aplicado" />
                   <MetricCard icon={Target} label="Pantallas" color="text-blue-200"
@@ -363,18 +442,18 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
             {hasPhysical && (
               <div>
                 <p className="text-xs font-semibold text-orange-400 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                  <span>🏙️</span> Vía Pública Estática (OFF)
+                  <span>ðŸ™ï¸</span> VÃ­a PÃºblica EstÃ¡tica (OFF)
                 </p>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   <MetricCard icon={Users} label="Contactos/mes" color="text-orange-400"
                     value={fmtNum(offContactos)}
-                    sub={`${physicalSites.length} soporte${physicalSites.length > 1 ? 's' : ''} · tráfico estimado`} />
-                  <MetricCard icon={DollarSign} label="Inversión OFF" color="text-orange-300"
+                    sub={`${physicalSites.length} soporte${physicalSites.length > 1 ? 's' : ''} Â· trÃ¡fico estimado`} />
+                  <MetricCard icon={DollarSign} label="InversiÃ³n OFF" color="text-orange-300"
                     value={formatCurrency(offInversion)}
                     sub="Con descuento aplicado" />
                   <MetricCard icon={Target} label="Soportes" color="text-orange-200"
                     value={String(physicalSites.length)}
-                    sub="Carteles físicos" />
+                    sub="Carteles fÃ­sicos" />
                 </div>
               </div>
             )}
@@ -382,7 +461,7 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
             {/* Global */}
             <div>
               <p className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                <span>📊</span> Resumen total
+                <span>ðŸ“Š</span> Resumen total
               </p>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <MetricCard icon={DollarSign} label="Total cliente" color="text-brand"
@@ -422,7 +501,7 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
       {/* Site cards */}
       <div>
         <h3 className="mb-3 text-sm font-semibold text-slate-300">
-          Carteles seleccionados ({availableSites.length}) · para las fechas seleccionadas
+          Carteles seleccionados ({availableSites.length}) Â· para las fechas seleccionadas
         </h3>
         <div className="space-y-3">
           {(() => {
@@ -439,6 +518,10 @@ function OptionPanel({ option, formData, audienceNote, mapRef, availability = {}
                 discountPct={formData.discountPct ?? 0}
                 partialSelection={partialSelections[site.id]}
                 onSelectPartial={onSelectPartial}
+                siteDate={siteDates[site.id]}
+                onDateChange={onSiteDateChange}
+                globalStart={formData.startDate}
+                globalEnd={formData.endDate}
               />
             ))
           })()}
@@ -467,7 +550,7 @@ function PriceBreakdown({ formData, option, onAddNextBillboard }) {
 
   if (!listTotal) return null
 
-  // ── Detección de overrun: total cliente excede el presupuesto inicial ──
+  // â”€â”€ DetecciÃ³n de overrun: total cliente excede el presupuesto inicial â”€â”€
   // (Pasa cuando el vendedor agrega carteles extra acordados con el cliente)
   const isOverrun = budgetRaw > 0 && clientTotal > budgetRaw
   const overrunAmount = isOverrun ? clientTotal - budgetRaw : 0
@@ -513,10 +596,10 @@ function PriceBreakdown({ formData, option, onAddNextBillboard }) {
         <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 flex items-start gap-2">
           <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
           <p className="text-xs text-amber-300 leading-relaxed">
-            <span className="font-semibold">Inversión {formatCurrency(overrunAmount)} sobre el presupuesto inicial</span>
+            <span className="font-semibold">InversiÃ³n {formatCurrency(overrunAmount)} sobre el presupuesto inicial</span>
             {addedCount > 0 && (
               <>
-                {' '}— incluye {addedCount === 1 ? '1 cartel agregado posteriormente' : `${addedCount} carteles agregados posteriormente`}
+                {' '}â€” incluye {addedCount === 1 ? '1 cartel agregado posteriormente' : `${addedCount} carteles agregados posteriormente`}
               </>
             )}
           </p>
@@ -525,9 +608,9 @@ function PriceBreakdown({ formData, option, onAddNextBillboard }) {
       {gap > 0 && nextName && (
         <div className="mt-3 rounded-lg border border-brand/20 bg-brand/5 px-3 py-2.5 space-y-2">
           <p className="text-xs text-brand">
-            Con {formatCurrency(gap)} más podés agregar:{' '}
+            Con {formatCurrency(gap)} mÃ¡s podÃ©s agregar:{' '}
             <span className="font-semibold text-white">{nextName}</span>
-            {' '}· {formatCurrency(nextPrice)}
+            {' '}Â· {formatCurrency(nextPrice)}
           </p>
           {onAddNextBillboard && nextId && (
             <button onClick={() => onAddNextBillboard(nextId)} className="text-[11px] font-semibold text-brand border border-brand/30 rounded px-2.5 py-1 hover:bg-brand/10 transition-colors">
@@ -540,14 +623,14 @@ function PriceBreakdown({ formData, option, onAddNextBillboard }) {
         <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">
           <Clock className="h-3.5 w-3.5 text-amber-400 shrink-0 mt-0.5" />
           <p className="text-xs text-amber-300">
-            Descuento {discount}% supera tu límite. La propuesta requiere aprobación de gerente/dueño.
+            Descuento {discount}% supera tu lÃ­mite. La propuesta requiere aprobaciÃ³n de gerente/dueÃ±o.
           </p>
         </div>
       )}
       {formData._approvedBy && (
         <div className="mt-3 flex items-center gap-2 text-xs text-brand">
           <CheckCircle className="h-3.5 w-3.5 shrink-0" />
-          Aprobado por <strong>{formData._approvedBy}</strong> · {formData._approvedAt}
+          Aprobado por <strong>{formData._approvedBy}</strong> Â· {formData._approvedAt}
         </div>
       )}
     </div>
@@ -570,8 +653,16 @@ export default function WizardStep3Results({
   const [checkingAvailability, setCheckingAvailability] = useState(false)
   const [photoEnriched, setPhotoEnriched] = useState(0)
   const [partialSelections, setPartialSelections] = useState({})
+  const [siteDates, setSiteDates] = useState({})  // { [siteId]: { startDate, endDate } | null }
 
-  // Estados para métricas de audiencia
+  function handleSiteDateChange(siteId, dates) {
+    setSiteDates(prev => {
+      if (!dates) { const n = { ...prev }; delete n[siteId]; return n }
+      return { ...prev, [siteId]: dates }
+    })
+  }
+
+  // Estados para mÃ©tricas de audiencia
   const [audienceData, setAudienceData] = useState(null)
   const [loadingAudience, setLoadingAudience] = useState(false)
 
@@ -582,8 +673,8 @@ export default function WizardStep3Results({
     })
   }
 
-  // ── Artworks del cliente — vienen como props desde ProposalNew ──
-  // Se cargan opcionalmente en Step 1; acá se pueden agregar/cambiar.
+  // â”€â”€ Artworks del cliente â€” vienen como props desde ProposalNew â”€â”€
+  // Se cargan opcionalmente en Step 1; acÃ¡ se pueden agregar/cambiar.
   const [artExpanded, setArtExpanded] = useState(false)
   const [pdfTheme, setPdfTheme] = useState('dark')
 
@@ -658,15 +749,15 @@ export default function WizardStep3Results({
       })
   }, [results?.sites?.length])
 
-  // Calcular métricas de audiencia cuando haya resultados
+  // Calcular mÃ©tricas de audiencia cuando haya resultados
   useEffect(() => {
     async function fetchAudienceData() {
-      console.log('🔍 fetchAudienceData iniciado')
+      console.log('ðŸ” fetchAudienceData iniciado')
       console.log('results?.sites:', results?.sites)
       console.log('formData:', formData)
       
       if (!results?.sites || results.sites.length === 0 || !formData) {
-        console.log('❌ Saliendo: no hay sites o formData')
+        console.log('âŒ Saliendo: no hay sites o formData')
         return
       }
 
@@ -677,10 +768,10 @@ export default function WizardStep3Results({
           .filter(s => s.id && !s.id.startsWith('mock-'))
           .map(s => s.id)
 
-        console.log('📊 Site IDs filtrados:', siteIds)
+        console.log('ðŸ“Š Site IDs filtrados:', siteIds)
 
         if (siteIds.length === 0) {
-          console.log('❌ No hay site IDs válidos (todos son mock o sin ID)')
+          console.log('âŒ No hay site IDs vÃ¡lidos (todos son mock o sin ID)')
           setLoadingAudience(false)
           return
         }
@@ -698,26 +789,26 @@ export default function WizardStep3Results({
           }
         }
 
-        console.log('📤 Llamando a Edge Function con payload:', payload)
+        console.log('ðŸ“¤ Llamando a Edge Function con payload:', payload)
 
         const { data, error } = await supabase.functions.invoke(
           'calculate-audience-reach',
           { body: payload }
         )
         
-        console.log('📥 Respuesta Edge Function:', { data, error })
+        console.log('ðŸ“¥ Respuesta Edge Function:', { data, error })
         
         if (!error && data) {
-          console.log('✅ audienceData actualizado:', data)
+          console.log('âœ… audienceData actualizado:', data)
           setAudienceData(data)
         } else if (error) {
-          console.error('❌ Error calculando audiencia:', error)
+          console.error('âŒ Error calculando audiencia:', error)
         }
       } catch (err) {
-        console.error('❌ Error en calculateAudience:', err)
+        console.error('âŒ Error en calculateAudience:', err)
       } finally {
         setLoadingAudience(false)
-        console.log('✅ fetchAudienceData finalizado')
+        console.log('âœ… fetchAudienceData finalizado')
       }
     }
 
@@ -727,21 +818,21 @@ export default function WizardStep3Results({
   const activeOption = results
   const audienceNote = results?.audience_mode === 'geographic_only' ? results?.audience_note : null
 
-  const locationLabel = (formData.cities ?? []).join(', ') || formData.city || '—'
+  const locationLabel = (formData.cities ?? []).join(', ') || formData.city || 'â€”'
 
   function handleWhatsApp() {
     if (!activeOption) return
     const { sites = [] } = activeOption
     const text = [
-      `*Propuesta OOH — ${formData.clientName}*`,
+      `*Propuesta OOH â€” ${formData.clientName}*`,
       `Objetivo: ${formData.objective}`,
       `Zona: ${locationLabel}`,
       ``,
       `*${activeOption.title ?? 'Propuesta'}*`,
-      `• ${sites.length} carteles seleccionados`,
-      `• Impactos/mes: ~${((activeOption.total_impacts ?? 0) / 1000).toFixed(0)}k`,
-      `• CPM estimado: $${activeOption.cpm ?? '—'}`,
-      `• Inversión: ${formatCurrency(activeOption.total_client_price ?? 0, 'ARS')}/mes`,
+      `â€¢ ${sites.length} carteles seleccionados`,
+      `â€¢ Impactos/mes: ~${((activeOption.total_impacts ?? 0) / 1000).toFixed(0)}k`,
+      `â€¢ CPM estimado: $${activeOption.cpm ?? 'â€”'}`,
+      `â€¢ InversiÃ³n: ${formatCurrency(activeOption.total_client_price ?? 0, 'ARS')}/mes`,
       ``,
       `Generado con OOH Planner IA`,
     ].join('\n')
@@ -774,7 +865,7 @@ export default function WizardStep3Results({
   }
 
   async function handleSave() {
-    await onSave(activeOption, activeOption?.title ?? 'Propuesta', partialSelections)
+    await onSave(activeOption, activeOption?.title ?? 'Propuesta', partialSelections, siteDates)
     setSaved(true)
   }
 
@@ -819,7 +910,7 @@ export default function WizardStep3Results({
         }
       }
 
-      // Enriquecer sites con lat/lng para el mapa estático
+      // Enriquecer sites con lat/lng para el mapa estÃ¡tico
       for (const site of optSites) {
         const data = siteCarasMap[site.id]
         if (data) {
@@ -860,7 +951,7 @@ export default function WizardStep3Results({
       // Generar mockups para sites que tengan zone + artwork
       const mockupMap = {}  // siteId -> dataURL del mockup
 
-      // Generar mockups en paralelo (máx 5 concurrentes)
+      // Generar mockups en paralelo (mÃ¡x 5 concurrentes)
       const mockupTasks = []
       for (const site of optSites) {
         const siteData = siteCarasMap[site.id]
@@ -913,7 +1004,7 @@ export default function WizardStep3Results({
             Pauta planificada para <span className="text-brand">{formData.clientName}</span>
           </h2>
           <p className="text-sm text-slate-500">
-            {locationLabel} · {formData.startDate} → {formData.endDate}
+            {locationLabel} Â· {formData.startDate} â†’ {formData.endDate}
           </p>
         </div>
 
@@ -938,12 +1029,12 @@ export default function WizardStep3Results({
               {generatingPDF
                 ? <Loader2 className="h-4 w-4 animate-spin" />
                 : <Printer className="h-4 w-4" />}
-              <span className="hidden sm:inline">{generatingPDF ? 'Generando…' : 'PDF'}</span>
+              <span className="hidden sm:inline">{generatingPDF ? 'Generandoâ€¦' : 'PDF'}</span>
             </button>
           </div>
           <Button size="sm" loading={saving} onClick={handleSave}>
             <Save className="h-4 w-4" />
-            {saved ? 'Guardada ✓' : 'Guardar propuesta'}
+            {saved ? 'Guardada âœ“' : 'Guardar propuesta'}
           </Button>
         </div>
       </div>
@@ -953,8 +1044,8 @@ export default function WizardStep3Results({
           <div className="flex items-center gap-2.5">
             <CheckCircle className="h-5 w-5 text-brand shrink-0" />
             <div>
-              <p className="text-sm font-semibold text-brand">¡Propuesta guardada!</p>
-              <p className="text-xs text-brand/60 mt-0.5">Podés descargar el PDF, compartir por WhatsApp o crear una nueva.</p>
+              <p className="text-sm font-semibold text-brand">Â¡Propuesta guardada!</p>
+              <p className="text-xs text-brand/60 mt-0.5">PodÃ©s descargar el PDF, compartir por WhatsApp o crear una nueva.</p>
             </div>
           </div>
           <div className="flex gap-2 shrink-0">
@@ -996,13 +1087,13 @@ export default function WizardStep3Results({
               </span>
             )}
           </div>
-          <span className={`text-slate-500 transition-transform ${artExpanded ? 'rotate-180' : ''}`}>▾</span>
+          <span className={`text-slate-500 transition-transform ${artExpanded ? 'rotate-180' : ''}`}>â–¾</span>
         </button>
 
         {artExpanded && (
           <div className="px-4 pb-4 pt-1 border-t border-surface-700">
             <p className="text-xs text-slate-500 mb-3">
-              Subí el arte del cliente para generar mockups en el PDF. Si no subís nada, se usan los artes de empresa como fallback.
+              SubÃ­ el arte del cliente para generar mockups en el PDF. Si no subÃ­s nada, se usan los artes de empresa como fallback.
             </p>
             <ClientArtworkSlots
               clientArtH={clientArtH}   setClientArtH={setClientArtH}
@@ -1016,7 +1107,7 @@ export default function WizardStep3Results({
       {/* Estrategia seleccionada */}
       {results?.title && (
         <div className="flex items-center gap-3 rounded-xl border border-surface-700 bg-surface-800/50 px-4 py-3">
-          <span className="text-lg">{results.title === 'Máximo Impacto' ? '🎯' : '⚡'}</span>
+          <span className="text-lg">{results.title === 'MÃ¡ximo Impacto' ? 'ðŸŽ¯' : 'âš¡'}</span>
           <div className="flex-1">
             <p className="text-sm font-semibold text-white">{results.title}</p>
             {results.rationale && showRationale && (
@@ -1046,7 +1137,7 @@ export default function WizardStep3Results({
       {/* Price breakdown */}
       <PriceBreakdown formData={formData} option={activeOption} onAddNextBillboard={handleAddNextBillboard} />
 
-      {/* Métricas de Audiencia */}
+      {/* MÃ©tricas de Audiencia */}
       {audienceData && (
         <AudienceMetrics 
           data={audienceData} 
@@ -1055,7 +1146,7 @@ export default function WizardStep3Results({
       )}
 
       {/* Active option content */}
-      <OptionPanel option={activeOption} formData={formData} audienceNote={audienceNote} mapRef={mapRef} availability={availability} partialSelections={partialSelections} onSelectPartial={handleSelectPartial} />
+      <OptionPanel option={activeOption} formData={formData} audienceNote={audienceNote} mapRef={mapRef} availability={availability} partialSelections={partialSelections} onSelectPartial={handleSelectPartial} siteDates={siteDates} onSiteDateChange={handleSiteDateChange} />
     </div>
   )
 }

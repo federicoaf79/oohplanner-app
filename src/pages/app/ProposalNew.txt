@@ -200,7 +200,7 @@ export default function ProposalNew() {
   }
 
   // ── Save (create or update) ─────────────────────────────────
-  async function handleSave(option, optionLabel, partialSelections = {}, siteDates = {}) {
+  async function handleSave(option, optionLabel, partialSelections = {}) {
     if (!option || !profile?.org_id) return
     setSaving(true)
 
@@ -315,30 +315,15 @@ export default function ProposalNew() {
         const items = (option.sites ?? [])
           .filter(s => s.id && !s.id.startsWith('mock-'))
           .map(s => {
-            const partial   = partialSelections[s.id]
-            const customDate = siteDates[s.id]
-            const startDate = partial ? partial.startDate
-              : (customDate?.startDate || formData.startDate || null)
-            const endDate   = customDate?.endDate || formData.endDate || null
-            // Prorratear rate si hay fechas individuales
-            const globalDays = formData.startDate && formData.endDate
-              ? Math.max(1, Math.ceil((new Date(formData.endDate) - new Date(formData.startDate)) / 86400000) + 1)
-              : 30
-            const siteDays = startDate && endDate
-              ? Math.max(1, Math.ceil((new Date(endDate) - new Date(startDate)) / 86400000) + 1)
-              : globalDays
-            const baseRate = partial ? partial.listPrice : (s.list_price ?? null)
-            const rate = (customDate && siteDays !== globalDays && baseRate)
-              ? Math.round(baseRate * siteDays / globalDays)
-              : baseRate
+            const partial = partialSelections[s.id]
             return {
               proposal_id: draftProposalId,
               site_id:     s.id,
               org_id:      profile.org_id,
-              rate,
+              rate:        partial ? partial.listPrice : (s.list_price ?? null),
               notes:       s.justification ?? null,
-              start_date:  startDate,
-              end_date:    endDate,
+              start_date:  partial ? partial.startDate : (formData.startDate || null),
+              end_date:    formData.endDate || null,
               discount_pct: formData.discountPct ?? 0,
             }
           })
@@ -389,29 +374,15 @@ export default function ProposalNew() {
         const items = (option.sites ?? [])
           .filter(s => s.id && !s.id.startsWith('mock-'))
           .map(s => {
-            const partial    = partialSelections[s.id]
-            const customDate = siteDates[s.id]
-            const startDate  = partial ? partial.startDate
-              : (customDate?.startDate || formData.startDate || null)
-            const endDate    = customDate?.endDate || formData.endDate || null
-            const globalDays = formData.startDate && formData.endDate
-              ? Math.max(1, Math.ceil((new Date(formData.endDate) - new Date(formData.startDate)) / 86400000) + 1)
-              : 30
-            const siteDays = startDate && endDate
-              ? Math.max(1, Math.ceil((new Date(endDate) - new Date(startDate)) / 86400000) + 1)
-              : globalDays
-            const baseRate = partial ? partial.listPrice : (s.list_price ?? null)
-            const rate = (customDate && siteDays !== globalDays && baseRate)
-              ? Math.round(baseRate * siteDays / globalDays)
-              : baseRate
+            const partial = partialSelections[s.id]
             return {
               proposal_id: proposal.id,
               site_id:     s.id,
               org_id:      profile.org_id,
-              rate,
+              rate:        partial ? partial.listPrice : (s.list_price ?? null),
               notes:       s.justification ?? null,
-              start_date:  startDate,
-              end_date:    endDate,
+              start_date:  partial ? partial.startDate : (formData.startDate || null),
+              end_date:    formData.endDate || null,
               discount_pct: formData.discountPct ?? 0,
             }
           })
