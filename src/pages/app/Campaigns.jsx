@@ -80,57 +80,68 @@ function getCampaignStartDate(proposal) {
 
 function WorkflowStepper({ status, onChange, readOnly = false, showLabels = false }) {
   const currentIdx = STATUS_IDX[status] ?? -1
+  const currentStep = WORKFLOW_STATUSES[currentIdx]
 
   return (
-    <div className="flex items-center">
-      {WORKFLOW_STATUSES.map((step, idx) => {
-        const isActive = idx === currentIdx
-        const isDone   = idx < currentIdx
+    <div className="flex items-center gap-2">
+      {/* Label del estado activo */}
+      {currentStep && (
+        <span
+          className="shrink-0 text-[10px] font-semibold whitespace-nowrap"
+          style={{ color: currentStep.color }}
+        >
+          {currentStep.label}
+        </span>
+      )}
+      {/* Puntos del stepper */}
+      <div className="flex flex-1 items-center">
+        {WORKFLOW_STATUSES.map((step, idx) => {
+          const isActive = idx === currentIdx
+          const isDone   = idx < currentIdx
 
-        return (
-          <Fragment key={step.id}>
-            {idx > 0 && (
-              <div className={`flex-1 h-px transition-colors ${
-                isDone ? 'bg-slate-600' : 'bg-surface-700'
-              }`} />
-            )}
-            <button
-              type="button"
-              onClick={readOnly ? undefined : () => onChange(step.id)}
-              className={`flex flex-col items-center gap-0.5 ${
-                readOnly ? 'cursor-default' : 'group'
-              }`}
-              style={{ minWidth: 0 }}
-              title={step.label}
-            >
-              <div
-                className={`h-[14px] w-[14px] shrink-0 rounded-full border-2 transition-all ${
-                  isDone
-                    ? 'border-slate-600 bg-slate-700'
-                    : isActive
-                      ? 'border-transparent'
-                      : 'border-surface-700 bg-surface-800'
-                }`}
-                style={isActive ? {
-                  backgroundColor: step.color,
-                  boxShadow: `0 0 0 3px ${step.color}30`,
-                  borderColor: step.color,
-                } : {}}
-              />
-              {showLabels && (
-                <span
-                  className={`text-[9px] leading-tight text-center transition-colors ${
-                    isActive ? 'font-bold' : isDone ? 'text-slate-600' : 'text-slate-700'
-                  }`}
-                  style={isActive ? { color: step.color } : {}}
-                >
-                  {step.label}
-                </span>
+          return (
+            <Fragment key={step.id}>
+              {idx > 0 && (
+                <div className={`flex-1 h-px transition-colors ${
+                  isDone ? 'bg-slate-600' : 'bg-surface-700'
+                }`} />
               )}
-            </button>
-          </Fragment>
-        )
-      })}
+              <button
+                type="button"
+                onClick={readOnly ? undefined : () => onChange(step.id)}
+                className={readOnly ? 'cursor-default' : 'group'}
+                style={{ minWidth: 0 }}
+                title={step.label}
+              >
+                <div
+                  className={`h-[14px] w-[14px] shrink-0 rounded-full border-2 transition-all ${
+                    isDone
+                      ? 'border-slate-600 bg-slate-700'
+                      : isActive
+                        ? 'border-transparent'
+                        : 'border-surface-700 bg-surface-800'
+                  }`}
+                  style={isActive ? {
+                    backgroundColor: step.color,
+                    boxShadow: `0 0 0 3px ${step.color}30`,
+                    borderColor: step.color,
+                  } : {}}
+                />
+                {showLabels && (
+                  <span
+                    className={`text-[9px] leading-tight text-center transition-colors ${
+                      isActive ? 'font-bold' : isDone ? 'text-slate-600' : 'text-slate-700'
+                    }`}
+                    style={isActive ? { color: step.color } : {}}
+                  >
+                    {step.label}
+                  </span>
+                )}
+              </button>
+            </Fragment>
+          )
+        })}
+      </div>
     </div>
   )
 }
