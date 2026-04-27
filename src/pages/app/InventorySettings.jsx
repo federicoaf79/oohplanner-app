@@ -212,9 +212,19 @@ export default function InventorySettings() {
   }
 
   async function handleToggleManagerPerm(field, newValue) {
-    const next = { ...managerPerms, [field]: newValue }
-    // Si se desactiva el master switch, no tocar los granulares (quedan
-    // memorizados; cuando se vuelva a activar, mantienen su último estado).
+    let next
+    if (field === 'enabled' && !newValue) {
+      // Master OFF → resetear todos los granulares
+      next = {
+        enabled: false,
+        see_site_associates: false,
+        see_sale_facilitators: false,
+        see_external_sellers: false,
+        see_team_commissions: false,
+      }
+    } else {
+      next = { ...managerPerms, [field]: newValue }
+    }
     setManagerPerms(next)
     await supabase.from('organisations')
       .update({ manager_permissions: next })
