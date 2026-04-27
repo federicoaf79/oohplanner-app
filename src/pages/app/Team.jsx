@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { UserPlus, Users, MoreVertical, Pencil, Check, X } from 'lucide-react'
+import { UserPlus, Users, MoreVertical, Pencil, Check, X, Upload } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import Button from '../../components/ui/Button'
 import { getInitials } from '../../lib/utils'
 import Spinner from '../../components/ui/Spinner'
 import InviteMemberModal from '../../components/InviteMemberModal'
+import TeamOnboardingWizard from '../../features/team/TeamOnboardingWizard'
 
 const ROLE_OPTIONS = [
   { value: 'owner',       label: 'Owner' },
@@ -24,6 +25,7 @@ export default function Team() {
   const [members, setMembers]       = useState([])
   const [loading, setLoading]       = useState(false)
   const [showInvite, setShowInvite] = useState(false)
+  const [showImport, setShowImport] = useState(false)
   const [savingRole, setSavingRole] = useState(null) // memberId in-flight
   const [toast, setToast]           = useState(null)
   const [openMenu, setOpenMenu]     = useState(null) // memberId whose ⋯ is open
@@ -153,10 +155,18 @@ export default function Team() {
             {orgName ? <> · {orgName}</> : null}
           </p>
         </div>
-        <Button size="sm" onClick={() => setShowInvite(true)}>
-          <UserPlus className="h-4 w-4" />
-          Invitar miembro
-        </Button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowImport(true)}
+            className="btn-secondary flex items-center gap-2 text-sm"
+          >
+            <Upload className="h-4 w-4" /> Importar
+          </button>
+          <Button size="sm" onClick={() => setShowInvite(true)}>
+            <UserPlus className="h-4 w-4" />
+            Invitar miembro
+          </Button>
+        </div>
       </div>
 
       {/* Table */}
@@ -216,6 +226,14 @@ export default function Team() {
         onClose={() => setShowInvite(false)}
         onSuccess={loadTeam}
       />
+
+      {showImport && (
+        <TeamOnboardingWizard
+          existingMembers={members}
+          onClose={() => setShowImport(false)}
+          onDone={() => { setShowImport(false); loadTeam() }}
+        />
+      )}
 
       {showEmailInfo && (
         <div
