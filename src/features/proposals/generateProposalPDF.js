@@ -858,7 +858,7 @@ function renderAudience(doc, { audienceData, orgName }) {
   doc.text('Factor deduplicacion: 15%', 196, y + 4, { align: 'right' })
 }
 
-function renderClosing(doc, { formData, profile, org, results, activeOption, occupiedSiteIds }) {
+function renderClosing(doc, { formData, profile, org, results, activeOption, occupiedSiteIds, isOwnerView = false }) {
   pageBg(doc)
   const orgName    = san(org?.name ?? 'OOH Planner')
   const vendorName = san(profile?.full_name ?? 'Vendedor')
@@ -929,6 +929,76 @@ function renderClosing(doc, { formData, profile, org, results, activeOption, occ
   )
   y += 24
 
+  // ── Desglose confidencial para owner ──────────────────────────
+  if (isOwnerView) {
+    const ownerSites = availSites.slice(0, 20) // max 20 para no pasar de página
+
+    // Calcular totales
+    const totalStandard  = ownerSites.reduce((s, x) => s + (x.base_rate ?? 0), 0)
+    const totalClient2   = ownerSites.reduce((s, x) => s + (x.client_price ?? 0), 0)
+    const totalDiscount  = totalStandard - totalClient2
+    const discPct        = totalStandard > 0 ? totalDiscount / totalStandard * 100 : 0
+
+    const blockH = 24 + ownerSites.length * 9 + 30
+    frr(doc, 14, y, 182, blockH, 2, C.surface)
+
+    // Header
+    fnt(doc, 'bold', 9.5); tc(doc, C.white)
+    doc.text(san('Desglose confidencial — Uso interno'), 18, y + 9)
+    fnt(doc, 'normal', 7.5); tc(doc, C.muted)
+    doc.text(san('Este resumen no se muestra al cliente.'), 18, y + 16)
+
+    // Tabla header
+    let ty = y + 24
+    fnt(doc, 'bold', 7); tc(doc, C.muted)
+    doc.text('Soporte', 18, ty)
+    doc.text('Tarifa std', 108, ty, { align: 'right' })
+    doc.text('Descuento', 138, ty, { align: 'right' })
+    doc.text('Precio efectivo', 192, ty, { align: 'right' })
+    ty += 4
+    doc.setDrawColor(...C.surface2)
+    doc.setLineWidth(0.2)
+    doc.line(18, ty, 192, ty)
+    ty += 5
+
+    // Filas
+    ownerSites.forEach(site => {
+      const std  = site.base_rate ?? 0
+      const eff  = site.client_price ?? 0
+      const disc = std - eff
+      const pct  = std > 0 ? disc / std * 100 : 0
+
+      fnt(doc, 'normal', 7); tc(doc, C.light)
+      doc.text(san((site.name ?? '').slice(0, 38)), 18, ty)
+
+      tc(doc, C.white)
+      doc.text(peso(std), 108, ty, { align: 'right' })
+
+      tc(doc, pct > 20 ? C.amber : C.muted)
+      doc.text(pct > 0 ? `-${peso(disc)} (${Math.round(pct)}%)` : '—', 138, ty, { align: 'right' })
+
+      tc(doc, C.white)
+      doc.text(peso(eff), 192, ty, { align: 'right' })
+      ty += 9
+    })
+
+    // Totales
+    doc.setDrawColor(...C.surface2)
+    doc.line(18, ty, 192, ty)
+    ty += 5
+    fnt(doc, 'bold', 7.5)
+
+    tc(doc, C.light); doc.text('TOTAL STANDARD:', 18, ty)
+    tc(doc, C.white); doc.text(peso(totalStandard), 108, ty, { align: 'right' })
+
+    tc(doc, discPct > 20 ? C.amber : C.muted)
+    doc.text(`-${peso(totalDiscount)} (${Math.round(discPct)}%)`, 138, ty, { align: 'right' })
+
+    tc(doc, C.white); doc.text(peso(totalClient2), 192, ty, { align: 'right' })
+
+    y += blockH + 6
+  }
+
   // CTA
   frr(doc, 14, y, 182, 28, 3, C.accent)
   fnt(doc, 'bold', 12); tc(doc, C.white)
@@ -983,6 +1053,7 @@ export async function generateProposalPDF({
   mapImage        = null,
   mapA, mapB, formatToArt, pdfTheme = 'dark',
   audienceData    = null,
+  isOwnerView     = false,
 }) {
   const { jsPDF } = await import('jspdf')
 
@@ -1049,7 +1120,7 @@ export async function generateProposalPDF({
 
   // Página de cierre
   doc.addPage()
-  renderClosing(doc, { formData, profile, org, results, activeOption, occupiedSiteIds })
+  renderClosing(doc, { formData, profile, org, results, activeOption, occupiedSiteIds, isOwnerView })
 
   // Página de mapa (si se capturó)
   if (mapImage) {

@@ -146,7 +146,8 @@ export default function Reports() {
   // main tab
   const [mainTab, setMainTab] = useState('actividad')
 
-  // filters
+  // Variables derivadas accesibles en todo el render
+  const acceptedProposals = useMemo(() => proposals.filter(p => p.status === 'accepted'), [proposals])
   const [dateRange,   setDateRange]   = useState('current_month')
   const [customStart, setCustomStart] = useState('')
   const [customEnd,   setCustomEnd]   = useState('')
@@ -207,7 +208,7 @@ export default function Reports() {
             print_width_cm, print_height_cm, width_m, height_m,
             cost_seller_commission_pct, cost_agency_commission_pct,
             cost_owner_commission_pct, cost_owner_commission,
-            asociado_nombre
+            asociado_nombre, daily_traffic, audience_source, city
           `)
           .eq('org_id', orgId),
       ])

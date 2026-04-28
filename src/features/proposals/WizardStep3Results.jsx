@@ -643,7 +643,7 @@ export default function WizardStep3Results({
   clientArtV,  setClientArtV,
   clientArtSq, setClientArtSq,
 }) {
-  const { profile, org, user } = useAuth()
+  const { profile, org, user, isOwner, isManager } = useAuth()
   const [saved, setSaved] = useState(false)
   const [generatingPDF, setGeneratingPDF] = useState(false)
   const [showRationale, setShowRationale] = useState(false)
@@ -987,6 +987,7 @@ export default function WizardStep3Results({
         siteCarasMap,
         pdfTheme,
         audienceData,
+        isOwnerView: isOwner || isManager,
       })
     } catch (err) {
       console.error('PDF generation error:', err)
