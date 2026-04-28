@@ -85,8 +85,9 @@ function InventoryRow({ item, onEdit }) {
   const fmt      = FORMAT_MAP[item.format] ?? { label: item.format, color: '#64748b' }
   const icon     = FORMAT_ICON[item.format] ?? '📍'
   const photoUrl = getItemPhotoUrl(item)
-  const impactsPerMonth = item.daily_traffic ? item.daily_traffic * 3 : null
-  const [lightbox, setLightbox] = useState(false)
+  const impactsPerMonth = item.daily_traffic ? item.daily_traffic * 30 : null
+  const [lightbox, setLightbox]           = useState(false)
+  const [showAudience, setShowAudience]   = useState(false)
 
   return (
     <div className="card px-3 py-2 hover:border-brand/30 transition-colors">
@@ -198,6 +199,95 @@ function InventoryRow({ item, onEdit }) {
         <p className="mt-1 pl-11 text-[11px] text-amber-400">
           Libre desde: {formatDate(item.available_until)}
         </p>
+      )}
+
+      {/* Panel audiencias expandible */}
+      {item.daily_traffic > 0 && (
+        <div className="mt-1 pl-11">
+          <button
+            type="button"
+            onClick={() => setShowAudience(v => !v)}
+            className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-brand transition-colors"
+          >
+            <span>📊 Audiencia</span>
+            {showAudience ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          </button>
+
+          {showAudience && (
+            <div className="mt-2 rounded-xl border border-surface-700 bg-surface-800/50 p-3 space-y-3">
+              {/* KPIs */}
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <p className="text-xs text-slate-500">Tráfico diario</p>
+                  <p className="text-sm font-bold text-brand">{item.daily_traffic.toLocaleString('es-AR')}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Impactos/mes</p>
+                  <p className="text-sm font-bold text-cyan-400">{impactsPerMonth.toLocaleString('es-AR')}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500">Impactos/año</p>
+                  <p className="text-sm font-bold text-teal-400">{(impactsPerMonth * 12).toLocaleString('es-AR')}</p>
+                </div>
+              </div>
+
+              {/* Cluster */}
+              {item.cluster_audiencia && (
+                <div>
+                  <p className="text-xs text-slate-500 mb-1">Perfil de audiencia</p>
+                  <p className="text-xs text-slate-300 leading-relaxed">{item.cluster_audiencia}</p>
+                </div>
+              )}
+
+              {/* Audience profile demographics si existen */}
+              {item.audience_profile?.demographic_breakdown?.age && (
+                <div>
+                  <p className="text-xs text-slate-500 mb-1.5">Distribución por edad</p>
+                  <div className="space-y-1">
+                    {Object.entries(item.audience_profile.demographic_breakdown.age)
+                      .sort((a, b) => b[1] - a[1])
+                      .slice(0, 4)
+                      .map(([group, pct]) => (
+                        <div key={group} className="flex items-center gap-2">
+                          <span className="text-[10px] text-slate-500 w-16 shrink-0">
+                            {group.replace('_', '-').replace('plus', '+')} años
+                          </span>
+                          <div className="flex-1 bg-surface-700 rounded-full h-1.5 overflow-hidden">
+                            <div className="h-full bg-brand/60 rounded-full" style={{ width: `${pct}%` }} />
+                          </div>
+                          <span className="text-[10px] text-slate-400 w-8 text-right">{Math.round(pct)}%</span>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* NSE */}
+              {item.audience_profile?.demographic_breakdown?.nse && (
+                <div>
+                  <p className="text-xs text-slate-500 mb-1.5">Nivel socioeconómico</p>
+                  <div className="flex gap-2">
+                    {Object.entries(item.audience_profile.demographic_breakdown.nse)
+                      .sort((a, b) => b[1] - a[1])
+                      .map(([nse, pct]) => (
+                        <div key={nse} className="flex-1 rounded-lg border border-surface-600 bg-surface-700 px-2 py-1.5 text-center">
+                          <p className="text-[10px] font-bold text-slate-300">{nse.toUpperCase()}</p>
+                          <p className="text-xs font-semibold text-brand">{Math.round(pct)}%</p>
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Fuente */}
+              <p className="text-[10px] text-slate-600 border-t border-surface-700 pt-2">
+                {item.audience_source === 'oficial'
+                  ? '📡 Fuente: Flujo Vehicular Anillo Digital · data.buenosaires.gob.ar / TMDA Vialidad Nacional'
+                  : `Fuente: ${item.audience_source ?? 'no especificada'}`}
+              </p>
+            </div>
+          )}
+        </div>
       )}
     </div>
   )
