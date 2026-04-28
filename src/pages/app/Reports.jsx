@@ -131,7 +131,8 @@ const DEMO_TREND = [
 
 // ─── main component ──────────────────────────────────────────────────────────
 export default function Reports() {
-  const { profile } = useAuth()
+  const { profile, isOwner, isManager } = useAuth()
+  const canSeeRentabilidad = isOwner || isManager
   const orgId = profile?.org_id ?? null
 
   // raw data
@@ -141,6 +142,9 @@ export default function Reports() {
   const [inventory, setInventory] = useState([])
   const [loading,   setLoading]   = useState(true)
   const [error,     setError]     = useState('')
+
+  // main tab
+  const [mainTab, setMainTab] = useState('actividad')
 
   // filters
   const [dateRange,   setDateRange]   = useState('current_month')
@@ -659,12 +663,39 @@ export default function Reports() {
   return (
     <div className="space-y-6 pb-10">
 
-      {/* ── Header + date filter ─────────────────────────────────────────── */}
+      {/* ── Header ──────────────────────────────────────────────────────── */}
       <div>
         <h2 className="text-lg font-bold text-white">Reportes</h2>
         <p className="text-sm text-slate-500">Business intelligence de tu operación OOH</p>
+      </div>
 
-        <div className="flex flex-wrap items-center gap-2 mt-4">
+      {/* ── Pestañas principales ─────────────────────────────────────────── */}
+      <div className="flex border-b border-surface-700 gap-1">
+        {[
+          { id: 'actividad',    label: 'Mi actividad',  show: true },
+          { id: 'rentabilidad', label: 'Rentabilidad',  show: canSeeRentabilidad },
+          { id: 'audiencias',   label: 'Audiencias',    show: true },
+        ].filter(t => t.show).map(t => (
+          <button
+            key={t.id}
+            onClick={() => setMainTab(t.id)}
+            className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
+              mainTab === t.id
+                ? 'border-brand text-white'
+                : 'border-transparent text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── TAB: MI ACTIVIDAD ────────────────────────────────────────────── */}
+      {mainTab === 'actividad' && (<>
+
+      {/* date filter */}
+      <div>
+        <div className="flex flex-wrap items-center gap-2">
           {DATE_OPTS.map(opt => (
             <button
               key={opt.id}
@@ -679,22 +710,11 @@ export default function Reports() {
             </button>
           ))}
         </div>
-
         {dateRange === 'custom' && (
           <div className="flex items-center gap-3 mt-3">
-            <input
-              type="date"
-              value={customStart}
-              onChange={e => setCustomStart(e.target.value)}
-              className="input-field text-xs py-1.5 w-36"
-            />
+            <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} className="input-field text-xs py-1.5 w-36" />
             <span className="text-slate-500 text-xs">a</span>
-            <input
-              type="date"
-              value={customEnd}
-              onChange={e => setCustomEnd(e.target.value)}
-              className="input-field text-xs py-1.5 w-36"
-            />
+            <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="input-field text-xs py-1.5 w-36" />
           </div>
         )}
       </div>
@@ -1367,6 +1387,172 @@ export default function Reports() {
           </div>
         )}
       </Section>
+
+      </>) /* fin tab actividad */}
+
+      {/* ── TAB: RENTABILIDAD ────────────────────────────────────────────── */}
+      {mainTab === 'rentabilidad' && canSeeRentabilidad && (
+        <div className="space-y-6">
+
+          <Section title="Top 5 — Carteles más rentables">
+            <div className="overflow-x-auto rounded-xl border border-surface-700">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-surface-700 bg-surface-800/50">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-400">#</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-400">Cartel</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Facturación</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Margen</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-700">
+                  {(() => {
+                    const siteMap = {}
+                    acceptedProposals.forEach(p => {
+                      ;(p.proposal_items ?? []).forEach(pi => {
+                        if (!pi.site_id) return
+                        const inv = inventory.find(i => i.id === pi.site_id)
+                        if (!inv) return
+                        const rate = pi.rate ?? inv.base_rate ?? 0
+                        const disc = pi.discount_pct ?? p.discount_pct ?? 0
+                        const rev = rate * (1 - disc / 100)
+                        const res = calculateSiteProfitability(inv, p, orgConfig)
+                        if (!siteMap[pi.site_id]) siteMap[pi.site_id] = { revenue: 0, costs: 0, name: inv.name }
+                        siteMap[pi.site_id].revenue += rev
+                        siteMap[pi.site_id].costs += (res?.costs ?? 0)
+                      })
+                    })
+                    return Object.entries(siteMap)
+                      .map(([id, s]) => ({ id, ...s, margin: s.revenue > 0 ? (s.revenue - s.costs) / s.revenue * 100 : 0 }))
+                      .sort((a, b) => b.margin - a.margin)
+                      .slice(0, 5)
+                      .map((s, i) => (
+                        <tr key={s.id} className="hover:bg-surface-800/40">
+                          <td className="px-4 py-3 text-slate-500 text-xs">{i + 1}</td>
+                          <td className="px-4 py-3 text-slate-200 font-medium">{s.name}</td>
+                          <td className="px-4 py-3 text-right text-slate-300">{fmtARS(s.revenue)}</td>
+                          <td className="px-4 py-3 text-right">
+                            <span className={s.margin >= 40 ? 'text-brand font-semibold' : s.margin >= 20 ? 'text-amber-400' : 'text-rose-400'}>
+                              {fmtPct(s.margin)}
+                            </span>
+                          </td>
+                        </tr>
+                      ))
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          </Section>
+
+          <Section title="Rentabilidad por cliente — Top 10">
+            <div className="overflow-x-auto rounded-xl border border-surface-700">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-surface-700 bg-surface-800/50">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-400">Cliente</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Campañas</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Facturación</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Última campaña</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-700">
+                  {(() => {
+                    const clientMap = {}
+                    acceptedProposals.forEach(p => {
+                      const key = p.client_name ?? 'Sin nombre'
+                      if (!clientMap[key]) clientMap[key] = { count: 0, revenue: 0, lastDate: '' }
+                      clientMap[key].count++
+                      clientMap[key].revenue += p.total_value ?? 0
+                      const d = p.accepted_at ?? p.created_at ?? ''
+                      if (d > clientMap[key].lastDate) clientMap[key].lastDate = d
+                    })
+                    return Object.entries(clientMap)
+                      .sort((a, b) => b[1].revenue - a[1].revenue)
+                      .slice(0, 10)
+                      .map(([name, c]) => (
+                        <tr key={name} className="hover:bg-surface-800/40">
+                          <td className="px-4 py-3 text-slate-200 font-medium">{name}</td>
+                          <td className="px-4 py-3 text-right text-slate-400">{c.count}</td>
+                          <td className="px-4 py-3 text-right text-slate-300 font-semibold">{fmtARS(c.revenue)}</td>
+                          <td className="px-4 py-3 text-right text-slate-500 text-xs">
+                            {c.lastDate ? new Date(c.lastDate).toLocaleDateString('es-AR') : '—'}
+                          </td>
+                        </tr>
+                      ))
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          </Section>
+
+        </div>
+      )}
+
+      {/* ── TAB: AUDIENCIAS ──────────────────────────────────────────────── */}
+      {mainTab === 'audiencias' && (
+        <div className="space-y-6">
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { label: 'Carteles con tráfico', value: inventory.filter(i => i.daily_traffic > 0).length, sub: `de ${inventory.length} totales`, color: 'text-brand' },
+              { label: 'Tráfico diario total', value: fmtNum(inventory.reduce((s, i) => s + (i.daily_traffic ?? 0), 0)), sub: 'vehículos/personas por día', color: 'text-cyan-400' },
+              { label: 'Impactos mensuales', value: fmtNum(inventory.reduce((s, i) => s + (i.daily_traffic ?? 0) * 30, 0)), sub: 'estimados (x30 días)', color: 'text-teal-400' },
+              { label: 'Datos oficiales', value: inventory.filter(i => i.audience_source === 'oficial').length, sub: 'carteles con fuente verificada', color: 'text-amber-400' },
+            ].map((k, i) => (
+              <div key={i} className="card p-4">
+                <p className="text-xs text-slate-500">{k.label}</p>
+                <p className={`text-2xl font-bold mt-1 ${k.color}`}>{k.value}</p>
+                <p className="text-xs text-slate-600 mt-0.5">{k.sub}</p>
+              </div>
+            ))}
+          </div>
+
+          <Section title="Top carteles por tráfico diario">
+            <div className="overflow-x-auto rounded-xl border border-surface-700">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-surface-700 bg-surface-800/50">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-400">#</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-400">Cartel</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-400 hidden sm:table-cell">Ciudad</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Tráfico/día</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Impactos/mes</th>
+                    <th className="px-4 py-3 text-right text-xs font-medium text-slate-400 hidden md:table-cell">Fuente</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-700">
+                  {[...inventory]
+                    .filter(i => i.daily_traffic > 0)
+                    .sort((a, b) => (b.daily_traffic ?? 0) - (a.daily_traffic ?? 0))
+                    .slice(0, 15)
+                    .map((site, idx) => (
+                      <tr key={site.id} className="hover:bg-surface-800/40">
+                        <td className="px-4 py-3 text-slate-500 text-xs">{idx + 1}</td>
+                        <td className="px-4 py-3 text-slate-200 font-medium">
+                          <p className="truncate max-w-[180px]">{site.name}</p>
+                          <p className="text-xs text-slate-500">{site.code}</p>
+                        </td>
+                        <td className="px-4 py-3 text-slate-400 hidden sm:table-cell text-xs">{site.city}</td>
+                        <td className="px-4 py-3 text-right text-brand font-semibold">{fmtNum(site.daily_traffic)}</td>
+                        <td className="px-4 py-3 text-right text-slate-400">{fmtNum((site.daily_traffic ?? 0) * 30)}</td>
+                        <td className="px-4 py-3 text-right hidden md:table-cell">
+                          <span className={`text-xs rounded-full px-2 py-0.5 ${site.audience_source === 'oficial' ? 'bg-brand/10 text-brand' : 'bg-surface-700 text-slate-500'}`}>
+                            {site.audience_source === 'oficial' ? 'Oficial' : site.audience_source ?? '—'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-slate-600 mt-3">
+              Fuentes: Flujo Vehicular Anillo Digital · data.buenosaires.gob.ar (CC Attribution) ·
+              TMDA Dirección Nacional de Vialidad · datos.transporte.gob.ar
+            </p>
+          </Section>
+
+        </div>
+      )}
 
     </div>
   )
