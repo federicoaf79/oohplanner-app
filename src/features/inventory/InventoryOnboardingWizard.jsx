@@ -796,6 +796,11 @@ export default function InventoryOnboardingWizard({ onClose, onComplete }) {
         })
       if (error) throw new Error(error.message)
 
+      // Enriquecer daily_traffic con fuentes oficiales (fire & forget)
+      supabase.functions.invoke('enrich-billboard-audience', {
+        body: { org_id: orgId }
+      }).catch(e => console.warn('enrich-billboard-audience:', e))
+
       setImportedCount(valid.length)
       setImportedItems(valid)
       await markStepSaved(1)
