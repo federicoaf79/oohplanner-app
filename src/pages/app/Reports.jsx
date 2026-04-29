@@ -1192,8 +1192,16 @@ export default function Reports() {
                                   </div>
                                 )}
                                 <div className="flex justify-between text-sm pt-2 border-t border-surface-700 font-medium">
-                                  <span className="text-slate-300">Total costos</span>
-                                  <span className="text-white">{fmtARS(site.totalCosts)}</span>
+                                  <span className="text-slate-300">Total/mes</span>
+                                  <span className="text-white">{fmtARS(
+                                    (site.cost_rent ?? 0) + (site.cost_electricity ?? 0) +
+                                    (site.cost_taxes ?? 0) + (site.cost_maintenance ?? 0) +
+                                    (site.cost_imponderables ?? 0)
+                                  )}</span>
+                                </div>
+                                <div className="flex justify-between text-sm text-xs text-slate-500">
+                                  <span>Total período ({site.fixedCosts > 0 && site.cost_rent > 0 ? Math.round(site.fixedCosts / ((site.cost_rent ?? 0) + (site.cost_electricity ?? 0) + (site.cost_taxes ?? 0) + (site.cost_maintenance ?? 0) + (site.cost_imponderables ?? 0)) * 10) / 10 : '?'} meses)</span>
+                                  <span className="text-slate-400">{fmtARS(site.fixedCosts)}</span>
                                 </div>
                               </div>
 
