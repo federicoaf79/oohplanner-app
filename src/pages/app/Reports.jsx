@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
@@ -135,50 +136,12 @@ export default function Reports() {
   const canSeeRentabilidad = isOwner || isManager
   const orgId = profile?.org_id ?? null
 
-  // raw data
-  const [proposals, setProposals] = useState([])
-  const [propItems, setPropItems] = useState([])
-  const [profiles,  setProfiles]  = useState([])
-  const [inventory, setInventory] = useState([])
-  const [loading,   setLoading]   = useState(true)
-  const [error,     setError]     = useState('')
-
-  // main tab
-  const [mainTab, setMainTab] = useState('actividad')
-
-  // Variables derivadas accesibles en todo el render
-  const acceptedProposals = useMemo(() => proposals.filter(p => p.status === 'accepted'), [proposals])
-  const [dateRange,   setDateRange]   = useState('current_month')
-  const [customStart, setCustomStart] = useState('')
-  const [customEnd,   setCustomEnd]   = useState('')
-
-  // UI state
-  const [activeMetrics, setActiveMetrics] = useState(() => new Set(['revenue']))
-
-  function toggleMetric(key) {
-    setActiveMetrics(prev => {
-      const next = new Set(prev)
-      if (next.has(key)) {
-        if (next.size === 1) return prev   // mínimo 1 métrica activa
-        next.delete(key)
-      } else {
-        next.add(key)
-      }
-      return next
-    })
-  }
-  const [perfTab,     setPerfTab]     = useState('seller')
-  const [expanded, setExpanded] = useState(new Set(['__group_occupied', '__group_inactive']))
-
-  useEffect(() => {
-    if (!orgId) return
-    loadAll()
-  }, [orgId]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  async function loadAll() {
-    setLoading(true)
-    setError('')
-    try {
+  // ── React Query: fetch y caché de datos ──────────────────────────────────
+  const { data: reportData, isLoading: loading, error: queryError } = useQuery({
+    queryKey: ['reports', orgId],
+    enabled:  !!orgId,
+    staleTime: 1000 * 60 * 3, // 3 minutos — Reports puede tolerar datos levemente desactualizados
+    queryFn: async () => {
       const [
         { data: propData, error: e1 },
         { data: itemData, error: e2 },
@@ -218,14 +181,12 @@ export default function Reports() {
       if (e3) throw new Error(e3.message)
       if (e4) throw new Error(e4.message)
 
-      // Build maps for JS-side joins
       const profMap = {}
       ;(profData ?? []).forEach(p => { profMap[p.id] = p })
 
       const invMap = {}
       ;(invData ?? []).forEach(inv => { invMap[inv.id] = inv })
 
-      // Enrich proposals with seller name/pct
       const flatProposals = (propData ?? []).map(p => ({
         ...p,
         seller_id:             p.created_by,
@@ -233,7 +194,6 @@ export default function Reports() {
         seller_commission_pct: profMap[p.created_by]?.commission_pct ?? 0,
       }))
 
-      // Enrich proposal_items with inventory fields + client_price
       const propDiscountMap = {}
       ;(propData ?? []).forEach(p => { propDiscountMap[p.id] = p.discount_pct ?? 0 })
 
@@ -264,16 +224,48 @@ export default function Reports() {
         }
       })
 
-      setProposals(flatProposals)
-      setPropItems(flatItems)
-      setProfiles(profData ?? [])
-      setInventory(invData ?? [])
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
+      return {
+        proposals: flatProposals,
+        propItems: flatItems,
+        profiles:  profData ?? [],
+        inventory: invData ?? [],
+      }
+    },
+  })
+
+  // Extraer datos del resultado cacheado
+  const proposals = reportData?.proposals ?? []
+  const propItems  = reportData?.propItems  ?? []
+  const profiles   = reportData?.profiles   ?? []
+  const inventory  = reportData?.inventory  ?? []
+  const error      = queryError?.message    ?? ''
+
+  // main tab
+  const [mainTab, setMainTab] = useState('actividad')
+
+  // Variables derivadas accesibles en todo el render
+  const acceptedProposals = useMemo(() => proposals.filter(p => p.status === 'accepted'), [proposals])
+  const [dateRange,   setDateRange]   = useState('current_month')
+  const [customStart, setCustomStart] = useState('')
+  const [customEnd,   setCustomEnd]   = useState('')
+
+  // UI state
+  const [activeMetrics, setActiveMetrics] = useState(() => new Set(['revenue']))
+
+  function toggleMetric(key) {
+    setActiveMetrics(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        if (next.size === 1) return prev   // mínimo 1 métrica activa
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
   }
+  const [perfTab,     setPerfTab]     = useState('seller')
+  const [expanded, setExpanded] = useState(new Set(['__group_occupied', '__group_inactive']))
 
   // ── filtered proposals & items ───────────────────────────────────────────
   // Filter by accepted_at (cuándo el cliente aceptó = cuándo se facturó).
