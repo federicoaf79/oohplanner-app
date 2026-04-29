@@ -163,6 +163,26 @@ export default function CertificationDetail() {
 
   useEffect(() => { loadCert() }, [id])
 
+  // Regenera signed URLs para fotos del bucket privado
+  async function refreshPhotoUrls(photos) {
+    if (!photos?.length) return photos
+    const refreshed = await Promise.all(photos.map(async p => {
+      try {
+        // Extraer el path desde la URL guardada (busca el segmento después de /certifications/)
+        const match = p.photo_url?.match(/certifications\/([^?]+)/)
+        if (!match) return p
+        const storagePath = match[1]
+        const { data } = await supabase.storage
+          .from('certifications')
+          .createSignedUrl(storagePath, 31536000)
+        return data?.signedUrl ? { ...p, photo_url: data.signedUrl } : p
+      } catch {
+        return p
+      }
+    }))
+    return refreshed
+  }
+
   async function loadCert() {
     setLoading(true)
     setError('')
@@ -186,7 +206,8 @@ export default function CertificationDetail() {
       .single()
 
     if (err) { setError('No se pudo cargar la certificación.'); setLoading(false); return }
-    setCert(data)
+    const freshPhotos = await refreshPhotoUrls(data.photos ?? [])
+    setCert({ ...data, photos: freshPhotos })
     setLoading(false)
   }
 

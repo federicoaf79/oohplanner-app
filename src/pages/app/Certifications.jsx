@@ -28,7 +28,9 @@ export default function Certifications() {
       .from('campaign_certifications')
       .select(`
         id, status, notes, created_at, updated_at,
-        proposal:proposals(id, title, client_name, created_by),
+        proposal:proposals(id, title, client_name, created_by,
+          proposal_items(id, site_id)
+        ),
         creator:profiles!created_by(full_name),
         photos:campaign_certification_photos(id, site_id, photo_url, taken_at)
       `)
@@ -160,7 +162,13 @@ export default function Certifications() {
                           {cert.proposal?.client_name ?? '—'}
                         </p>
                         <p className="text-xs text-slate-500 truncate">
-                          {cert.proposal?.title} · {cert.photos?.length ?? 0} fotos · {cert.creator?.full_name}
+                          {cert.proposal?.title} · {
+                            (() => {
+                              const certified = new Set((cert.photos ?? []).map(p => p.site_id).filter(Boolean)).size
+                              const total = cert.proposal?.proposal_items?.length ?? 0
+                              return `${certified}/${total} carteles`
+                            })()
+                          } · {cert.creator?.full_name}
                         </p>
                       </div>
                     </div>

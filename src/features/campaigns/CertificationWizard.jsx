@@ -163,12 +163,14 @@ export default function CertificationWizard({ campaign, onClose, onDone }) {
             .upload(path, photo.file, { upsert: true })
           if (uploadErr) throw new Error(uploadErr.message)
 
-          const { data: urlData } = supabase.storage.from('certifications').getPublicUrl(path)
+          const { data: signedData } = await supabase.storage
+            .from('certifications')
+            .createSignedUrl(path, 31536000) // 1 año
 
           photoRows.push({
             certification_id: cid,
             site_id:          siteId || null,
-            photo_url:        urlData.publicUrl ?? path,
+            photo_url:        signedData?.signedUrl ?? path,
             taken_at:         photo.taken_at ? new Date(photo.taken_at).toISOString() : new Date().toISOString(),
             notes:            photo.siteNote || null,
             sort_order:       sortOrder++,
