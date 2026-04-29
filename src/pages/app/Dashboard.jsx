@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import {
   TrendingUp, TrendingDown,
@@ -347,65 +348,55 @@ function computeDerived(
 export default function Dashboard() {
   const { profile, isOwner, isManager } = useAuth()
   const [period, setPeriod] = useState('current')
-  const [loading, setLoading] = useState(true)
-  const [raw, setRaw] = useState(null)
 
-  useEffect(() => {
-    if (!profile?.org_id || !profile?.id) return
-    setLoading(true)
+  const { data: raw, isLoading: loading } = useQuery({
+    queryKey: ['dashboard', profile?.org_id, profile?.id],
+    enabled:  !!profile?.org_id && !!profile?.id,
+    staleTime: 1000 * 60 * 2, // 2 minutos — dashboard es más dinámico
+    queryFn: async () => {
+      const daysAgo60 = new Date()
+      daysAgo60.setDate(daysAgo60.getDate() - 60)
+      const today    = new Date()
+      const in60     = new Date()
+      in60.setDate(in60.getDate() + 60)
+      const todayStr = today.toISOString().slice(0, 10)
+      const in60Str  = in60.toISOString().slice(0, 10)
 
-    const daysAgo60 = new Date()
-    daysAgo60.setDate(daysAgo60.getDate() - 60)
-    const today    = new Date()
-    const in60     = new Date()
-    in60.setDate(in60.getDate() + 60)
-    const todayStr = today.toISOString().slice(0, 10)
-    const in60Str  = in60.toISOString().slice(0, 10)
+      const [invR, itemsR, propsR, profileR, campaignsR, allPropsR] = await Promise.all([
+        supabase.from('inventory')
+          .select('id, name, code, format, is_available, available_until, base_rate, cost_rent, cost_electricity, cost_taxes, cost_maintenance, cost_imponderables, width_m, height_m, print_width_cm, print_height_cm, cost_print_per_m2, cost_colocation, cost_design, cost_seller_commission_pct, cost_agency_commission_pct, cost_owner_commission_pct, cost_owner_commission, latitude, longitude, address, owner_type')
+          .eq('org_id', profile.org_id),
 
-    Promise.all([
-      // 1 — Inventario completo
-      supabase.from('inventory')
-        .select('id, name, code, format, is_available, available_until, base_rate, cost_rent, cost_electricity, cost_taxes, cost_maintenance, cost_imponderables, width_m, height_m, print_width_cm, print_height_cm, cost_print_per_m2, cost_colocation, cost_design, cost_seller_commission_pct, cost_agency_commission_pct, cost_owner_commission_pct, cost_owner_commission, latitude, longitude, address, owner_type')
-        .eq('org_id', profile.org_id),
+        supabase.from('proposal_items')
+          .select('site_id, proposal_id, rate, duration, start_date, end_date')
+          .eq('org_id', profile.org_id),
 
-      // 2 — Proposal items con fechas
-      supabase.from('proposal_items')
-        .select('site_id, proposal_id, rate, duration, start_date, end_date')
-        .eq('org_id', profile.org_id),
+        supabase.from('proposals')
+          .select('id, status, workflow_status, total_value, discount_pct, created_by, created_at, accepted_at, client_name, valid_until')
+          .eq('org_id', profile.org_id)
+          .gte('created_at', daysAgo60.toISOString()),
 
-      // 3 — Propuestas recientes (últimos 60 días) — incluye workflow_status para semáforo (FIX 2)
-      supabase.from('proposals')
-        .select('id, status, workflow_status, total_value, discount_pct, created_by, created_at, accepted_at, client_name, valid_until')
-        .eq('org_id', profile.org_id)
-        .gte('created_at', daysAgo60.toISOString()),
+        supabase.from('profiles')
+          .select('commission_pct, monthly_target_ars')
+          .eq('id', profile.id)
+          .single(),
 
-      // 4 — Perfil del usuario (comisión)
-      supabase.from('profiles')
-        .select('commission_pct, monthly_target_ars')
-        .eq('id', profile.id)
-        .single(),
+        supabase.from('proposals')
+          .select('id, status, workflow_status, client_name, start_date, end_date, brief_data, created_at, created_by')
+          .eq('org_id', profile.org_id)
+          .eq('status', 'accepted')
+          .gte('end_date', todayStr)
+          .lte('end_date', in60Str),
 
-      // 5 — Campañas aceptadas con end_date en próximos 60 días
-      supabase.from('proposals')
-        .select('id, status, workflow_status, client_name, start_date, end_date, brief_data, created_at, created_by')
-        .eq('org_id', profile.org_id)
-        .eq('status', 'accepted')
-        .gte('end_date', todayStr)
-        .lte('end_date', in60Str),
+        supabase.from('proposals')
+          .select('id, status')
+          .eq('org_id', profile.org_id),
+      ])
 
-      // 6 — Todas las propuestas para tasa de cierre global
-      supabase.from('proposals')
-        .select('id, status')
-        .eq('org_id', profile.org_id),
-
-    ]).then(async ([invR, itemsR, propsR, profileR, campaignsR, allPropsR]) => {
       const itemsData     = itemsR.data     ?? []
       const propsData     = propsR.data     ?? []
       const campaignsData = campaignsR.data ?? []
 
-      // Traer las propuestas que el ítem referencia pero no están en los dos
-      // fetches principales (creadas hace > 60 días y con end_date > 60 días
-      // en el futuro). Necesario para que el widget de ocupación cuente sus items.
       const knownIds = new Set([
         ...propsData.map(p => p.id),
         ...campaignsData.map(p => p.id),
@@ -422,7 +413,6 @@ export default function Dashboard() {
         extraProposals = data ?? []
       }
 
-      // Enriquecer items con client_price (aplicar descuento de la propuesta)
       const discountMap = {}
       propsData.forEach(p => { discountMap[p.id] = p.discount_pct ?? 0 })
 
@@ -431,7 +421,7 @@ export default function Dashboard() {
         client_price: Math.round((pi.rate ?? 0) * (1 - (discountMap[pi.proposal_id] ?? 0) / 100)),
       }))
 
-      setRaw({
+      return {
         inventory:         invR.data      ?? [],
         items:             enrichedItems,
         proposals:         propsData,
@@ -439,10 +429,9 @@ export default function Dashboard() {
         userProfile:       profileR.error  ? {} : (profileR.data ?? {}),
         upcomingCampaigns: campaignsData,
         extraProposals,
-      })
-      setLoading(false)
-    })
-  }, [profile?.org_id, profile?.id])
+      }
+    },
+  })
 
   const isCompany = isOwner || isManager
 
