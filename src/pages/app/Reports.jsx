@@ -168,7 +168,7 @@ export default function Reports() {
     })
   }
   const [perfTab,     setPerfTab]     = useState('seller')
-  const [expanded,    setExpanded]    = useState(new Set())
+  const [expanded, setExpanded] = useState(new Set(['__group_occupied', '__group_inactive']))
 
   useEffect(() => {
     if (!orgId) return
@@ -1058,18 +1058,18 @@ export default function Reports() {
                     const isGroupOpen = !expanded.has(`__group_${groupKey}`)
                     return (
                       <tr key={`header_${groupKey}`}
-                        className="border-b border-surface-700/60 bg-surface-800/80 cursor-pointer hover:bg-surface-700/40 transition-colors"
+                        className="border-b border-surface-600 bg-surface-700/60 cursor-pointer hover:bg-surface-600/60 transition-colors"
                         onClick={() => toggleExpanded(`__group_${groupKey}`)}
                       >
-                        <td className="py-2 pr-2 pl-1">
+                        <td className="py-2.5 pr-2 pl-1">
                           {isGroupOpen
-                            ? <ChevronDown className="h-3.5 w-3.5 text-slate-500" />
-                            : <ChevronRight className="h-3.5 w-3.5 text-slate-500" />
+                            ? <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                            : <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
                           }
                         </td>
-                        <td colSpan={6} className="py-2">
-                          <span className={`text-xs font-semibold ${color}`}>{label}</span>
-                          <span className="ml-2 text-xs text-slate-600">({count} carteles)</span>
+                        <td colSpan={6} className="py-2.5">
+                          <span className={`text-xs font-bold tracking-wide ${color}`}>{label}</span>
+                          <span className="ml-2 text-xs text-slate-500">({count} carteles)</span>
                         </td>
                       </tr>
                     )
