@@ -1407,39 +1407,22 @@ export default function Reports() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-700">
-                  {(() => {
-                    const siteMap = {}
-                    acceptedProposals.forEach(p => {
-                      ;(p.proposal_items ?? []).forEach(pi => {
-                        if (!pi.site_id) return
-                        const inv = inventory.find(i => i.id === pi.site_id)
-                        if (!inv) return
-                        const rate = pi.rate ?? inv.base_rate ?? 0
-                        const disc = pi.discount_pct ?? p.discount_pct ?? 0
-                        const rev = rate * (1 - disc / 100)
-                        const res = calculateSiteProfitability(inv, p, orgConfig)
-                        if (!siteMap[pi.site_id]) siteMap[pi.site_id] = { revenue: 0, costs: 0, name: inv.name }
-                        siteMap[pi.site_id].revenue += rev
-                        siteMap[pi.site_id].costs += (res?.costs ?? 0)
-                      })
-                    })
-                    return Object.entries(siteMap)
-                      .map(([id, s]) => ({ id, ...s, margin: s.revenue > 0 ? (s.revenue - s.costs) / s.revenue * 100 : 0 }))
-                      .sort((a, b) => b.margin - a.margin)
-                      .slice(0, 5)
-                      .map((s, i) => (
-                        <tr key={s.id} className="hover:bg-surface-800/40">
-                          <td className="px-4 py-3 text-slate-500 text-xs">{i + 1}</td>
-                          <td className="px-4 py-3 text-slate-200 font-medium">{s.name}</td>
-                          <td className="px-4 py-3 text-right text-slate-300">{fmtARS(s.revenue)}</td>
-                          <td className="px-4 py-3 text-right">
-                            <span className={s.margin >= 40 ? 'text-brand font-semibold' : s.margin >= 20 ? 'text-amber-400' : 'text-rose-400'}>
-                              {fmtPct(s.margin)}
-                            </span>
-                          </td>
-                        </tr>
-                      ))
-                  })()}
+                  {[...siteProfit]
+                    .filter(s => s.revenue > 0)
+                    .sort((a, b) => (b.margin ?? 0) - (a.margin ?? 0))
+                    .slice(0, 5)
+                    .map((s, i) => (
+                      <tr key={s.id} className="hover:bg-surface-800/40">
+                        <td className="px-4 py-3 text-slate-500 text-xs">{i + 1}</td>
+                        <td className="px-4 py-3 text-slate-200 font-medium">{s.name}</td>
+                        <td className="px-4 py-3 text-right text-slate-300">{fmtARS(s.revenue)}</td>
+                        <td className="px-4 py-3 text-right">
+                          <span className={s.margin >= 40 ? 'text-brand font-semibold' : s.margin >= 20 ? 'text-amber-400' : 'text-rose-400'}>
+                            {fmtPct(s.margin ?? 0)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
                 </tbody>
               </table>
             </div>
