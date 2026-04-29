@@ -586,11 +586,12 @@ export default function Reports() {
         sellerComm: 0, agencyComm: 0, ownerComm: 0,
       })
 
-      const totalCosts = agg.fixedCosts + agg.printCost + agg.colocation + agg.design
-      const totalComm  = agg.sellerComm + agg.agencyComm + agg.ownerComm
-      const netProfit  = agg.revenue - totalCosts - totalComm
-      const roi        = totalCosts > 0 ? netProfit / totalCosts * 100 : null
-      const margin     = agg.revenue > 0 ? netProfit / agg.revenue * 100 : null
+      const totalCosts    = agg.fixedCosts + agg.printCost + agg.colocation + agg.design
+      const totalComm     = agg.sellerComm + agg.agencyComm + agg.ownerComm
+      const totalInversion = totalCosts + totalComm
+      const netProfit     = agg.revenue - totalCosts - totalComm
+      const roi           = totalInversion > 0 ? netProfit / totalInversion * 100 : null
+      const margin        = agg.revenue > 0 ? netProfit / agg.revenue * 100 : null
 
       // Display percentages — from inv (current config), not frozen on items.
       const sellerPct = inv.cost_seller_commission_pct ?? 0
