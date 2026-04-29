@@ -847,8 +847,10 @@ function CampaignModal({ campaign, onClose, onItemsUpdated }) {
   const doohItems = items.filter(i => DIGITAL.has(i.site?.format))
   const offItems  = items.filter(i => !DIGITAL.has(i.site?.format))
 
-  const listTotal   = items.reduce((s, i) => s + (i.rate ?? 0), 0)
-  const clientTotal = campaign.total_value ?? Math.round(listTotal * (1 - discount / 100))
+  const clientTotal = campaign.total_value ?? 0
+  const listTotal   = discount > 0 && clientTotal > 0
+    ? Math.round(clientTotal / (1 - discount / 100))
+    : items.reduce((s, i) => s + (i.rate ?? 0), 0)
   const discountAmt = listTotal - clientTotal
 
   return (
