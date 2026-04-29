@@ -1302,6 +1302,7 @@ export default function Reports() {
                       {renderSiteRows(groupC, 'inactive')}
                     </>
                   )
+                })()}
               </tbody>
             </table>
           </div>
