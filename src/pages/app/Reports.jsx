@@ -1049,10 +1049,268 @@ export default function Reports() {
                 </tr>
               </thead>
               <tbody>
-                {siteProfit.map(site => {
-                  const isOpen = expanded.has(site.id)
+                {(() => {
+                  const groupA = siteProfit.filter(s => s.revenue > 0)
+                  const groupB = siteProfit.filter(s => s.revenue === 0 && s.isOccupied)
+                  const groupC = siteProfit.filter(s => s.revenue === 0 && !s.isOccupied)
+
+                  const GroupHeader = ({ label, count, groupKey, color = 'text-slate-400' }) => {
+                    const isGroupOpen = !expanded.has(`__group_${groupKey}`)
+                    return (
+                      <tr
+                        className="border-b border-surface-700/60 bg-surface-800/80 cursor-pointer hover:bg-surface-700/40 transition-colors"
+                        onClick={() => toggleExpanded(`__group_${groupKey}`)}
+                      >
+                        <td className="py-2 pr-2 pl-1">
+                          {isGroupOpen
+                            ? <ChevronDown className="h-3.5 w-3.5 text-slate-500" />
+                            : <ChevronRight className="h-3.5 w-3.5 text-slate-500" />
+                          }
+                        </td>
+                        <td colSpan={6} className="py-2">
+                          <span className={`text-xs font-semibold ${color}`}>{label}</span>
+                          <span className="ml-2 text-xs text-slate-600">({count} carteles)</span>
+                        </td>
+                      </tr>
+                    )
+                  }
+
+                  const SiteRows = ({ sites, groupKey }) => {
+                    const isGroupOpen = !expanded.has(`__group_${groupKey}`)
+                    if (!isGroupOpen) return null
+                    return sites.map(site => {
+                      const isOpen = expanded.has(site.id)
+                      return (
+                        <React.Fragment key={site.id}>
+                          <tr
+                            onClick={() => toggleExpanded(site.id)}
+                            className="border-b border-surface-700/40 hover:bg-surface-800/40 cursor-pointer transition-colors"
+                          >
+                            <td className="py-3 pr-2 pl-1">
+                              {isOpen
+                                ? <ChevronDown  className="h-3.5 w-3.5 text-slate-500" />
+                                : <ChevronRight className="h-3.5 w-3.5 text-slate-500" />
+                              }
+                            </td>
+                            <td className="py-3">
+                              <p className="font-medium text-white text-sm">{site.name}</p>
+                              <p className="text-xs text-slate-500 font-mono">{site.code}</p>
+                            </td>
+                            <td className="py-3 text-slate-400 capitalize hidden sm:table-cell">
+                              {FORMAT_MAP[site.format]?.label ?? site.format ?? '—'}
+                            </td>
+                            <td className="py-3 text-right font-medium text-white">
+                              {site.revenue === 0 && site.isOccupied ? (
+                                <span className="text-slate-600 text-xs" title="Campaña vendida en otro período — sigue ocupado pero no facturó dentro del rango seleccionado">
+                                  Período anterior
+                                </span>
+                              ) : site.revenue === 0 ? (
+                                <span className="text-slate-700 text-xs">$0</span>
+                              ) : (
+                                fmtARS(site.revenue)
+                              )}
+                            </td>
+                            <td className="py-3 text-right text-slate-400 hidden md:table-cell">
+                              {site.totalCosts > 0 ? fmtARS(Math.round(site.totalCosts / Math.max(1, Math.round(site.fixedCosts / Math.max(site.cost_rent + site.cost_electricity + site.cost_taxes + site.cost_maintenance + site.cost_imponderables, 1))))) : '—'}
+                            </td>
+                            <td className="py-3 text-right">
+                              {site.margin != null
+                                ? <span className={`font-semibold ${site.margin >= 40 ? 'text-brand' : site.margin >= 20 ? 'text-amber-400' : 'text-rose-400'}`}>
+                                    {fmtPct(site.margin)}
+                                  </span>
+                                : <span className="text-slate-700">—</span>
+                              }
+                            </td>
+                            <td className="py-3 text-right hidden lg:table-cell">
+                              {site.isOccupied ? (
+                                <div>
+                                  <span className="text-xs font-medium text-amber-400">Ocupado</span>
+                                  {site.activeCampaign && (
+                                    <p className="text-[10px] text-slate-500 mt-0.5">
+                                      {[site.activeCampaign.start_date, site.activeCampaign.end_date]
+                                        .filter(Boolean)
+                                        .map(d => new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' }))
+                                        .join(' → ')}
+                                    </p>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-brand">Disponible</span>
+                              )}
+                            </td>
+                          </tr>
+                          {/* expanded detail */}
+                          {isOpen && (
+                            <tr>
+                              <td colSpan={7} className="px-2 py-4 bg-surface-900/60 border-b border-surface-700/40">
+                                <div className="space-y-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+
+                                  {/* Ingresos */}
+                                  <div className="rounded-xl border border-surface-700 bg-surface-800 p-4 space-y-2">
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Ingresos</p>
+                                    <div className="flex justify-between text-sm">
+                                      <span className="text-slate-400">Facturación período</span>
+                                      <span className="text-white font-medium">{fmtARS(site.revenue)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                      <span className="text-slate-400">Tarifa base mensual</span>
+                                      <span className="text-slate-300">{fmtARS(site.base_rate)}</span>
+                                    </div>
+                                  </div>
+
+                                  {/* Costos fijos */}
+                                  <div className="rounded-xl border border-surface-700 bg-surface-800 p-4 space-y-2">
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Costos fijos / mes</p>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Alquiler</span><span className="text-slate-300">{fmtARS(site.cost_rent)}</span></div>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Luz</span><span className="text-slate-300">{fmtARS(site.cost_electricity)}</span></div>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Impuestos</span><span className="text-slate-300">{fmtARS(site.cost_taxes)}</span></div>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Mantenimiento</span><span className="text-slate-300">{fmtARS(site.cost_maintenance)}</span></div>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Imponderables</span><span className="text-slate-300">{fmtARS(site.cost_imponderables)}</span></div>
+                                    {site.printCost > 0 && (
+                                      <div className="flex justify-between text-sm"><span className="text-slate-400">Impresión</span><span className="text-slate-300">{fmtARS(site.printCost)}</span></div>
+                                    )}
+                                    <div className="flex justify-between text-sm pt-2 border-t border-surface-700 font-medium">
+                                      <span className="text-slate-300">Total/mes</span>
+                                      <span className="text-white">{fmtARS((site.cost_rent ?? 0) + (site.cost_electricity ?? 0) + (site.cost_taxes ?? 0) + (site.cost_maintenance ?? 0) + (site.cost_imponderables ?? 0))}</span>
+                                    </div>
+                                    <div className="flex justify-between text-xs text-slate-500">
+                                      <span>Total período ({site.fixedCosts > 0 && site.cost_rent > 0 ? Math.round(site.fixedCosts / ((site.cost_rent ?? 0) + (site.cost_electricity ?? 0) + (site.cost_taxes ?? 0) + (site.cost_maintenance ?? 0) + (site.cost_imponderables ?? 0)) * 10) / 10 : '?'} meses)</span>
+                                      <span className="text-slate-400">{fmtARS(site.fixedCosts)}</span>
+                                    </div>
+                                  </div>
+
+                                  {/* Comisiones */}
+                                  <div className="rounded-xl border border-surface-700 bg-surface-800 p-4 space-y-2">
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Comisiones pagadas</p>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Vendedor ({fmtPct(site.sellerPct)})</span><span className="text-slate-300">{fmtARS(site.sellerComm)}</span></div>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Agencia ({fmtPct(site.agencyPct)})</span><span className="text-slate-300">{fmtARS(site.agencyComm)}</span></div>
+                                    {site.asociPct > 0 && (
+                                      <div className="flex justify-between text-sm">
+                                        <span className="text-slate-400">{site.asociName ?? 'Asociado'} ({fmtPct(site.asociPct)})</span>
+                                        <span className="text-slate-300">{fmtARS(site.asociComm)}</span>
+                                      </div>
+                                    )}
+                                    <div className="flex justify-between text-sm pt-2 border-t border-surface-700 font-medium">
+                                      <span className="text-slate-300">Total comisiones</span>
+                                      <span className="text-white">{fmtARS(site.totalComm)}</span>
+                                    </div>
+                                  </div>
+
+                                  {/* Resultado */}
+                                  <div className="rounded-xl border border-surface-700 bg-surface-800 p-4 space-y-2">
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Resultado</p>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Ingreso bruto</span><span className="text-slate-300">{fmtARS(site.revenue)}</span></div>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Total costos</span><span className="text-slate-300">− {fmtARS(site.totalCosts)}</span></div>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Total comisiones</span><span className="text-slate-300">− {fmtARS(site.totalComm)}</span></div>
+                                    <div className={`flex justify-between text-sm pt-2 border-t border-surface-700 font-bold ${site.netProfit >= 0 ? 'text-teal-400' : 'text-red-400'}`}>
+                                      <span>Utilidad neta</span><span>{fmtARS(site.netProfit)}</span>
+                                    </div>
+                                    {site.roi !== null && (
+                                      <div className={`flex justify-between text-sm font-medium ${site.roi >= 0 ? 'text-teal-400/80' : 'text-red-400/80'}`}>
+                                        <span>ROI</span><span>{fmtPct(site.roi)}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Historial de ocupación */}
+                                {(() => {
+                                  const { from: mStart, to: mEnd } = getDateBounds(dateRange, customStart, customEnd)
+                                  const campaigns = propItems
+                                    .filter(pi => pi.site_id === site.id)
+                                    .map(pi => {
+                                      const p = proposals.find(p => p.id === pi.proposal_id)
+                                      return p ? { ...pi, proposalTitle: p.title, clientName: p.client_name } : null
+                                    })
+                                    .filter(Boolean)
+
+                                  const months = []
+                                  const cursor = new Date(mStart.getFullYear(), mStart.getMonth() - 11, 1)
+                                  while (cursor <= mEnd) {
+                                    const mS = new Date(cursor.getFullYear(), cursor.getMonth(), 1)
+                                    const mE = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0)
+                                    const isOccupied = propItems.some(pi => {
+                                      if (pi.site_id !== site.id) return false
+                                      const p = proposals.find(p => p.id === pi.proposal_id)
+                                      if (!p) return false
+                                      const s = new Date(pi.start_date || p.start_date)
+                                      const e = new Date(pi.end_date || p.end_date)
+                                      return s <= mE && e >= mS
+                                    })
+                                    months.push({
+                                      label: cursor.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' }),
+                                      occupied: isOccupied,
+                                    })
+                                    cursor.setMonth(cursor.getMonth() + 1)
+                                  }
+
+                                  const occupiedMonths = months.filter(m => m.occupied).length
+                                  const occupancyPct = months.length > 0 ? Math.round(occupiedMonths / months.length * 100) : 0
+                                  const fmtDate = d => new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+
+                                  return (
+                                    <div className="rounded-xl border border-surface-700 bg-surface-800/50 p-4">
+                                      <p className="text-xs font-semibold text-slate-300 mb-3">
+                                        Historial de ocupación — {occupiedMonths}/{months.length} meses ({occupancyPct}%)
+                                      </p>
+                                      <div className="flex flex-wrap gap-1.5 mb-3">
+                                        {months.map((m, i) => (
+                                          <span key={i} className={`rounded-full px-2 py-0.5 text-[10px] font-medium border ${
+                                            m.occupied ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : 'bg-surface-700 text-slate-600 border-surface-600'
+                                          }`}>
+                                            {m.label}
+                                          </span>
+                                        ))}
+                                      </div>
+                                      {campaigns.length > 0 ? (
+                                        <div className="space-y-1.5 border-t border-surface-700 pt-3">
+                                          <p className="text-[10px] text-slate-500 font-medium mb-1">Campañas en el período:</p>
+                                          {campaigns.map((c, i) => (
+                                            <div key={i} className="flex items-center justify-between text-[10px]">
+                                              <span className="text-slate-400 truncate max-w-[60%]">{c.proposalTitle}{c.clientName ? ` — ${c.clientName}` : ''}</span>
+                                              <span className="text-slate-500 shrink-0 ml-2">{fmtDate(c.start_date)} → {fmtDate(c.end_date)}</span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <p className="text-xs text-slate-600">Sin campañas en este período</p>
+                                      )}
+                                    </div>
+                                  )
+                                })()}
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      )
+                    })
+                  }
+
                   return (
-                    <React.Fragment key={site.id}>
+                    <>
+                      {/* Grupo A: Con actividad en el período */}
+                      {groupA.length > 0 && <SiteRows sites={groupA} groupKey="active" />}
+
+                      {/* Grupo B: Ocupados fuera del período */}
+                      {groupB.length > 0 && (
+                        <>
+                          <GroupHeader label="Ocupados — período anterior" count={groupB.length} groupKey="occupied" color="text-amber-400/70" />
+                          <SiteRows sites={groupB} groupKey="occupied" />
+                        </>
+                      )}
+
+                      {/* Grupo C: Sin actividad */}
+                      {groupC.length > 0 && (
+                        <>
+                          <GroupHeader label="Sin actividad en el período" count={groupC.length} groupKey="inactive" color="text-slate-500" />
+                          <SiteRows sites={groupC} groupKey="inactive" />
+                        </>
+                      )}
+                    </>
+                  )
+                })()}
                       {/* main row */}
                       <tr
                         onClick={() => toggleExpanded(site.id)}
@@ -1139,236 +1397,6 @@ export default function Reports() {
                         </td>
                       </tr>
 
-                      {/* expanded detail */}
-                      {isOpen && (
-                        <tr>
-                          <td colSpan={7} className="px-2 py-4 bg-surface-900/60 border-b border-surface-700/40">
-                            <div className="space-y-3">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-
-                              {/* Ingresos */}
-                              <div className="rounded-xl border border-surface-700 bg-surface-800 p-4 space-y-2">
-                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">
-                                  Ingresos
-                                </p>
-                                <div className="flex justify-between text-sm">
-                                  <span className="text-slate-400">Facturación período</span>
-                                  <span className="text-white font-medium">{fmtARS(site.revenue)}</span>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                  <span className="text-slate-400">Tarifa base mensual</span>
-                                  <span className="text-slate-300">{fmtARS(site.base_rate)}</span>
-                                </div>
-                              </div>
-
-                              {/* Costos fijos */}
-                              <div className="rounded-xl border border-surface-700 bg-surface-800 p-4 space-y-2">
-                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">
-                                  Costos fijos / mes
-                                </p>
-                                <div className="flex justify-between text-sm">
-                                  <span className="text-slate-400">Alquiler</span>
-                                  <span className="text-slate-300">{fmtARS(site.cost_rent)}</span>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                  <span className="text-slate-400">Luz</span>
-                                  <span className="text-slate-300">{fmtARS(site.cost_electricity)}</span>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                  <span className="text-slate-400">Impuestos</span>
-                                  <span className="text-slate-300">{fmtARS(site.cost_taxes)}</span>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                  <span className="text-slate-400">Mantenimiento</span>
-                                  <span className="text-slate-300">{fmtARS(site.cost_maintenance)}</span>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                  <span className="text-slate-400">Imponderables</span>
-                                  <span className="text-slate-300">{fmtARS(site.cost_imponderables)}</span>
-                                </div>
-                                {site.printCost > 0 && (
-                                  <div className="flex justify-between text-sm">
-                                    <span className="text-slate-400">Impresión</span>
-                                    <span className="text-slate-300">{fmtARS(site.printCost)}</span>
-                                  </div>
-                                )}
-                                <div className="flex justify-between text-sm pt-2 border-t border-surface-700 font-medium">
-                                  <span className="text-slate-300">Total/mes</span>
-                                  <span className="text-white">{fmtARS(
-                                    (site.cost_rent ?? 0) + (site.cost_electricity ?? 0) +
-                                    (site.cost_taxes ?? 0) + (site.cost_maintenance ?? 0) +
-                                    (site.cost_imponderables ?? 0)
-                                  )}</span>
-                                </div>
-                                <div className="flex justify-between text-sm text-xs text-slate-500">
-                                  <span>Total período ({site.fixedCosts > 0 && site.cost_rent > 0 ? Math.round(site.fixedCosts / ((site.cost_rent ?? 0) + (site.cost_electricity ?? 0) + (site.cost_taxes ?? 0) + (site.cost_maintenance ?? 0) + (site.cost_imponderables ?? 0)) * 10) / 10 : '?'} meses)</span>
-                                  <span className="text-slate-400">{fmtARS(site.fixedCosts)}</span>
-                                </div>
-                              </div>
-
-                              {/* Comisiones */}
-                              <div className="rounded-xl border border-surface-700 bg-surface-800 p-4 space-y-2">
-                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">
-                                  Comisiones pagadas
-                                </p>
-                                <div className="flex justify-between text-sm">
-                                  <span className="text-slate-400">Vendedor ({fmtPct(site.sellerPct)})</span>
-                                  <span className="text-slate-300">{fmtARS(site.sellerComm)}</span>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                  <span className="text-slate-400">Agencia ({fmtPct(site.agencyPct)})</span>
-                                  <span className="text-slate-300">{fmtARS(site.agencyComm)}</span>
-                                </div>
-                                {site.asociPct > 0 && (
-                                  <div className="flex justify-between text-sm">
-                                    <span className="text-slate-400">
-                                      {site.asociName ?? 'Asociado'} ({fmtPct(site.asociPct)})
-                                    </span>
-                                    <span className="text-slate-300">{fmtARS(site.asociComm)}</span>
-                                  </div>
-                                )}
-                                <div className="flex justify-between text-sm pt-2 border-t border-surface-700 font-medium">
-                                  <span className="text-slate-300">Total comisiones</span>
-                                  <span className="text-white">{fmtARS(site.totalComm)}</span>
-                                </div>
-                              </div>
-
-                              {/* Resultado */}
-                              <div className="rounded-xl border border-surface-700 bg-surface-800 p-4 space-y-2">
-                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">
-                                  Resultado
-                                </p>
-                                <div className="flex justify-between text-sm">
-                                  <span className="text-slate-400">Ingreso bruto</span>
-                                  <span className="text-slate-300">{fmtARS(site.revenue)}</span>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                  <span className="text-slate-400">Total costos</span>
-                                  <span className="text-slate-300">− {fmtARS(site.totalCosts)}</span>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                  <span className="text-slate-400">Total comisiones</span>
-                                  <span className="text-slate-300">− {fmtARS(site.totalComm)}</span>
-                                </div>
-                                <div className={`flex justify-between text-sm pt-2 border-t border-surface-700 font-bold ${
-                                  site.netProfit >= 0 ? 'text-teal-400' : 'text-red-400'
-                                }`}>
-                                  <span>Utilidad neta</span>
-                                  <span>{fmtARS(site.netProfit)}</span>
-                                </div>
-                                {site.roi !== null && (
-                                  <div className={`flex justify-between text-sm font-medium ${
-                                    site.roi >= 0 ? 'text-teal-400/80' : 'text-red-400/80'
-                                  }`}>
-                                    <span>ROI</span>
-                                    <span>{fmtPct(site.roi)}</span>
-                                  </div>
-                                )}
-                              </div>
-
-                            </div>
-
-                            {/* Historial de ocupación */}
-                            {(() => {
-                              const { from, to } = getDateBounds(dateRange, customStart, customEnd)
-                              const filterFrom = from ?? new Date(0)
-                              const filterTo   = to   ?? new Date()
-
-                              const propStatusLookup = {}
-                              const propTitleLookup  = {}
-                              const propClientLookup = {}
-                              proposals.forEach(p => {
-                                propStatusLookup[p.id] = p.status
-                                propTitleLookup[p.id]  = p.title ?? 'Sin nombre'
-                                propClientLookup[p.id] = p.client_name ?? ''
-                              })
-
-                              const campaigns = propItems
-                                .filter(pi => {
-                                  if (pi.site_id !== site.id) return false
-                                  if (!pi.start_date || !pi.end_date) return false
-                                  const piStart = new Date(pi.start_date)
-                                  const piEnd   = new Date(pi.end_date)
-                                  return piStart <= filterTo && piEnd >= filterFrom &&
-                                    propStatusLookup[pi.proposal_id] === 'accepted'
-                                })
-                                .map(pi => ({
-                                  ...pi,
-                                  proposalTitle: propTitleLookup[pi.proposal_id],
-                                  clientName:    propClientLookup[pi.proposal_id],
-                                }))
-
-                              // Meses del período
-                              const months = []
-                              const cursor = new Date(filterFrom.getFullYear(), filterFrom.getMonth(), 1)
-                              const endCursor = new Date(filterTo.getFullYear(), filterTo.getMonth(), 1)
-                              while (cursor <= endCursor) {
-                                const mStart = new Date(cursor)
-                                const mEnd   = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0)
-                                const isOccupied = campaigns.some(pi => {
-                                  const s = new Date(pi.start_date)
-                                  const e = new Date(pi.end_date)
-                                  return s <= mEnd && e >= mStart
-                                })
-                                months.push({
-                                  label: cursor.toLocaleDateString('es-AR', { month: 'short', year: '2-digit' }),
-                                  occupied: isOccupied,
-                                })
-                                cursor.setMonth(cursor.getMonth() + 1)
-                              }
-
-                              const occupiedMonths = months.filter(m => m.occupied).length
-                              const occupancyPct   = months.length > 0
-                                ? Math.round(occupiedMonths / months.length * 100)
-                                : 0
-                              const fmtDate = d => new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
-
-                              return (
-                                <div className="rounded-xl border border-surface-700 bg-surface-800/50 p-4">
-                                  <p className="text-xs font-semibold text-slate-300 mb-3">
-                                    Historial de ocupación — {occupiedMonths}/{months.length} meses ({occupancyPct}%)
-                                  </p>
-
-                                  <div className="flex flex-wrap gap-1.5 mb-3">
-                                    {months.map((m, i) => (
-                                      <span key={i} className={`rounded-full px-2 py-0.5 text-[10px] font-medium border ${
-                                        m.occupied
-                                          ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-                                          : 'bg-surface-700 text-slate-600 border-surface-600'
-                                      }`}>
-                                        {m.label}
-                                      </span>
-                                    ))}
-                                  </div>
-
-                                  {campaigns.length > 0 ? (
-                                    <div className="space-y-1.5 border-t border-surface-700 pt-3">
-                                      <p className="text-[10px] text-slate-500 font-medium mb-1">Campañas en el período:</p>
-                                      {campaigns.map((c, i) => (
-                                        <div key={i} className="flex items-center justify-between text-[10px]">
-                                          <span className="text-slate-400 truncate max-w-[60%]">
-                                            {c.proposalTitle}{c.clientName ? ` — ${c.clientName}` : ''}
-                                          </span>
-                                          <span className="text-slate-500 shrink-0 ml-2">
-                                            {fmtDate(c.start_date)} → {fmtDate(c.end_date)}
-                                          </span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    <p className="text-xs text-slate-600">Sin campañas en este período</p>
-                                  )}
-                                </div>
-                              )
-                            })()}
-
-                            </div>
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
-                  )
-                })}
               </tbody>
             </table>
           </div>
