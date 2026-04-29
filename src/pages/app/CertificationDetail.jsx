@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
+import { generateCertificationPDF } from '../../features/campaigns/generateCertificationPDF'
 import {
   ArrowLeft, Camera, Check, Clock, Download, MapPin,
   AlertTriangle, FileText, Calendar, User, RefreshCw,
@@ -153,13 +154,14 @@ function StatusBadge({ status }) {
 export default function CertificationDetail() {
   const { id }       = useParams()
   const navigate     = useNavigate()
-  const { profile, isOwner, isManager } = useAuth()
+  const { profile, isOwner, isManager, org } = useAuth()
 
   const [cert,    setCert]    = useState(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState('')
   const [lightboxUrl, setLightboxUrl] = useState(null)
   const [markingAsSent, setMarkingAsSent] = useState(false)
+  const [generatingPDF, setGeneratingPDF] = useState(false)
 
   useEffect(() => { loadCert() }, [id])
 
@@ -209,6 +211,18 @@ export default function CertificationDetail() {
     const freshPhotos = await refreshPhotoUrls(data.photos ?? [])
     setCert({ ...data, photos: freshPhotos })
     setLoading(false)
+  }
+
+  async function handleDownloadPDF() {
+    if (!cert) return
+    setGeneratingPDF(true)
+    try {
+      await generateCertificationPDF({ cert, profile, org, pdfTheme: 'dark' })
+    } catch (err) {
+      console.error('PDF error:', err)
+    } finally {
+      setGeneratingPDF(false)
+    }
   }
 
   async function handleMarkAsSent() {
@@ -363,11 +377,14 @@ export default function CertificationDetail() {
           {/* Descargar PDF — placeholder, sprint siguiente */}
           <button
             type="button"
-            disabled
-            title="PDF disponible próximamente"
-            className="btn-secondary flex items-center gap-2 opacity-50 cursor-not-allowed"
+            onClick={handleDownloadPDF}
+            disabled={generatingPDF}
+            className="btn-secondary flex items-center gap-2"
           >
-            <Download className="h-4 w-4" /> Descargar PDF
+            {generatingPDF
+              ? <><RefreshCw className="h-4 w-4 animate-spin" /> Generando...</>
+              : <><Download className="h-4 w-4" /> Descargar PDF</>
+            }
           </button>
 
           {/* Link a campaña */}
