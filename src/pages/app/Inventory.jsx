@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Search, MapPin, List, LayoutGrid, ChevronDown, ChevronUp, Save, Pencil, RefreshCw, Download, Image, Sparkles, X, AlertCircle } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
@@ -533,9 +534,28 @@ function InventoryCard({ item, onEdit }) {
 export default function Inventory() {
   const { profile, isOwner, isManager } = useAuth()
   const canAdmin = isOwner || isManager
-  const [items, setItems]         = useState([])
-  const [loading, setLoading]     = useState(false)
-  const [fetchError, setFetchError] = useState('')
+  const queryClient = useQueryClient()
+
+  const { data: items = [], isLoading: loading, error: fetchErrorObj } = useQuery({
+    queryKey: ['inventory', profile?.org_id],
+    enabled:  !!profile?.org_id,
+    staleTime: 1000 * 60 * 5, // 5 minutos — inventario cambia poco
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('inventory')
+        .select('*')
+        .eq('org_id', profile.org_id)
+        .order('created_at', { ascending: false })
+      if (error) throw error
+      return data ?? []
+    },
+  })
+
+  const fetchError = fetchErrorObj?.message ?? ''
+
+  function loadItems() {
+    queryClient.invalidateQueries({ queryKey: ['inventory', profile?.org_id] })
+  }
   const [search,       setSearch]       = useState('')
   const [filterZone,   setFilterZone]   = useState('')
   const [filterFormat, setFilterFormat] = useState('')
@@ -555,51 +575,6 @@ export default function Inventory() {
     setViewMode(mode)
     localStorage.setItem('inventory_view', mode)
   }
-
-  const loadItems = useCallback(async () => {
-    if (!profile?.org_id) return
-    setLoading(true)
-    setFetchError('')
-
-    // AbortController para timeout de 10 segundos
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
-
-    try {
-      const { data, error } = await supabase
-        .from('inventory')
-        .select('*')
-        .eq('org_id', profile.org_id)
-        .order('created_at', { ascending: false })
-        .abortSignal(controller.signal)
-
-      clearTimeout(timer)
-
-      console.log('📦 Inventory data loaded:', data?.length, 'items')
-      if (data?.[0]) {
-        console.log('First item sample:', {
-          name: data[0].name,
-          has_photo_url: !!data[0].photo_url,
-          has_image_url: !!data[0].image_url,
-          has_caras: !!data[0].caras,
-          caras_type: typeof data[0].caras,
-          caras_value: data[0].caras,
-        })
-      }
-
-      if (error) throw error
-      setItems(data ?? [])
-    } catch (err) {
-      const msg = err?.name === 'AbortError' || err?.message?.includes('abort')
-        ? 'La consulta tardó demasiado. Verificá tu conexión e intentá de nuevo.'
-        : (err?.message ?? 'Error al cargar el inventario')
-      setFetchError(msg)
-    } finally {
-      setLoading(false)
-    }
-  }, [profile?.org_id])
-
-  useEffect(() => { loadItems() }, [loadItems])
 
   function handleSaved() {
     setEditingItem(null)
