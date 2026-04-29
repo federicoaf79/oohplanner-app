@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, Megaphone, MapPin, FileText,
   BarChart2, Users, Settings, X, Receipt, Crosshair,
-  BookUser, HelpCircle,
+  BookUser, HelpCircle, ShieldCheck,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { cn } from '../../lib/utils'
@@ -42,10 +42,9 @@ const NAV_SECTIONS = [
     items: [
       { label: 'Propuestas', path: '/app/proposals', icon: FileText,
         roles: ['owner', 'manager', 'salesperson'] },
-      { label: 'Campañas',   path: '/app/campaigns', icon: Megaphone,
-        roles: ['owner', 'manager', 'salesperson'] },
-      { label: 'Contactos',  path: '/app/contacts',  icon: BookUser,
-        roles: ['owner', 'manager', 'salesperson'] },
+      { label: 'Campañas',        path: '/app/campaigns',       icon: Megaphone,     roles: ['owner', 'manager', 'salesperson'] },
+      { label: 'Certificaciones', path: '/app/certifications',  icon: ShieldCheck,   roles: ['owner', 'manager', 'salesperson'] },
+      { label: 'Contactos',       path: '/app/contacts',        icon: BookUser,      roles: ['owner', 'manager', 'salesperson'] },
       { label: 'Equipo',     path: '/app/team',      icon: Users,
         roles: ['owner'] },
       { label: 'Soporte',    path: '/app/support',   icon: HelpCircle,

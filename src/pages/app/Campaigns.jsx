@@ -797,6 +797,39 @@ function ProductionComponentBlock({ label, standard, efectiva, enabled, onEnable
   )
 }
 
+// ── CertificationLink — muestra si existe certificación para esta campaña ────
+
+function CertificationLink({ proposalId }) {
+  const [cert, setCert] = useState(null)
+  useEffect(() => {
+    if (!proposalId) return
+    supabase.from('campaign_certifications')
+      .select('id, status, created_at')
+      .eq('proposal_id', proposalId)
+      .maybeSingle()
+      .then(({ data }) => setCert(data))
+  }, [proposalId])
+
+  if (!cert) return null
+  return (
+    <div className="md:col-span-2 flex items-center gap-3 rounded-lg border border-brand/20 bg-brand/5 px-4 py-3">
+      <span className="text-lg">📷</span>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-semibold text-white">Certificacion disponible</p>
+        <p className="text-xs text-slate-500">
+          Generada el {new Date(cert.created_at).toLocaleDateString('es-AR')}
+        </p>
+      </div>
+      <Link
+        to={`/app/certifications/${cert.id}`}
+        className="shrink-0 text-xs font-medium text-brand hover:underline"
+      >
+        Ver certificacion →
+      </Link>
+    </div>
+  )
+}
+
 // ── Campaign detail modal ─────────────────────────────────────
 
 function CampaignModal({ campaign, onClose, onItemsUpdated }) {
@@ -848,7 +881,7 @@ function CampaignModal({ campaign, onClose, onItemsUpdated }) {
           {[
             { id: 'resumen',    label: 'Resumen',    show: true },
             { id: 'inventario', label: 'Inventario', show: true },
-            { id: 'costos',     label: 'Costos de Producción', show: (role === 'owner' || role === 'manager') && items.length > 0 },
+            { id: 'costos',     label: 'Costos de Produccion',   show: (role === 'owner' || role === 'manager') && items.length > 0 },
           ].filter(t => t.show).map(t => (
             <button
               key={t.id}
@@ -915,6 +948,9 @@ function CampaignModal({ campaign, onClose, onItemsUpdated }) {
                   </div>
                 </div>
               )}
+
+              {/* Link a certificación si existe */}
+              <CertificationLink proposalId={campaign.id} />
             </div>
           )}
 
@@ -998,6 +1034,7 @@ function CampaignModal({ campaign, onClose, onItemsUpdated }) {
               onItemsUpdated={onItemsUpdated}
             />
           )}
+
         </div>
         {showPrint && <PrintMeasuresModal campaign={campaign} onClose={() => setShowPrint(false)} />}
       </div>

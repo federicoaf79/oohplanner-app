@@ -15,7 +15,8 @@ import NotFound      from './pages/NotFound'
 
 // Pages — protected app
 import Dashboard    from './pages/app/Dashboard'
-import Campaigns    from './pages/app/Campaigns'
+import Campaigns        from './pages/app/Campaigns'
+import Certifications   from './pages/app/Certifications'
 import Inventory    from './pages/app/Inventory'
 import Proposals    from './pages/app/Proposals'
 import ProposalNew  from './pages/app/ProposalNew'
@@ -60,6 +61,7 @@ const router = createBrowserRouter([
         children: [
           { path: '/app',                      element: <Dashboard /> },
           { path: '/app/campaigns',            element: <Campaigns /> },
+          { path: '/app/certifications',        element: <Certifications /> },
           { path: '/app/proposals',            element: <Proposals /> },
           { path: '/app/proposals/new',        element: <ProposalNew /> },
           { path: '/app/proposals/:id/edit',   element: <ProposalNew /> },
