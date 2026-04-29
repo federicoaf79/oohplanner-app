@@ -1054,10 +1054,10 @@ export default function Reports() {
                   const groupB = siteProfit.filter(s => s.revenue === 0 && s.isOccupied)
                   const groupC = siteProfit.filter(s => s.revenue === 0 && !s.isOccupied)
 
-                  const GroupHeader = ({ label, count, groupKey, color = 'text-slate-400' }) => {
+                  const renderGroupHeader = (label, count, groupKey, color = 'text-slate-400') => {
                     const isGroupOpen = !expanded.has(`__group_${groupKey}`)
                     return (
-                      <tr
+                      <tr key={`header_${groupKey}`}
                         className="border-b border-surface-700/60 bg-surface-800/80 cursor-pointer hover:bg-surface-700/40 transition-colors"
                         onClick={() => toggleExpanded(`__group_${groupKey}`)}
                       >
@@ -1075,9 +1075,9 @@ export default function Reports() {
                     )
                   }
 
-                  const SiteRows = ({ sites, groupKey }) => {
+                  const renderSiteRows = (sites, groupKey) => {
                     const isGroupOpen = !expanded.has(`__group_${groupKey}`)
-                    if (!isGroupOpen) return null
+                    if (!isGroupOpen) return []
                     return sites.map(site => {
                       const isOpen = expanded.has(site.id)
                       return (
@@ -1291,112 +1291,17 @@ export default function Reports() {
                   return (
                     <>
                       {/* Grupo A: Con actividad en el período */}
-                      {groupA.length > 0 && <SiteRows sites={groupA} groupKey="active" />}
+                      {renderSiteRows(groupA, 'active')}
 
                       {/* Grupo B: Ocupados fuera del período */}
-                      {groupB.length > 0 && (
-                        <>
-                          <GroupHeader label="Ocupados — período anterior" count={groupB.length} groupKey="occupied" color="text-amber-400/70" />
-                          <SiteRows sites={groupB} groupKey="occupied" />
-                        </>
-                      )}
+                      {groupB.length > 0 && renderGroupHeader('Ocupados — período anterior', groupB.length, 'occupied', 'text-amber-400/70')}
+                      {renderSiteRows(groupB, 'occupied')}
 
                       {/* Grupo C: Sin actividad */}
-                      {groupC.length > 0 && (
-                        <>
-                          <GroupHeader label="Sin actividad en el período" count={groupC.length} groupKey="inactive" color="text-slate-500" />
-                          <SiteRows sites={groupC} groupKey="inactive" />
-                        </>
-                      )}
+                      {groupC.length > 0 && renderGroupHeader('Sin actividad en el período', groupC.length, 'inactive', 'text-slate-500')}
+                      {renderSiteRows(groupC, 'inactive')}
                     </>
                   )
-                })()}
-                      {/* main row */}
-                      <tr
-                        onClick={() => toggleExpanded(site.id)}
-                        className="border-b border-surface-700/40 hover:bg-surface-800/40 cursor-pointer transition-colors"
-                      >
-                        <td className="py-3 pr-2 pl-1">
-                          {isOpen
-                            ? <ChevronDown  className="h-3.5 w-3.5 text-slate-500" />
-                            : <ChevronRight className="h-3.5 w-3.5 text-slate-500" />
-                          }
-                        </td>
-                        <td className="py-3">
-                          <p className="font-medium text-white text-sm">{site.name}</p>
-                          <p className="text-xs text-slate-500 font-mono">{site.code}</p>
-                        </td>
-                        <td className="py-3 text-slate-400 capitalize hidden sm:table-cell">
-                          {FORMAT_MAP[site.format]?.label ?? site.format ?? '—'}
-                        </td>
-                        <td className="py-3 text-right font-medium text-white">
-                          {site.revenue === 0 && site.isOccupied ? (
-                            <span
-                              className="text-slate-600 text-xs"
-                              title="Campaña vendida en otro período — sigue ocupado pero no facturó dentro del rango seleccionado"
-                            >
-                              Período anterior
-                            </span>
-                          ) : (
-                            fmtARS(site.revenue)
-                          )}
-                        </td>
-                        <td className="py-3 text-right text-slate-400 hidden md:table-cell">
-                          {site.revenue === 0 && site.isOccupied
-                            ? <span className="text-slate-600">—</span>
-                            : fmtARS(site.totalCosts)}
-                        </td>
-                        <td className="py-3 text-right">
-                          {site.margin !== null ? (
-                            <span className={`font-medium ${
-                              site.margin >= 50 ? 'text-teal-400' :
-                              site.margin >= 20 ? 'text-amber-400' : 'text-red-400'
-                            }`}>
-                              {fmtPct(site.margin)}
-                            </span>
-                          ) : (
-                            <span className="text-slate-600">—</span>
-                          )}
-                        </td>
-                        <td className="py-3 text-right hidden lg:table-cell">
-                          {(() => {
-                            if (!site.isOccupied) {
-                              return <span className="text-xs text-teal-400 font-medium">Disponible</span>
-                            }
-                            const c = site.activeCampaign
-                            const fmt = d => new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' })
-
-                            let daysLeft = null
-                            if (c?.end_date) {
-                              const today = new Date()
-                              today.setHours(0, 0, 0, 0)
-                              const endDate = new Date(c.end_date)
-                              endDate.setHours(0, 0, 0, 0)
-                              daysLeft = Math.round((endDate - today) / 86400000)
-                            }
-                            const showSoon = daysLeft !== null && daysLeft <= 7
-                            const soonLabel =
-                              daysLeft === 0 ? 'Disponible mañana'
-                              : `Disponible en ${daysLeft} día${daysLeft > 1 ? 's' : ''}`
-
-                            return (
-                              <div className="text-right">
-                                <span className="text-xs text-amber-400 font-medium block">Ocupado</span>
-                                {c?.start_date && c?.end_date && (
-                                  <span className="text-[10px] text-slate-500">{fmt(c.start_date)} → {fmt(c.end_date)}</span>
-                                )}
-                                {showSoon && (
-                                  <span className="text-[10px] text-amber-300 block mt-0.5">
-                                    {soonLabel}
-                                    <span className="text-slate-600"> · salvo renovación</span>
-                                  </span>
-                                )}
-                              </div>
-                            )
-                          })()}
-                        </td>
-                      </tr>
-
               </tbody>
             </table>
           </div>
