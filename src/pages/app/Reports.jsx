@@ -146,7 +146,9 @@ export default function Reports() {
         { data: propData, error: e1 },
         { data: itemData, error: e2 },
         { data: profData, error: e3 },
-        { data: invData,  error: e4 },
+        { data: commData, error: e4 },
+        { data: contData, error: e5 },
+        { data: invData,  error: e6 },
       ] = await Promise.all([
         supabase.from('proposals')
           .select('id, status, workflow_status, created_at, accepted_at, created_by, discount_pct, total_value, title, client_name')
@@ -161,6 +163,14 @@ export default function Reports() {
           .select('id, full_name, role, commission_pct, override_pct, commission_scope, monthly_target_ars')
           .eq('org_id', orgId)
           .eq('is_active', true),
+
+        supabase.from('campaign_commissions')
+          .select('id, proposal_id, commission_type, commission_pct, amount_fixed, revenue_base, status, notes, beneficiary_profile_id, beneficiary_contact_id, created_at')
+          .eq('org_id', orgId),
+
+        supabase.from('contacts')
+          .select('id, name, company, roles')
+          .eq('org_id', orgId),
 
         supabase.from('inventory')
           .select(`
@@ -180,6 +190,8 @@ export default function Reports() {
       if (e2) throw new Error(e2.message)
       if (e3) throw new Error(e3.message)
       if (e4) throw new Error(e4.message)
+      if (e5) throw new Error(e5.message)
+      if (e6) throw new Error(e6.message)
 
       const profMap = {}
       ;(profData ?? []).forEach(p => { profMap[p.id] = p })
@@ -225,20 +237,24 @@ export default function Reports() {
       })
 
       return {
-        proposals: flatProposals,
-        propItems: flatItems,
-        profiles:  profData ?? [],
-        inventory: invData ?? [],
+        proposals:   flatProposals,
+        propItems:   flatItems,
+        profiles:    profData ?? [],
+        commissions: commData ?? [],
+        contacts:    contData ?? [],
+        inventory:   invData ?? [],
       }
     },
   })
 
   // Extraer datos del resultado cacheado
-  const proposals = reportData?.proposals ?? []
-  const propItems  = reportData?.propItems  ?? []
-  const profiles   = reportData?.profiles   ?? []
-  const inventory  = reportData?.inventory  ?? []
-  const error      = queryError?.message    ?? ''
+  const proposals   = reportData?.proposals   ?? []
+  const propItems   = reportData?.propItems   ?? []
+  const profiles    = reportData?.profiles    ?? []
+  const commissions = reportData?.commissions ?? []
+  const contacts    = reportData?.contacts    ?? []
+  const inventory   = reportData?.inventory   ?? []
+  const error       = queryError?.message     ?? ''
 
   // main tab
   const [mainTab, setMainTab] = useState('actividad')
@@ -726,6 +742,7 @@ export default function Reports() {
           { id: 'actividad',    label: 'Mi actividad',  show: true },
           { id: 'rentabilidad', label: 'Rentabilidad',  show: canSeeRentabilidad },
           { id: 'audiencias',   label: 'Audiencias',    show: true },
+          { id: 'facilitadores', label: 'Facilitadores',  show: isOwner },
         ].filter(t => t.show).map(t => (
           <button
             key={t.id}
@@ -1492,6 +1509,199 @@ export default function Reports() {
                 </tbody>
               </table>
             </div>
+          </Section>
+
+        </div>
+      )}
+
+      {/* ── TAB: FACILITADORES ─────────────────────────────────────────── */}
+      {mainTab === 'facilitadores' && isOwner && (
+        <div className="space-y-6">
+
+          {/* KPIs facilitadores */}
+          {(() => {
+            const total = commissions.reduce((s, c) => s + (Number(c.amount_fixed) || 0), 0)
+            const external = commissions.filter(c => c.commission_type === 'sales_facilitator' || c.commission_type === 'hidden_facilitator')
+            const internal = commissions.filter(c => c.commission_type === 'internal_seller')
+            return (
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="card p-4">
+                  <p className="text-xs text-slate-500">Total comisiones</p>
+                  <p className="text-2xl font-bold text-white mt-1">{fmtARS(total)}</p>
+                  <p className="text-xs text-slate-600 mt-0.5">Todas las campañas</p>
+                </div>
+                <div className="card p-4">
+                  <p className="text-xs text-slate-500">Facilitadores externos</p>
+                  <p className="text-2xl font-bold text-amber-400 mt-1">
+                    {new Set(external.map(c => c.beneficiary_contact_id).filter(Boolean)).size}
+                  </p>
+                  <p className="text-xs text-slate-600 mt-0.5">{external.length} registros</p>
+                </div>
+                <div className="card p-4">
+                  <p className="text-xs text-slate-500">Comisiones internas</p>
+                  <p className="text-2xl font-bold text-brand mt-1">{internal.length}</p>
+                  <p className="text-xs text-slate-600 mt-0.5">Vendedores del equipo</p>
+                </div>
+                <div className="card p-4">
+                  <p className="text-xs text-slate-500">Encubiertas</p>
+                  <p className="text-2xl font-bold text-rose-400 mt-1">
+                    {commissions.filter(c => c.commission_type === 'hidden_facilitator').length}
+                  </p>
+                  <p className="text-xs text-slate-600 mt-0.5">Sin beneficiario visible</p>
+                </div>
+              </div>
+            )
+          })()}
+
+          {/* Tabla por facilitador externo */}
+          <Section title="Comisiones por facilitador externo" description="Confidencial — solo visible para el dueño">
+            {(() => {
+              const contactMap = {}
+              contacts.forEach(c => { contactMap[c.id] = c })
+              const profMap = {}
+              profiles.forEach(p => { profMap[p.id] = p })
+              const propMap = {}
+              proposals.forEach(p => { propMap[p.id] = p })
+
+              // Agrupar por beneficiario
+              const byBenef = {}
+              commissions.forEach(c => {
+                const key = c.beneficiary_contact_id ?? c.beneficiary_profile_id ?? '__hidden__'
+                if (!byBenef[key]) {
+                  const contact = c.beneficiary_contact_id ? contactMap[c.beneficiary_contact_id] : null
+                  const profile = c.beneficiary_profile_id ? profMap[c.beneficiary_profile_id] : null
+                  const isHidden = c.commission_type === 'hidden_facilitator'
+                  byBenef[key] = {
+                    key,
+                    name: isHidden ? '(encubierta)' : (contact?.name ?? profile?.full_name ?? '—'),
+                    company: contact?.company ?? '',
+                    type: c.commission_type,
+                    isHidden,
+                    count: 0,
+                    totalAmount: 0,
+                    campaigns: new Set(),
+                  }
+                }
+                byBenef[key].count++
+                byBenef[key].totalAmount += Number(c.amount_fixed) || 0
+                byBenef[key].campaigns.add(c.proposal_id)
+              })
+
+              const rows = Object.values(byBenef).sort((a, b) => b.totalAmount - a.totalAmount)
+              if (rows.length === 0) return <EmptyState message="Sin comisiones registradas" hint="Las comisiones se crean automáticamente al aceptar una propuesta." />
+
+              return (
+                <div className="overflow-x-auto rounded-xl border border-surface-700">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-surface-700 bg-surface-800/50">
+                        <th className="px-4 py-3 text-left text-xs font-medium text-slate-400">Beneficiario</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-slate-400">Tipo</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Campañas</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Registros</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Total comisiones</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-surface-700">
+                      {rows.map(row => (
+                        <tr key={row.key} className="hover:bg-surface-800/40">
+                          <td className="px-4 py-3">
+                            <p className={`font-medium ${row.isHidden ? 'text-rose-400 italic' : 'text-slate-200'}`}>
+                              {row.name}
+                            </p>
+                            {row.company && <p className="text-xs text-slate-500">{row.company}</p>}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`text-xs rounded-full px-2 py-0.5 ${
+                              row.type === 'internal_seller'    ? 'bg-brand/10 text-brand' :
+                              row.type === 'hidden_facilitator' ? 'bg-rose-500/10 text-rose-400' :
+                              'bg-amber-500/10 text-amber-400'
+                            }`}>
+                              {row.type === 'internal_seller'    ? 'Vendedor interno' :
+                               row.type === 'hidden_facilitator' ? 'Encubierto' :
+                               'Facilitador ext.'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-right text-slate-400">{row.campaigns.size}</td>
+                          <td className="px-4 py-3 text-right text-slate-400">{row.count}</td>
+                          <td className="px-4 py-3 text-right font-semibold text-white">{fmtARS(row.totalAmount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            })()}
+          </Section>
+
+          {/* Detalle por campaña */}
+          <Section title="Detalle de comisiones por campaña" description="Todas las campañas con comisiones registradas">
+            {(() => {
+              const propMap = {}
+              proposals.forEach(p => { propMap[p.id] = p })
+              const contactMap = {}
+              contacts.forEach(c => { contactMap[c.id] = c })
+              const profMap = {}
+              profiles.forEach(p => { profMap[p.id] = p })
+
+              // Agrupar por propuesta
+              const byProp = {}
+              commissions.forEach(c => {
+                if (!byProp[c.proposal_id]) byProp[c.proposal_id] = { proposal: propMap[c.proposal_id], items: [] }
+                byProp[c.proposal_id].items.push(c)
+              })
+
+              const propEntries = Object.values(byProp)
+                .filter(e => e.proposal)
+                .sort((a, b) => (b.proposal.accepted_at ?? '') > (a.proposal.accepted_at ?? '') ? 1 : -1)
+                .slice(0, 20)
+
+              if (propEntries.length === 0) return <EmptyState message="Sin datos" />
+
+              return (
+                <div className="space-y-3">
+                  {propEntries.map(({ proposal: p, items }) => (
+                    <div key={p.id} className="rounded-xl border border-surface-700 bg-surface-800/30 p-4">
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <div>
+                          <p className="text-sm font-semibold text-white">{p.client_name}</p>
+                          <p className="text-xs text-slate-500">{p.title}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="text-xs text-slate-500">Aceptada</p>
+                          <p className="text-xs text-slate-400">{p.accepted_at ? new Date(p.accepted_at).toLocaleDateString('es-AR') : '—'}</p>
+                        </div>
+                      </div>
+                      <div className="space-y-1.5">
+                        {items.map(c => {
+                          const contact = c.beneficiary_contact_id ? contactMap[c.beneficiary_contact_id] : null
+                          const prof    = c.beneficiary_profile_id ? profMap[c.beneficiary_profile_id] : null
+                          const name    = c.commission_type === 'hidden_facilitator' ? '(encubierta)' : (contact?.name ?? prof?.full_name ?? '—')
+                          return (
+                            <div key={c.id} className="flex items-center justify-between text-xs">
+                              <div className="flex items-center gap-2">
+                                <span className={`rounded-full px-1.5 py-0.5 ${
+                                  c.commission_type === 'internal_seller' ? 'bg-brand/10 text-brand' :
+                                  c.commission_type === 'hidden_facilitator' ? 'bg-rose-500/10 text-rose-400' :
+                                  'bg-amber-500/10 text-amber-400'
+                                }`}>
+                                  {c.commission_type === 'internal_seller' ? 'Int.' : c.commission_type === 'hidden_facilitator' ? 'Enc.' : 'Ext.'}
+                                </span>
+                                <span className={c.commission_type === 'hidden_facilitator' ? 'text-rose-400 italic' : 'text-slate-300'}>
+                                  {name}
+                                </span>
+                                {c.commission_pct > 0 && <span className="text-slate-600">· {c.commission_pct}%</span>}
+                              </div>
+                              <span className="font-semibold text-white">{fmtARS(c.amount_fixed)}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
           </Section>
 
         </div>
