@@ -355,7 +355,7 @@ export default function Dashboard() {
     staleTime: 1000 * 60 * 2, // 2 minutos — dashboard es más dinámico
     queryFn: async () => {
       const daysAgo60 = new Date()
-      daysAgo60.setDate(daysAgo60.getDate() - 60)
+      daysAgo60.setDate(daysAgo60.getDate() - 90) // 90 días: cubre mes actual + anterior completo
       const today    = new Date()
       const in60     = new Date()
       in60.setDate(in60.getDate() + 60)
@@ -374,7 +374,7 @@ export default function Dashboard() {
         supabase.from('proposals')
           .select('id, status, workflow_status, total_value, discount_pct, created_by, created_at, accepted_at, client_name, valid_until')
           .eq('org_id', profile.org_id)
-          .gte('created_at', daysAgo60.toISOString()),
+          .gte('created_at', daysAgo60.toISOString()), // 60 días cubre mes actual + anterior
 
         supabase.from('profiles')
           .select('commission_pct, monthly_target_ars')
@@ -389,7 +389,7 @@ export default function Dashboard() {
           .lte('end_date', in60Str),
 
         supabase.from('proposals')
-          .select('id, status')
+          .select('id, status, created_at, accepted_at, created_by')
           .eq('org_id', profile.org_id),
       ])
 
