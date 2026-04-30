@@ -6,7 +6,7 @@ import {
 } from 'recharts'
 import {
   TrendingUp, FileText, Target, LayoutGrid,
-  ChevronDown, ChevronRight, BarChart2,
+  ChevronDown, ChevronRight, BarChart2, Download, Filter,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { FORMAT_MAP } from '../../lib/constants'
@@ -252,6 +252,50 @@ export default function Reports() {
   // UI state
   const [activeMetrics, setActiveMetrics] = useState(() => new Set(['revenue']))
 
+  // ── Filtros adicionales ──────────────────────────────────────────────────
+  const [filterSeller, setFilterSeller] = useState('')
+  const [filterFormat, setFilterFormat] = useState('')
+  const [filterClient, setFilterClient] = useState('')
+
+  // Opciones únicas para los filtros
+  const sellerOptions = useMemo(() =>
+    [...new Map(profiles.filter(p => p.role === 'salesperson' || p.role === 'manager')
+      .map(p => [p.id, p.full_name])).entries()]
+      .sort((a, b) => a[1].localeCompare(b[1]))
+  , [profiles])
+
+  const formatOptions = useMemo(() =>
+    [...new Set(inventory.map(i => i.format).filter(Boolean))].sort()
+  , [inventory])
+
+  const clientOptions = useMemo(() =>
+    [...new Set(proposals.map(p => p.client_name).filter(Boolean))].sort()
+  , [proposals])
+
+  // ── Export CSV ────────────────────────────────────────────────────────────
+  function exportCSV() {
+    const rows = [
+      ['Propuesta', 'Cliente', 'Vendedor', 'Estado', 'Fecha aceptación', 'Facturación', 'Descuento %'],
+      ...filteredProposals.map(p => [
+        p.title ?? '',
+        p.client_name ?? '',
+        p.seller_name ?? '',
+        p.status ?? '',
+        p.accepted_at ? new Date(p.accepted_at).toLocaleDateString('es-AR') : '',
+        Math.round(p.total_value ?? 0),
+        p.discount_pct ?? 0,
+      ])
+    ]
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    const { from, to } = getDateBounds(dateRange, customStart, customEnd)
+    const label = from ? `${from.toISOString().slice(0,7)}` : 'periodo'
+    a.href = url; a.download = `reporte_ooh_${label}.csv`; a.click()
+    URL.revokeObjectURL(url)
+  }
+
   function toggleMetric(key) {
     setActiveMetrics(prev => {
       const next = new Set(prev)
@@ -279,9 +323,11 @@ export default function Reports() {
       const acc = new Date(p.accepted_at)
       if (from && acc < from) return false
       if (to   && acc > to)   return false
+      if (filterSeller && p.seller_id !== filterSeller) return false
+      if (filterClient && p.client_name !== filterClient) return false
       return true
     })
-  }, [proposals, dateRange, customStart, customEnd])
+  }, [proposals, dateRange, customStart, customEnd, filterSeller, filterClient])
 
   const filteredProposalIds = useMemo(
     () => new Set(filteredProposals.map(p => p.id)),
@@ -658,9 +704,20 @@ export default function Reports() {
     <div className="space-y-6 pb-10">
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
-      <div>
-        <h2 className="text-lg font-bold text-white">Reportes</h2>
-        <p className="text-sm text-slate-500">Business intelligence de tu operación OOH</p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="text-lg font-bold text-white">Reportes</h2>
+          <p className="text-sm text-slate-500">Business intelligence de tu operación OOH</p>
+        </div>
+        {filteredProposals.length > 0 && (
+          <button
+            onClick={exportCSV}
+            className="btn-secondary flex items-center gap-2 text-xs shrink-0"
+          >
+            <Download className="h-3.5 w-3.5" />
+            Exportar CSV
+          </button>
+        )}
       </div>
 
       {/* ── Pestañas principales ─────────────────────────────────────────── */}
@@ -711,6 +768,39 @@ export default function Reports() {
             <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} className="input-field text-xs py-1.5 w-36" />
           </div>
         )}
+
+        {/* Filtros secundarios: vendedor, cliente */}
+        <div className="flex flex-wrap items-center gap-2 mt-2">
+          <Filter className="h-3.5 w-3.5 text-slate-600 shrink-0" />
+          <select
+            value={filterSeller}
+            onChange={e => setFilterSeller(e.target.value)}
+            className="rounded-lg border border-surface-700 bg-surface-800 px-2.5 py-1.5 text-xs text-slate-300 focus:border-brand focus:outline-none"
+          >
+            <option value="">Todos los vendedores</option>
+            {sellerOptions.map(([id, name]) => (
+              <option key={id} value={id}>{name}</option>
+            ))}
+          </select>
+          <select
+            value={filterClient}
+            onChange={e => setFilterClient(e.target.value)}
+            className="rounded-lg border border-surface-700 bg-surface-800 px-2.5 py-1.5 text-xs text-slate-300 focus:border-brand focus:outline-none"
+          >
+            <option value="">Todos los clientes</option>
+            {clientOptions.map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+          {(filterSeller || filterClient) && (
+            <button
+              onClick={() => { setFilterSeller(''); setFilterClient('') }}
+              className="text-xs text-slate-500 hover:text-slate-300 underline"
+            >
+              Limpiar filtros
+            </button>
+          )}
+        </div>
       </div>
 
       {/* ── KPIs ─────────────────────────────────────────────────────────── */}
