@@ -52,22 +52,14 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
-    ;(async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) {
-        setSession(session)
-        const p = await fetchProfile(session.user.id)
-        setProfile(p)
-        profileLoadedRef.current = true
-      }
-      setLoading(false)
-    })()
-
+    // onAuthStateChange dispara INITIAL_SESSION al montar — es la única fuente de verdad.
+    // No llamamos getSession() por separado para evitar el double-fetch.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         setSession(session)
 
         if (event === 'TOKEN_REFRESHED') {
+          // Solo refrescó el token, no hace falta re-fetchear el perfil
           setLoading(false)
           return
         }
@@ -84,21 +76,41 @@ export function AuthProvider({ children }) {
         }
 
         if (event === 'SIGNED_IN') {
-          setProfile(currentProfile => {
-            if (currentProfile?.id === session.user.id) return currentProfile
-            fetchProfile(session.user.id).then(p => { if (p) setProfile(p) })
-            return currentProfile
-          })
+          // Si ya tenemos el perfil de este usuario (por INITIAL_SESSION), no re-fetchear
+          if (profileLoadedRef.current) {
+            setLoading(false)
+            return
+          }
+          setLoading(true)
+          const p = await fetchProfile(session.user.id)
+          if (p) {
+            setProfile(p)
+            profileLoadedRef.current = true
+          }
+          setLoading(false)
           return
         }
 
-        // INITIAL_SESSION, USER_UPDATED
-        if (session?.user) {
-          const p = await fetchProfile(session.user.id)
-          setProfile(p)
-        } else {
-          setProfile(null)
+        if (event === 'INITIAL_SESSION') {
+          // Primera carga — fetchear perfil si hay sesión activa
+          if (session?.user) {
+            const p = await fetchProfile(session.user.id)
+            setProfile(p)
+            profileLoadedRef.current = true
+          }
+          setLoading(false)
+          return
         }
+
+        if (event === 'USER_UPDATED') {
+          if (session?.user) {
+            const p = await fetchProfile(session.user.id)
+            setProfile(p)
+          }
+          setLoading(false)
+          return
+        }
+
         setLoading(false)
       }
     )

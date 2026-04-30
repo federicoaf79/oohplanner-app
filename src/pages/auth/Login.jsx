@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { Zap, Eye, EyeOff, AlertCircle } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
@@ -17,7 +17,10 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [showPwd, setShowPwd] = useState(false)
 
-  if (session) { navigate(from, { replace: true }); return null }
+  // Redirect if already authenticated — must be in useEffect, not render
+  useEffect(() => {
+    if (session) navigate(from, { replace: true })
+  }, [session])
 
   async function handleSubmit(e) {
     e.preventDefault()
