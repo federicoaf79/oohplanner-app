@@ -9,6 +9,8 @@ import AppShell    from './components/layout/AppShell'
 
 // Pages — public
 import Landing       from './pages/Landing'
+import About         from './pages/About'
+import Contact       from './pages/Contact'
 import Login         from './pages/auth/Login'
 import Register      from './pages/auth/Register'
 import NotFound      from './pages/NotFound'
@@ -50,6 +52,8 @@ const queryClient = new QueryClient({
 const router = createBrowserRouter([
   { path: '/',         element: <Landing /> },
   { path: '/login',    element: <Login /> },
+  { path: '/about',    element: <About /> },
+  { path: '/contact',  element: <Contact /> },
   { path: '/register', element: <Register /> },
 
   // Protected: all authenticated routes
