@@ -43,7 +43,8 @@ function NumericField({ label, value, onChange, prefix, suffix, step = 'any' }) 
 
 const TABS = [
   { id: 'basic',    label: 'Datos básicos' },
-  { id: 'costs',    label: 'Costos fijos' },
+  { id: 'costs',    label: 'OPEX mensual' },
+  { id: 'capex',    label: 'CAPEX' },
   { id: 'campaign', label: 'Costos campaña' },
 ]
 
@@ -58,8 +59,19 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
   const [formats, setFormats]     = useState([])
   const fileRef = useRef(null)
 
+  const [landlordContacts, setLandlordContacts] = useState([])
+
   useEffect(() => {
     if (!item) return
+    // Cargar contactos con rol landlord para selector
+    supabase
+      .from('contacts')
+      .select('id, name, company')
+      .eq('org_id', item.org_id)
+      .contains('roles', ['landlord'])
+      .order('name')
+      .then(({ data }) => setLandlordContacts(data ?? []))
+
     setForm({
       name:          item.name ?? '',
       address:       item.address ?? '',
@@ -96,6 +108,14 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
       // Medidas de impresión
       print_width_cm:           item.print_width_cm ?? null,
       print_height_cm:          item.print_height_cm ?? null,
+      // CAPEX
+      capex_total:              item.capex_total ?? 0,
+      capex_amortization_months: item.capex_amortization_months ?? 60,
+      // Landlord (para owner_type='rented')
+      landlord_contact_id:      item.landlord_contact_id ?? null,
+      // Permisos
+      permit_number:            item.permit_number ?? '',
+      permit_expiry:            item.permit_expiry ?? '',
     })
 
     // Load formats from DB (global + org-specific)
@@ -205,6 +225,14 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
         cost_agency_commission_pct: form.cost_agency_commission_pct,
         print_width_cm:           form.print_width_cm ? Number(form.print_width_cm) : null,
         print_height_cm:          form.print_height_cm ? Number(form.print_height_cm) : null,
+        // CAPEX
+        capex_total:              Number(form.capex_total) || 0,
+        capex_amortization_months: Number(form.capex_amortization_months) || 60,
+        // Landlord
+        landlord_contact_id:      form.landlord_contact_id || null,
+        // Permisos
+        permit_number:            form.permit_number || null,
+        permit_expiry:            form.permit_expiry || null,
       })
       .eq('id', item.id)
 
@@ -298,6 +326,37 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
                       <option value="owned">Propio</option>
                       <option value="rented">Alquilado</option>
                     </select>
+                  </FieldRow>
+                </div>
+
+                {/* Landlord contact — solo para carteles alquilados */}
+                {form.owner_type === 'rented' && (
+                  <FieldRow label="Propietario / Landlord *">
+                    <select
+                      className="input-field appearance-none"
+                      value={form.landlord_contact_id ?? ''}
+                      onChange={e => set('landlord_contact_id', e.target.value || null)}
+                    >
+                      <option value="">— Seleccioná el propietario —</option>
+                      {landlordContacts.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}{c.company ? ` · ${c.company}` : ''}
+                        </option>
+                      ))}
+                      {landlordContacts.length === 0 && (
+                        <option disabled>No hay contactos con rol "Propietario" — agregar en Contactos</option>
+                      )}
+                    </select>
+                  </FieldRow>
+                )}
+
+                {/* Permisos */}
+                <div className="grid grid-cols-2 gap-4">
+                  <FieldRow label="N° de permiso">
+                    <input className="input-field" value={form.permit_number} onChange={e => set('permit_number', e.target.value)} placeholder="Ej: EXP-2024-1234" />
+                  </FieldRow>
+                  <FieldRow label="Vencimiento permiso">
+                    <input className="input-field" type="date" value={form.permit_expiry} onChange={e => set('permit_expiry', e.target.value)} />
                   </FieldRow>
                 </div>
 
@@ -431,19 +490,100 @@ export default function EditInventoryModal({ item, onClose, onSaved }) {
                   </div>
                 </div>
               </div>
-              <div className="rounded-xl border border-surface-700 bg-surface-800/50 p-4 text-sm">
-                <span className="text-slate-500">Total costos fijos/mes: </span>
-                <span className="font-bold text-white">
-                  ${(
-                    (form.cost_rent||0) + (form.cost_electricity||0) + (form.cost_taxes||0) +
-                    (form.cost_maintenance||0) + (form.cost_imponderables||0)
-                  ).toLocaleString('es-AR')}
-                </span>
+              {/* Resumen OPEX + margen */}
+              <div className="rounded-xl border border-surface-700 bg-surface-800/50 p-4 space-y-2">
+                {[
+                  ['Alquiler/canon', form.cost_rent],
+                  ['Luz/energía', form.cost_electricity],
+                  ['Impuestos', form.cost_taxes],
+                  ['Mantenimiento', form.cost_maintenance],
+                  ['Imponderables', form.cost_imponderables],
+                ].filter(([, v]) => v > 0).map(([label, value]) => (
+                  <div key={label} className="flex justify-between text-xs">
+                    <span className="text-slate-500">{label}</span>
+                    <span className="text-slate-300">${Number(value).toLocaleString('es-AR')}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between text-sm border-t border-surface-700 pt-2 mt-1">
+                  <span className="text-slate-400 font-medium">Total OPEX/mes</span>
+                  <span className="font-bold text-white">
+                    ${((form.cost_rent||0) + (form.cost_electricity||0) + (form.cost_taxes||0) +
+                       (form.cost_maintenance||0) + (form.cost_imponderables||0)).toLocaleString('es-AR')}
+                  </span>
+                </div>
               </div>
             </div>
           )}
 
-          {/* ── TAB 3: Costos campaña ── */}
+          {/* ── TAB 3: CAPEX ── */}
+          {tab === 'capex' && (
+            <div className="space-y-5">
+              <p className="text-xs text-slate-500">
+                Inversión inicial en estructura física del cartel (columnas, tensores, iluminación, obra civil).
+                Se amortiza mensualmente para calcular la rentabilidad real.
+              </p>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <NumericField
+                  label="Inversión total CAPEX (ARS)"
+                  value={form.capex_total}
+                  onChange={v => set('capex_total', v)}
+                  prefix="$"
+                />
+                <NumericField
+                  label="Meses de amortización"
+                  value={form.capex_amortization_months}
+                  onChange={v => set('capex_amortization_months', Math.max(1, Number(v)))}
+                  step="1"
+                />
+              </div>
+
+              {/* Resumen CAPEX */}
+              {(form.capex_total > 0) && (
+                <div className="rounded-xl border border-surface-700 bg-surface-800/50 p-4 space-y-2">
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Resumen CAPEX</p>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-500">Inversión total</span>
+                    <span className="text-white font-semibold">${Number(form.capex_total).toLocaleString('es-AR')}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-500">Amortización mensual</span>
+                    <span className="text-amber-400 font-semibold">
+                      ${Math.round(form.capex_total / Math.max(1, form.capex_amortization_months)).toLocaleString('es-AR')}/mes
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-slate-500">Plazo</span>
+                    <span className="text-slate-300">{form.capex_amortization_months} meses ({(form.capex_amortization_months / 12).toFixed(1)} años)</span>
+                  </div>
+                  {form.base_rate > 0 && (() => {
+                    const opex = (form.cost_rent||0) + (form.cost_electricity||0) + (form.cost_taxes||0) + (form.cost_maintenance||0) + (form.cost_imponderables||0)
+                    const capexMensual = Math.round(form.capex_total / Math.max(1, form.capex_amortization_months))
+                    const margenNeto = (form.base_rate||0) - opex - capexMensual
+                    return (
+                      <div className="flex justify-between text-sm border-t border-surface-700 pt-2 mt-1">
+                        <span className="text-slate-400 font-medium">Margen neto estimado</span>
+                        <span className={`font-bold ${margenNeto >= 0 ? 'text-brand' : 'text-red-400'}`}>
+                          ${margenNeto.toLocaleString('es-AR')}/mes
+                        </span>
+                      </div>
+                    )
+                  })()}
+                </div>
+              )}
+
+              <div className="rounded-xl border border-surface-700 bg-surface-800/50 p-4 text-xs text-slate-500 space-y-1">
+                <p className="font-semibold text-slate-400">¿Qué incluir en CAPEX?</p>
+                <p>• Estructura metálica (columnas, vigas, anclaje)</p>
+                <p>• Tensores y cables</p>
+                <p>• Iluminación y acometida eléctrica</p>
+                <p>• Obra civil (cimientos, base)</p>
+                <p>• No incluir costos recurrentes — esos van en OPEX (pestaña anterior)</p>
+              </div>
+            </div>
+          )}
+
+          {/* ── TAB 4: Costos campaña ── */}
           {tab === 'campaign' && (
             <div className="space-y-4">
               <p className="text-xs text-slate-500 mb-2">

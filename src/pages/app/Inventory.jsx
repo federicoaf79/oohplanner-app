@@ -387,12 +387,17 @@ function InventoryCard({ item, onEdit }) {
   const impactsPerMonth = item.daily_traffic ? item.daily_traffic * 3 : null
   const photoUrl = getItemPhotoUrl(item)
 
-  // Costos fijos (columnas migration_v3)
-  const totalCosts = (item.cost_rent ?? 0)
+  // Costos OPEX mensuales
+  const totalOpex = (item.cost_rent ?? 0)
     + (item.cost_electricity ?? 0)
     + (item.cost_taxes ?? 0)
     + (item.cost_maintenance ?? 0)
     + (item.cost_imponderables ?? 0)
+  // CAPEX amortizado mensualmente
+  const capexMonthly = item.capex_total > 0
+    ? Math.round(item.capex_total / Math.max(1, item.capex_amortization_months ?? 60))
+    : 0
+  const totalCosts = totalOpex + capexMonthly
   const hasCosts = totalCosts > 0
 
   return (
@@ -480,36 +485,38 @@ function InventoryCard({ item, onEdit }) {
           </div>
         ) : null}
 
-        {/* Costos fijos (solo owner) */}
+        {/* Costos (solo owner) */}
         {isOwner && hasCosts && (
-          <div className="rounded-lg border border-brand/20 bg-brand/5 p-2.5 space-y-1">
-            <p className="text-xs font-semibold text-brand mb-1.5">Costos mensuales</p>
-            {item.cost_rent > 0 && (
+          <div className="rounded-lg border border-surface-600 bg-surface-800/60 p-2.5 space-y-1">
+            <p className="text-xs font-semibold text-slate-400 mb-1.5">Costos / mes</p>
+            {totalOpex > 0 && (
               <div className="flex justify-between text-xs">
-                <span className="text-slate-500">Alquiler</span>
-                <span className="text-slate-300">{formatCurrency(item.cost_rent)}</span>
+                <span className="text-slate-500">OPEX</span>
+                <span className="text-slate-300">{formatCurrency(totalOpex)}</span>
               </div>
             )}
-            {item.cost_electricity > 0 && (
+            {capexMonthly > 0 && (
               <div className="flex justify-between text-xs">
-                <span className="text-slate-500">Luz</span>
-                <span className="text-slate-300">{formatCurrency(item.cost_electricity)}</span>
+                <span className="text-slate-500">CAPEX amort.</span>
+                <span className="text-amber-400">{formatCurrency(capexMonthly)}</span>
               </div>
             )}
-            {item.cost_taxes > 0 && (
-              <div className="flex justify-between text-xs">
-                <span className="text-slate-500">Impuestos</span>
-                <span className="text-slate-300">{formatCurrency(item.cost_taxes)}</span>
-              </div>
-            )}
-            {item.base_rate && (
-              <div className="flex justify-between text-xs border-t border-brand/10 pt-1.5">
-                <span className="text-slate-400 font-medium">Margen estimado</span>
-                <span className="font-bold text-teal-400">
+            {item.base_rate > 0 && (
+              <div className="flex justify-between text-xs border-t border-surface-700 pt-1.5 mt-1">
+                <span className="text-slate-400 font-medium">Margen neto</span>
+                <span className={`font-bold ${item.base_rate - totalCosts >= 0 ? 'text-brand' : 'text-red-400'}`}>
                   {formatCurrency(item.base_rate - totalCosts)}
                 </span>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Alerta permiso vencido (solo owner) */}
+        {isOwner && item.permit_expiry && new Date(item.permit_expiry) < new Date() && (
+          <div className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 px-2.5 py-1.5 text-xs text-amber-400">
+            <AlertCircle className="h-3 w-3 shrink-0" />
+            Permiso vencido: {new Date(item.permit_expiry).toLocaleDateString('es-AR')}
           </div>
         )}
 
