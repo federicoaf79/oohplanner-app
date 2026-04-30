@@ -1,4 +1,5 @@
-const NON_OPPORTUNITY_STATUSES = ['draft', 'rejected']
+// 'rejected' es una oportunidad perdida — cuenta en el denominador pero no en won
+const NON_OPPORTUNITY_STATUSES = ['draft']
 
 export function calculateMonthCloseRate(proposals, { monthStart, monthEnd, sellerId } = {}) {
   if (!Array.isArray(proposals)) return null
