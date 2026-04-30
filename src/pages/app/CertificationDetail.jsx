@@ -3,7 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { generateCertificationPDF } from '../../features/campaigns/generateCertificationPDF'
 import {
   ArrowLeft, Camera, Check, Clock, Download, MapPin,
-  AlertTriangle, FileText, Calendar, User, RefreshCw,
+  AlertTriangle, AlertCircle, FileText, Calendar, User, RefreshCw,
   ChevronDown, ChevronUp, Maximize2, X
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
@@ -295,6 +295,22 @@ export default function CertificationDetail() {
             <StatusBadge status={cert.status} />
           </div>
         </div>
+
+        {/* ── CERT-01: Alerta fotos faltantes ── */}
+        {certifiedSites < items.length && (
+          <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+            <AlertCircle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-amber-400">
+                Certificación incompleta — {certifiedSites}/{items.length} carteles con fotos
+              </p>
+              <p className="text-xs text-amber-400/70 mt-0.5">
+                {items.length - certifiedSites} cartel{items.length - certifiedSites !== 1 ? 'es' : ''} sin fotos registradas.
+                Editá la certificación para completarla.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* ── Meta info ── */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
