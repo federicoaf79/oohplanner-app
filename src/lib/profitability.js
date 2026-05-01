@@ -249,7 +249,7 @@ export function calculateSiteProfitability(site, opts = {}) {
     // anterior (legacy consumers que no pasan orgProduccionConfig).
     impresionReal = isDigital
       ? 0
-      : toNum(site.cost_print_per_m2 ?? site.print_cost_per_m2) * areaM2;
+      : toNum(site.print_cost_per_m2) * areaM2; // cost_print_per_m2 deprecada (Sprint 6)
     colocacionReal = toNum(site.cost_colocation);
     disenoReal = toNum(site.cost_design);
     // Std / efec = 0 por diseño: en V1 no se cobraba producción al cliente.
@@ -283,9 +283,9 @@ export function calculateSiteProfitability(site, opts = {}) {
       : toNum(site.cost_seller_commission_pct);
   const sellerCommission = alquilerNet * (sellerPct / 100);
   const agencyCommission = alquilerNet * (toNum(agencyCommissionPct) / 100);
-  const ownerCommission =
-    alquilerNet * (toNum(site.cost_owner_commission_pct) / 100) +
-    toNum(site.cost_owner_commission);
+  // cost_owner_commission_pct + cost_owner_commission deprecadas (Sprint 6)
+  // Comisiones de asociado ahora viven en site_commissions / campaign_commissions
+  const ownerCommission = 0;
   const hiddenFacilitatorCommission = 0; // V1.1
 
   // ── Revenue total + costo total + margen ──────────────────────────────

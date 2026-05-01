@@ -1,4 +1,6 @@
 import { NavLink } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { supabase } from '../../lib/supabase'
 import {
   LayoutDashboard, Megaphone, MapPin, FileText,
   BarChart2, Users, Settings, X, Receipt, Crosshair,
@@ -62,7 +64,18 @@ const NAV_SECTIONS = [
 ]
 
 export default function Sidebar({ open, onClose }) {
-  const { role, org, profile } = useAuth()
+  const { role, org, profile, isOwner, isManager } = useAuth()
+  const [pendingApprovals, setPendingApprovals] = useState(0)
+
+  useEffect(() => {
+    if (!profile?.org_id || (!isOwner && !isManager)) return
+    supabase
+      .from('proposals')
+      .select('id', { count: 'exact', head: true })
+      .eq('org_id', profile.org_id)
+      .eq('status', 'pending_approval')
+      .then(({ count }) => setPendingApprovals(count ?? 0))
+  }, [profile?.org_id, isOwner, isManager])
 
   // Pre-compute visible sections so empty ones (and their headers) are skipped.
   const visibleSections = NAV_SECTIONS
@@ -139,7 +152,12 @@ export default function Sidebar({ open, onClose }) {
                       )}
                     >
                       <Icon className="h-4 w-4 shrink-0" />
-                      {label}
+                      <span className="flex-1">{label}</span>
+                      {path === '/app/proposals' && pendingApprovals > 0 && (
+                        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-400 px-1 text-[10px] font-bold text-black">
+                          {pendingApprovals}
+                        </span>
+                      )}
                     </NavLink>
                   ))}
                 </div>

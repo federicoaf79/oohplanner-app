@@ -1,18 +1,38 @@
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { Menu, Bell, LogOut, User, ChevronDown } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
+import { supabase } from '../../lib/supabase'
 import { RoleBadge } from '../ui/Badge'
 import NotificationDropdown from '../NotificationDropdown'
 
 export default function Topbar({ onMenuClick, title }) {
-  const { profile, role, signOut } = useAuth()
+  const { profile, role, isOwner, isManager, org } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const { signOut } = useAuth()
   const [menuOpen, setMenuOpen]   = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
   const [notifCount, setNotifCount] = useState(0)
+  const [pendingApprovals, setPendingApprovals] = useState(0)
   const menuRef  = useRef(null)
   const notifRef = useRef(null)
+
+  // Contar propuestas pending_approval (solo owner/manager)
+  useEffect(() => {
+    if (!profile?.org_id || (!isOwner && !isManager)) return
+    async function fetchPending() {
+      const { count } = await supabase
+        .from('proposals')
+        .select('id', { count: 'exact', head: true })
+        .eq('org_id', profile.org_id)
+        .eq('status', 'pending_approval')
+      setPendingApprovals(count ?? 0)
+    }
+    fetchPending()
+    // Re-chequear al cambiar de ruta (el owner puede haber aprobado algo)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profile?.org_id, isOwner, isManager, location.pathname])
 
   useEffect(() => {
     function handleClickOutside(e) {
@@ -52,11 +72,16 @@ export default function Topbar({ onMenuClick, title }) {
             aria-label="Notificaciones"
           >
             <Bell className="h-5 w-5" />
-            {notifCount > 0 && (
+            {(notifCount > 0 || pendingApprovals > 0) && (
               <>
-                <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500 animate-ping opacity-75" />
-                <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-red-500" />
+                <span className={`absolute top-1 right-1 h-2 w-2 rounded-full animate-ping opacity-75 ${pendingApprovals > 0 ? 'bg-amber-400' : 'bg-red-500'}`} />
+                <span className={`absolute top-1 right-1 h-2 w-2 rounded-full ${pendingApprovals > 0 ? 'bg-amber-400' : 'bg-red-500'}`} />
               </>
+            )}
+            {pendingApprovals > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-amber-400 text-[9px] font-bold text-black">
+                {pendingApprovals}
+              </span>
             )}
           </button>
           <NotificationDropdown

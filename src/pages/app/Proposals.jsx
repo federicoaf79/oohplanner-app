@@ -230,6 +230,37 @@ export default function Proposals() {
     }
   }
 
+  // ── Aprobación de descuentos ──────────────────────────────────────────
+  async function handleApproveDiscount(p, action) {
+    // action: 'approve' | 'reject'
+    setStatusChanging(p.id + '_approval')
+    try {
+      if (action === 'approve') {
+        await supabase.from('proposals')
+          .update({
+            status: 'sent',
+            approved_by: profile.id,
+            approved_at: new Date().toISOString(),
+          })
+          .eq('id', p.id)
+        setProposals(prev => prev.map(x =>
+          x.id === p.id ? { ...x, status: 'sent', approved_by: profile.id } : x
+        ))
+      } else {
+        await supabase.from('proposals')
+          .update({ status: 'draft' })
+          .eq('id', p.id)
+        setProposals(prev => prev.map(x =>
+          x.id === p.id ? { ...x, status: 'draft' } : x
+        ))
+      }
+    } catch (err) {
+      console.error('Approval error:', err)
+    } finally {
+      setStatusChanging(null)
+    }
+  }
+
   async function handleDelete(p) {
     setDeleting(p.id)
     setConfirmDelete(null)
@@ -490,7 +521,7 @@ export default function Proposals() {
               { id: 'draft', label: 'Borrador' },
               { id: 'sent', label: 'Enviada' },
               { id: 'accepted', label: 'Aceptada' },
-            ]
+            ].filter(opt => !(p.status === 'pending_approval' && opt.id === 'draft'))
             const isActivated = p.workflow_status && p.workflow_status !== 'pending'
             const canChangeStatus = isOwner || isManager || (isSalesperson && p.created_by === profile?.id)
 
@@ -518,6 +549,41 @@ export default function Proposals() {
                   <p className="text-xs text-slate-600 mt-0.5">{formatDate(p.created_at)}</p>
                 </div>
               </div>
+
+              {/* Banner aprobación pendiente — solo owner/manager */}
+              {p.status === 'pending_approval' && (isOwner || isManager) && (
+                <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 flex items-start justify-between gap-3">
+                  <div className="flex items-start gap-2 min-w-0">
+                    <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-semibold text-amber-400">Requiere aprobación de descuento</p>
+                      <p className="text-xs text-amber-400/70 mt-0.5">
+                        Descuento del {p.discount_pct ?? 0}% supera el límite del vendedor.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      disabled={statusChanging === p.id + '_approval'}
+                      onClick={() => handleApproveDiscount(p, 'reject')}
+                      className="flex items-center gap-1 rounded-lg border border-red-500/30 bg-red-500/10 px-2.5 py-1.5 text-xs font-medium text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                    >
+                      <XCircle className="h-3 w-3" />
+                      Rechazar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={statusChanging === p.id + '_approval'}
+                      onClick={() => handleApproveDiscount(p, 'approve')}
+                      className="flex items-center gap-1 rounded-lg border border-brand/30 bg-brand/10 px-2.5 py-1.5 text-xs font-medium text-brand hover:bg-brand/20 transition-colors disabled:opacity-50"
+                    >
+                      <CheckCircle className="h-3 w-3" />
+                      Aprobar
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Fila 2: acciones */}
               <div className="mt-3 flex items-center justify-between gap-2 border-t border-surface-700/50 pt-3">
