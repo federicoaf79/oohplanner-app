@@ -20,6 +20,7 @@ export function AuthProvider({ children }) {
   const [sessionExpired, setSessionExpired] = useState(false)
   const intentionalSignOut  = useRef(false)
   const profileLoadedRef    = useRef(false)
+  const initialLoadDone     = useRef(false)  // getSession() completó
 
   async function fetchProfile(userId) {
     const { data, error } = await supabase
@@ -52,71 +53,82 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
-    // getSession() como fuente primaria garantiza que loading=false siempre se llama
-    ;(async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) {
-        setSession(session)
-        const p = await fetchProfile(session.user.id)
-        setProfile(p)
-        profileLoadedRef.current = true
+    // Timeout de seguridad: si en 8 segundos no termina, desbloquea la app
+    const safetyTimeout = setTimeout(() => {
+      if (!initialLoadDone.current) {
+        console.warn('AuthContext: safety timeout triggered')
+        initialLoadDone.current = true
+        setLoading(false)
       }
-      setLoading(false)
-    })()
+    }, 8000)
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         setSession(session)
 
         if (event === 'TOKEN_REFRESHED') {
-          setLoading(false)
-          return
+          return // no cambiar loading
         }
 
         if (event === 'SIGNED_OUT') {
           profileLoadedRef.current = false
+          initialLoadDone.current  = true
           setProfile(null)
-          if (!intentionalSignOut.current) {
-            setSessionExpired(true)
-          }
+          if (!intentionalSignOut.current) setSessionExpired(true)
           intentionalSignOut.current = false
           setLoading(false)
           return
         }
 
-        if (event === 'SIGNED_IN') {
-          // Si getSession() ya cargó el perfil, no re-fetchear (evita double-fetch)
-          if (profileLoadedRef.current) {
-            setLoading(false)
-            return
-          }
-          const p = await fetchProfile(session.user.id)
-          if (p) {
-            setProfile(p)
-            profileLoadedRef.current = true
-          }
-          setLoading(false)
-          return
-        }
-
-        // INITIAL_SESSION, USER_UPDATED — solo si getSession() no lo hizo ya
         if (event === 'INITIAL_SESSION') {
-          // getSession() ya corrió y seteó profileLoadedRef si había sesión
+          // Evento más confiable para la carga inicial
+          if (session?.user) {
+            try {
+              const p = await fetchProfile(session.user.id)
+              setProfile(p)
+              profileLoadedRef.current = true
+            } catch (e) {
+              console.error('fetchProfile error:', e)
+            }
+          }
+          initialLoadDone.current = true
+          clearTimeout(safetyTimeout)
           setLoading(false)
           return
         }
 
-        if (session?.user) {
-          const p = await fetchProfile(session.user.id)
-          setProfile(p)
-        } else {
-          setProfile(null)
+        if (event === 'SIGNED_IN') {
+          // Solo fetchear si no hay perfil cargado (login nuevo, no refresh)
+          if (!profileLoadedRef.current && session?.user) {
+            try {
+              const p = await fetchProfile(session.user.id)
+              if (p) { setProfile(p); profileLoadedRef.current = true }
+            } catch (e) {
+              console.error('fetchProfile error on SIGNED_IN:', e)
+            }
+          }
+          if (!initialLoadDone.current) {
+            initialLoadDone.current = true
+            clearTimeout(safetyTimeout)
+            setLoading(false)
+          }
+          return
         }
-        setLoading(false)
+
+        if (event === 'USER_UPDATED' && session?.user) {
+          try {
+            const p = await fetchProfile(session.user.id)
+            setProfile(p)
+          } catch {}
+          return
+        }
       }
     )
 
-    return () => subscription.unsubscribe()
+    return () => {
+      clearTimeout(safetyTimeout)
+      subscription.unsubscribe()
+    }
   }, [])
 
   async function signIn({ email, password }) {
