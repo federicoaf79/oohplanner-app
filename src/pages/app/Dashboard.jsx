@@ -364,7 +364,7 @@ export default function Dashboard() {
 
       const [invR, itemsR, propsR, profileR, campaignsR, allPropsR] = await Promise.all([
         supabase.from('inventory')
-          .select('id, name, code, format, is_available, available_until, base_rate, cost_rent, cost_electricity, cost_taxes, cost_maintenance, cost_imponderables, width_m, height_m, print_width_cm, print_height_cm, cost_print_per_m2, cost_colocation, cost_design, cost_seller_commission_pct, cost_agency_commission_pct, cost_owner_commission_pct, cost_owner_commission, latitude, longitude, address, owner_type')
+          .select('id, name, code, format, is_available, available_until, base_rate, cost_rent, cost_electricity, cost_taxes, cost_maintenance, cost_imponderables, cost_colocation, cost_design, cost_seller_commission_pct, cost_agency_commission_pct, capex_total, capex_amortization_months, permit_number, permit_expiry, width_m, height_m, print_width_cm, print_height_cm, latitude, longitude, address, owner_type')
           .eq('org_id', profile.org_id),
 
         supabase.from('proposal_items')
