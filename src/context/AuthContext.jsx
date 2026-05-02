@@ -53,10 +53,28 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
+    // Limpiar token corrupto/viejo del localStorage si existe
+    try {
+      const tokenKey = Object.keys(localStorage).find(k => k.includes('auth-token'))
+      if (tokenKey) {
+        const raw = localStorage.getItem(tokenKey)
+        const parsed = JSON.parse(raw)
+        const expiresAt = parsed?.expires_at
+        if (expiresAt && expiresAt * 1000 < Date.now()) {
+          localStorage.removeItem(tokenKey)
+          console.info('AuthContext: removed expired token from localStorage')
+        }
+      }
+    } catch {}
+
     // Timeout de seguridad: si en 8 segundos no termina, desbloquea la app
     const safetyTimeout = setTimeout(() => {
       if (!initialLoadDone.current) {
-        console.warn('AuthContext: safety timeout triggered')
+        console.warn('AuthContext: safety timeout triggered - clearing storage')
+        try {
+          const tokenKey = Object.keys(localStorage).find(k => k.includes('auth-token'))
+          if (tokenKey) localStorage.removeItem(tokenKey)
+        } catch {}
         initialLoadDone.current = true
         setLoading(false)
       }
