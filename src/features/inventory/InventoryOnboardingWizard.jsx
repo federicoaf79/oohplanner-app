@@ -141,6 +141,17 @@ const HEADER_ALIASES = {
   faces_count:['caras','faces','faces_count','cantidad_caras','cantidad de caras'],
   traffic_direction:['direccion_trafico','dirección tráfico','traffic_direction'],
   is_available:['disponible','available','is_available','disponibilidad'],
+  // CAPEX / OPEX / Permisos (Sprint 6)
+  capex_total:             ['capex','capex_total','inversion_capex','inversión capex','inversión inicial','inversion inicial'],
+  capex_amortization_months: ['amortizacion','amortización','meses_amortizacion','meses amortización','plazo capex'],
+  cost_rent:               ['alquiler','canon','rent','cost_rent','costo alquiler','costo_alquiler'],
+  cost_electricity:        ['luz','electricidad','energia','energía','cost_electricity','costo luz'],
+  cost_taxes:              ['impuestos','taxes','cost_taxes','derechos'],
+  cost_maintenance:        ['mantenimiento','maintenance','cost_maintenance','costo mantenimiento'],
+  cost_imponderables:      ['imponderables','cost_imponderables','otros costos'],
+  permit_number:           ['permiso','numero_permiso','número permiso','permit_number','nro permiso','n° permiso'],
+  permit_expiry:           ['vencimiento_permiso','vencimiento permiso','permit_expiry','expiracion permiso','fecha permiso'],
+  landlord_name:           ['propietario_nombre','nombre propietario','landlord','landlord_name','dueño cartel'],
 }
 
 function mapHeaders(row) {
@@ -162,7 +173,11 @@ const INVENTORY_SCHEMA_FIELDS = [
   'width_m', 'height_m', 'print_width_cm', 'print_height_cm',
   'owner_type', 'illuminated', 'latitude', 'longitude',
   'base_rate', 'sale_price', 'faces_count', 'traffic_direction',
-  'is_available', '__ignore__',
+  'is_available',
+  'capex_total', 'capex_amortization_months',
+  'cost_rent', 'cost_electricity', 'cost_taxes', 'cost_maintenance', 'cost_imponderables',
+  'permit_number', 'permit_expiry', 'landlord_name',
+  '__ignore__',
 ]
 
 async function aiMapColumnsInventory(columns, sampleRows) {
@@ -191,6 +206,16 @@ Descripción de campos:
 - faces_count: cantidad de caras
 - traffic_direction: dirección del tráfico
 - is_available: disponibilidad actual
+- capex_total: inversión total en estructura del cartel (one-time)
+- capex_amortization_months: meses de amortización del CAPEX
+- cost_rent: alquiler o canon mensual del espacio
+- cost_electricity: costo mensual de luz/energía
+- cost_taxes: impuestos y derechos mensuales
+- cost_maintenance: mantenimiento estimado mensual
+- cost_imponderables: otros costos mensuales imprevistos
+- permit_number: número o código del permiso municipal
+- permit_expiry: fecha de vencimiento del permiso (YYYY-MM-DD)
+- landlord_name: nombre del propietario del espacio (para carteles alquilados)
 - __ignore__: columnas irrelevantes (números correlativos, notas internas, etc.)
 
 Columnas con muestras:
@@ -270,6 +295,17 @@ function normalizeRow(raw) {
     traffic_direction: String(raw.traffic_direction ?? '').trim() || null, // display only
     print_width_cm:    toNum(raw.print_width_cm),
     print_height_cm:   toNum(raw.print_height_cm),
+    // CAPEX / OPEX / Permisos (Sprint 6)
+    capex_total:              toNum(raw.capex_total),
+    capex_amortization_months: raw.capex_amortization_months ? Number(raw.capex_amortization_months) : 60,
+    cost_rent:                toNum(raw.cost_rent),
+    cost_electricity:         toNum(raw.cost_electricity),
+    cost_taxes:               toNum(raw.cost_taxes),
+    cost_maintenance:         toNum(raw.cost_maintenance),
+    cost_imponderables:       toNum(raw.cost_imponderables),
+    permit_number:            String(raw.permit_number ?? '').trim() || null,
+    permit_expiry:            String(raw.permit_expiry ?? '').trim() || null,
+    landlord_name:            String(raw.landlord_name ?? '').trim() || null,
   }
 }
 
@@ -297,6 +333,17 @@ function toDbPayload(item, orgId) {
     traffic_direction: item.traffic_direction || null,
     print_width_cm:    item.print_width_cm ?? null,
     print_height_cm:   item.print_height_cm ?? null,
+    // CAPEX / OPEX / Permisos (Sprint 6)
+    capex_total:              item.capex_total || 0,
+    capex_amortization_months: item.capex_amortization_months || 60,
+    cost_rent:                item.cost_rent || 0,
+    cost_electricity:         item.cost_electricity || 0,
+    cost_taxes:               item.cost_taxes || 0,
+    cost_maintenance:         item.cost_maintenance || 0,
+    cost_imponderables:       item.cost_imponderables || 0,
+    permit_number:            item.permit_number || null,
+    permit_expiry:            item.permit_expiry || null,
+    // landlord_name es display only — el match a contacts.id se hace en post-import
   }
 }
 
@@ -324,6 +371,15 @@ Campos por cartel (usa null cuando no disponible):
 - width_m (number|null): ancho en metros
 - height_m (number|null): alto en metros
 - owner_type: "owned" o "rented"
+- capex_total: inversión total en estructura (number|null)
+- capex_amortization_months: meses amortización (number|null)
+- cost_rent: alquiler mensual del espacio (number|null)
+- cost_electricity: costo luz mensual (number|null)
+- cost_taxes: impuestos mensuales (number|null)
+- cost_maintenance: mantenimiento mensual (number|null)
+- permit_number: número de permiso (string|null)
+- permit_expiry: vencimiento permiso YYYY-MM-DD (string|null)
+- landlord_name: nombre del propietario (string|null)
 - illuminated (boolean)
 - latitude (number|null)
 - longitude (number|null)
