@@ -1,9 +1,105 @@
-import { useState, useEffect } from 'react'
-import { Plus, Pencil, Trash2, X, MapPin, ChevronDown, ChevronUp, Save } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Plus, Pencil, Trash2, X, MapPin, ChevronDown, ChevronUp, Save, Map } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../context/AuthContext'
 import Spinner from '../../components/ui/Spinner'
 import Button from '../../components/ui/Button'
+
+// ── Paleta de colores para corredores (sin verde) ───────────
+const CORRIDOR_COLORS = [
+  { value: '#6366F1', label: 'Azul índigo' },
+  { value: '#F59E0B', label: 'Ámbar' },
+  { value: '#EC4899', label: 'Rosa' },
+  { value: '#14B8A6', label: 'Teal' },
+  { value: '#8B5CF6', label: 'Violeta' },
+  { value: '#F97316', label: 'Naranja' },
+  { value: '#06B6D4', label: 'Cyan' },
+  { value: '#EF4444', label: 'Rojo' },
+]
+
+// ── Mapa de corredores con Leaflet ───────────────────────────
+function CorridorMap({ corridors, items }) {
+  const mapRef = useRef(null)
+  const mapInstanceRef = useRef(null)
+  const layersRef = useRef([])
+
+  useEffect(() => {
+    if (!mapRef.current) return
+    if (mapInstanceRef.current) return
+
+    const L = window.L
+    if (!L) return
+
+    const map = L.map(mapRef.current, {
+      center: [-34.6, -58.45],
+      zoom: 11,
+      zoomControl: true,
+    })
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '© CartoDB',
+      maxZoom: 19,
+    }).addTo(map)
+
+    mapInstanceRef.current = map
+    return () => { map.remove(); mapInstanceRef.current = null }
+  }, [])
+
+  useEffect(() => {
+    const L = window.L
+    const map = mapInstanceRef.current
+    if (!L || !map) return
+
+    // Limpiar capas anteriores
+    layersRef.current.forEach(l => l.remove())
+    layersRef.current = []
+
+    const allPoints = []
+
+    corridors.forEach(corridor => {
+      const color = corridor.color || '#6366F1'
+      const corridorItems = (corridor.inventory_ids ?? [])
+        .map(id => items.find(i => i.id === id))
+        .filter(i => i?.latitude && i?.longitude)
+
+      if (corridorItems.length === 0) return
+
+      const latlngs = corridorItems.map(i => [Number(i.latitude), Number(i.longitude)])
+      allPoints.push(...latlngs)
+
+      // Línea del corredor
+      const polyline = L.polyline(latlngs, {
+        color,
+        weight: 3,
+        opacity: 0.85,
+        dashArray: '8, 4',
+      }).addTo(map)
+      layersRef.current.push(polyline)
+
+      // Puntos de cada cartel
+      corridorItems.forEach((item, idx) => {
+        const circleMarker = L.circleMarker(
+          [Number(item.latitude), Number(item.longitude)],
+          { radius: 7, fillColor: color, color: '#fff', weight: 2, opacity: 1, fillOpacity: 1 }
+        )
+          .bindPopup(`<b>${item.name}</b><br/><span style="color:#94a3b8">${item.address ?? ''}</span><br/><span style="color:${color}">${corridor.name}</span>`)
+          .addTo(map)
+        layersRef.current.push(circleMarker)
+      })
+    })
+
+    // Fit bounds si hay puntos
+    if (allPoints.length > 0) {
+      try { map.fitBounds(allPoints, { padding: [32, 32] }) } catch {}
+    }
+  }, [corridors, items])
+
+  return (
+    <div className="rounded-xl overflow-hidden border border-surface-700" style={{ height: 380 }}>
+      <div ref={mapRef} style={{ height: '100%', width: '100%' }} />
+    </div>
+  )
+}
 
 // ── Modal de creación/edición ────────────────────────────────
 
@@ -12,6 +108,7 @@ function CorridorModal({ corridor, items, orgId, onSaved, onClose }) {
 
   const [name,        setName]        = useState(corridor?.name ?? '')
   const [description, setDescription] = useState(corridor?.description ?? '')
+  const [color,       setColor]       = useState(corridor?.color ?? CORRIDOR_COLORS[0].value)
   const [selectedIds, setSelectedIds] = useState(new Set(corridor?.inventory_ids ?? []))
   const [saving,      setSaving]      = useState(false)
   const [error,       setError]       = useState('')
@@ -40,6 +137,7 @@ function CorridorModal({ corridor, items, orgId, onSaved, onClose }) {
       org_id:        orgId,
       name:          name.trim(),
       description:   description.trim() || null,
+      color:         color,
       inventory_ids: [...selectedIds],
       active:        true,
     }
@@ -80,6 +178,23 @@ function CorridorModal({ corridor, items, orgId, onSaved, onClose }) {
             <input className={`input-field ${error && !name.trim() ? 'border-red-500' : ''}`}
               placeholder="Ej: Corredor Norte — Libertador"
               value={name} onChange={e => setName(e.target.value)} />
+          </div>
+
+          {/* Color del corredor */}
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-slate-300">Color del corredor</label>
+            <div className="flex flex-wrap gap-2">
+              {CORRIDOR_COLORS.map(c => (
+                <button
+                  key={c.value}
+                  type="button"
+                  title={c.label}
+                  onClick={() => setColor(c.value)}
+                  className={`h-8 w-8 rounded-full border-2 transition-all ${color === c.value ? 'border-white scale-110' : 'border-transparent hover:scale-105'}`}
+                  style={{ backgroundColor: c.value }}
+                />
+              ))}
+            </div>
           </div>
 
           {/* Descripción */}
@@ -167,8 +282,11 @@ function CorridorCard({ corridor, items, onEdit, onDelete }) {
   return (
     <div className="card overflow-hidden hover:border-brand/30 transition-colors">
       <div className="flex items-center gap-4 p-4">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-brand/10 text-brand font-bold text-lg">
-          📍
+        <div
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 border-white/20"
+          style={{ backgroundColor: corridor.color || '#6366F1' }}
+        >
+          <MapPin className="h-5 w-5 text-white" />
         </div>
 
         <div className="min-w-0 flex-1">
@@ -266,6 +384,8 @@ export default function CorridorsManager({ items }) {
     loadCorridors()
   }
 
+  const [showMap, setShowMap] = useState(true)
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -275,11 +395,30 @@ export default function CorridorsManager({ items }) {
             {corridors.length} {corridors.length === 1 ? 'corredor definido' : 'corredores definidos'}
           </p>
         </div>
-        <Button onClick={handleNew} size="sm">
-          <Plus className="h-4 w-4" />
-          Nuevo corredor
-        </Button>
+        <div className="flex items-center gap-2">
+          {corridors.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowMap(v => !v)}
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
+                showMap ? 'border-brand/40 bg-brand/10 text-brand' : 'border-surface-700 text-slate-400 hover:border-slate-500'
+              }`}
+            >
+              <Map className="h-3.5 w-3.5" />
+              {showMap ? 'Ocultar mapa' : 'Ver mapa'}
+            </button>
+          )}
+          <Button onClick={handleNew} size="sm">
+            <Plus className="h-4 w-4" />
+            Nuevo corredor
+          </Button>
+        </div>
       </div>
+
+      {/* Mapa de corredores */}
+      {showMap && corridors.length > 0 && items.length > 0 && (
+        <CorridorMap corridors={corridors} items={items} />
+      )}
 
       {/* List */}
       {loading ? (
