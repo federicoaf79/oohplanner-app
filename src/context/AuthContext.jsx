@@ -23,7 +23,11 @@ export function AuthProvider({ children }) {
   const initialLoadDone     = useRef(false)  // getSession() completó
 
   async function fetchProfile(userId) {
-    const { data, error } = await supabase
+    // Timeout de 6s para evitar que un fetchProfile colgado bloquee la app
+    const timeout = new Promise(resolve =>
+      setTimeout(() => resolve({ data: null, error: new Error('fetchProfile timeout') }), 6000)
+    )
+    const query = supabase
       .from('profiles')
       .select(`*,
         organisations(
@@ -45,6 +49,8 @@ export function AuthProvider({ children }) {
       .eq('id', userId)
       .single()
 
+    const { data, error } = await Promise.race([query, timeout])
+
     if (error) {
       console.error('Error fetching profile:', error.message)
       return null
@@ -57,8 +63,14 @@ export function AuthProvider({ children }) {
 
     async function init() {
       try {
-        // getSession() es la fuente más confiable — siempre responde
-        const { data: { session } } = await supabase.auth.getSession()
+        // getSession() con timeout — si Supabase tarda en refrescar el token, no bloqueamos
+        const sessionTimeout = new Promise(resolve =>
+          setTimeout(() => resolve({ data: { session: null }, error: new Error('getSession timeout') }), 5000)
+        )
+        const { data: { session } } = await Promise.race([
+          supabase.auth.getSession(),
+          sessionTimeout,
+        ])
         if (done) return
         if (session?.user) {
           setSession(session)
