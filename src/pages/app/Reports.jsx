@@ -425,11 +425,12 @@ export default function Reports() {
       utilityMargin  += result.margin
       utilityRevenue += result.revenue_total
     })
-    const utilityPct = utilityRevenue > 0 ? (utilityMargin / utilityRevenue) * 100 : 0
-
     // Facturación = suma de total_value de las propuestas aceptadas en el período
-    // (igual que Dashboard para que los números sean comparables)
     const revenue = filteredProposals.reduce((sum, p) => sum + (p.total_value ?? 0), 0)
+
+    // Margen % = utilityMargin / facturación real (total_value)
+    // Así el % es consistente con la facturación que se muestra al usuario
+    const utilityPct = revenue > 0 ? (utilityMargin / revenue) * 100 : 0
 
     return {
       revenue,
