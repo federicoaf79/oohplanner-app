@@ -148,8 +148,10 @@ function computeDerived(
   const prevAcceptedIds = new Set(prevProps.map(p => p.id))
 
   // ── Revenue = SUM(rate) de items de propuestas aceptadas en el período ──
-  const revenue     = items.filter(pi => periodAcceptedIds.has(pi.proposal_id)).reduce((s, pi) => s + (pi.client_price ?? pi.rate ?? 0), 0)
-  const prevRevenue = items.filter(pi => prevAcceptedIds.has(pi.proposal_id)).reduce((s, pi) => s + (pi.client_price ?? pi.rate ?? 0), 0)
+  // Facturación = sum(total_value) de propuestas aceptadas en el período
+  // Misma fuente que Reports para consistencia
+  const revenue     = props.filter(p => periodAcceptedIds.has(p.id)).reduce((s, p) => s + (p.total_value ?? 0), 0)
+  const prevRevenue = props.filter(p => prevAcceptedIds.has(p.id)).reduce((s, p) => s + (p.total_value ?? 0), 0)
   const revDelta    = prevRevenue > 0 ? (revenue - prevRevenue) / prevRevenue * 100 : null
 
   // Items que ocupan algún cartel HOY — base para los widgets de ocupación.
