@@ -169,7 +169,7 @@ export default function Reports() {
           .eq('org_id', orgId),
 
         supabase.from('contacts')
-          .select('id, name, company, roles')
+          .select('id, name, legal_name, roles')
           .eq('org_id', orgId),
 
         supabase.from('inventory')
@@ -177,11 +177,11 @@ export default function Reports() {
             id, code, name, format, base_rate, is_available,
             cost_rent, cost_electricity, cost_taxes,
             cost_maintenance, cost_imponderables,
-            cost_print_per_m2, cost_colocation, cost_design,
+            cost_colocation, cost_design,
             print_width_cm, print_height_cm, width_m, height_m,
             cost_seller_commission_pct, cost_agency_commission_pct,
-            cost_owner_commission_pct, cost_owner_commission,
-            asociado_nombre, daily_traffic, audience_source, city
+            capex_total, capex_amortization_months,
+            daily_traffic, audience_source, city
           `)
           .eq('org_id', orgId),
       ])
@@ -226,11 +226,8 @@ export default function Reports() {
           cost_taxes:                 inv.cost_taxes ?? 0,
           cost_maintenance:           inv.cost_maintenance ?? 0,
           cost_imponderables:         inv.cost_imponderables ?? 0,
-          cost_print_per_m2:          inv.cost_print_per_m2 ?? 0,
           cost_seller_commission_pct: inv.cost_seller_commission_pct ?? 0,
           cost_agency_commission_pct: inv.cost_agency_commission_pct ?? 0,
-          asociado_nombre:            inv.asociado_nombre ?? null,
-          cost_owner_commission_pct:  inv.cost_owner_commission_pct ?? 0,
           width_m:  inv.width_m ?? 0,
           height_m: inv.height_m ?? 0,
         }
@@ -650,7 +647,7 @@ export default function Reports() {
       // Display percentages — from inv (current config), not frozen on items.
       const sellerPct = inv.cost_seller_commission_pct ?? 0
       const agencyPct = inv.cost_agency_commission_pct ?? 0
-      const ownerPct  = inv.cost_owner_commission_pct ?? 0
+      const ownerPct  = 0 // deprecado — ver site_commissions
 
       return {
         ...inv,
@@ -661,7 +658,7 @@ export default function Reports() {
         sellerPct,
         agencyPct,
         asociPct:  ownerPct,                          // UI backwards-compat key
-        asociName: inv.asociado_nombre ?? null,
+        asociName: null, // deprecado — ver contacts/site_commissions
         sellerComm: agg.sellerComm,
         agencyComm: agg.agencyComm,
         asociComm:  agg.ownerComm,                    // UI backwards-compat key
@@ -1574,7 +1571,7 @@ export default function Reports() {
                   byBenef[key] = {
                     key,
                     name: isHidden ? '(encubierta)' : (contact?.name ?? profile?.full_name ?? '—'),
-                    company: contact?.company ?? '',
+                    company: contact?.legal_name ?? '',
                     type: c.commission_type,
                     isHidden,
                     count: 0,
