@@ -427,10 +427,9 @@ export default function Reports() {
     })
     const utilityPct = utilityRevenue > 0 ? (utilityMargin / utilityRevenue) * 100 : 0
 
-    // Facturación total leída del mismo cálculo que Utilidad para que los
-    // KPIs sean consistentes (rate × meses según start/end_date del item,
-    // vía calculateProposalProfitability).
-    const revenue = utilityRevenue
+    // Facturación = suma de total_value de las propuestas aceptadas en el período
+    // (igual que Dashboard para que los números sean comparables)
+    const revenue = filteredProposals.reduce((sum, p) => sum + (p.total_value ?? 0), 0)
 
     return {
       revenue,
