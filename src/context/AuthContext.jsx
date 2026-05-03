@@ -63,21 +63,17 @@ export function AuthProvider({ children }) {
 
     async function init() {
       try {
-        // getSession() con timeout — si Supabase tarda en refrescar el token, no bloqueamos
-        const sessionTimeout = new Promise(resolve =>
-          setTimeout(() => resolve({ data: { session: null }, error: new Error('getSession timeout') }), 5000)
-        )
-        const { data: { session } } = await Promise.race([
-          supabase.auth.getSession(),
-          sessionTimeout,
-        ])
+        // getSession() — rápido, usa token local
+        const { data: { session } } = await supabase.auth.getSession()
         if (done) return
         if (session?.user) {
           setSession(session)
           const p = await fetchProfile(session.user.id)
           if (done) return
-          setProfile(p)
-          profileLoadedRef.current = true
+          if (p) {
+            setProfile(p)
+            profileLoadedRef.current = true
+          }
         }
       } catch (e) {
         console.error('AuthContext init error:', e)
@@ -93,8 +89,6 @@ export function AuthProvider({ children }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        if (event === 'TOKEN_REFRESHED') return
-
         if (event === 'SIGNED_OUT') {
           done = false
           profileLoadedRef.current = false
@@ -109,7 +103,12 @@ export function AuthProvider({ children }) {
 
         if (event === 'SIGNED_IN') {
           // Si init() ya cargó el perfil, no re-fetchear
-          if (profileLoadedRef.current) return
+          if (profileLoadedRef.current) {
+            setLoading(false)
+            return
+          }
+          // Solo fetchear si init() ya terminó (evita race con _recoverAndRefresh)
+          if (!initialLoadDone.current) return
           setSession(session)
           if (session?.user) {
             try {
@@ -118,6 +117,12 @@ export function AuthProvider({ children }) {
             } catch {}
           }
           setLoading(false)
+          return
+        }
+
+        if (event === 'TOKEN_REFRESHED') {
+          // Token refrescado — actualizar sesión pero no re-fetchear perfil
+          setSession(session)
           return
         }
 
