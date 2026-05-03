@@ -406,30 +406,33 @@ export default function Reports() {
     // the org yet (pending Block B.3), so the helper falls into backwards
     // compat mode — margin = alquiler - fijos - comisiones, without the
     // production markup lift. When B.3 lands, these numbers will rise.
-    const itemsByProposalId = {}
-    filteredItems.forEach(pi => {
-      if (!itemsByProposalId[pi.proposal_id]) itemsByProposalId[pi.proposal_id] = []
-      itemsByProposalId[pi.proposal_id].push({
-        ...pi,
-        site: invMap[pi.site_id] || null,
-      })
-    })
-
-    let utilityMargin = 0
-    let utilityRevenue = 0
-    filteredProposals.forEach(p => {
-      const result = calculateProposalProfitability({
-        ...p,
-        items: itemsByProposalId[p.id] || [],
-      })
-      utilityMargin  += result.margin
-      utilityRevenue += result.revenue_total
-    })
-    // Facturación = suma de total_value de las propuestas aceptadas en el período
+    // Facturación = sum(total_value) propuestas aceptadas en el período
     const revenue = filteredProposals.reduce((sum, p) => sum + (p.total_value ?? 0), 0)
 
-    // Margen % = utilityMargin / facturación real (total_value)
-    // Así el % es consistente con la facturación que se muestra al usuario
+    // OPEX del período: OPEX mensual × meses ocupados por cada cartel en las propuestas
+    const totalOpexPeriod = filteredItems.reduce((sum, pi) => {
+      const site = invMap[pi.site_id]
+      if (!site) return sum
+      const months = Number(pi.duration) || 1
+      const monthlyOpex = (site.cost_rent || 0) + (site.cost_electricity || 0) +
+        (site.cost_taxes || 0) + (site.cost_maintenance || 0) + (site.cost_imponderables || 0)
+      return sum + monthlyOpex * months
+    }, 0)
+
+    // Comisiones del período (desde campaign_commissions)
+    const filteredPropIds = new Set(filteredProposals.map(p => p.id))
+    const totalCommPeriod = commissions
+      .filter(c => filteredPropIds.has(c.proposal_id))
+      .reduce((s, c) => {
+        const fixed = Number(c.amount_fixed) || 0
+        if (fixed > 0) return s + fixed
+        // fallback: calcular desde pct si amount_fixed es null
+        const prop = filteredProposals.find(p => p.id === c.proposal_id)
+        return s + (prop?.total_value || 0) * (Number(c.commission_pct) || 0) / 100
+      }, 0)
+
+    const utilityMargin = revenue - totalOpexPeriod - totalCommPeriod
+    const utilityRevenue = revenue // alias para compatibilidad
     const utilityPct = revenue > 0 ? (utilityMargin / revenue) * 100 : 0
 
     return {
@@ -1311,8 +1314,9 @@ export default function Reports() {
 
                                   {/* Resultado */}
                                   <div className="rounded-xl border border-surface-700 bg-surface-800 p-4 space-y-2">
-                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Resultado</p>
-                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Ingreso bruto</span><span className="text-slate-300">{fmtARS(site.revenue)}</span></div>
+                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Resultado</p>
+                                    <p className="text-[9px] text-slate-600 mb-2">Basado en el período seleccionado</p>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Facturación</span><span className="text-slate-300">{fmtARS(site.yearRevenue || site.revenue)}</span></div>
                                     <div className="flex justify-between text-sm"><span className="text-slate-400">Total costos</span><span className="text-slate-300">− {fmtARS(site.totalCosts)}</span></div>
                                     <div className="flex justify-between text-sm"><span className="text-slate-400">Total comisiones</span><span className="text-slate-300">− {fmtARS(site.totalComm)}</span></div>
                                     <div className={`flex justify-between text-sm pt-2 border-t border-surface-700 font-bold ${site.netProfit >= 0 ? 'text-teal-400' : 'text-red-400'}`}>
@@ -1533,7 +1537,13 @@ export default function Reports() {
 
           {/* KPIs facilitadores */}
           {(() => {
-            const total = commissions.reduce((s, c) => s + (Number(c.amount_fixed) || 0), 0)
+            const effectiveAmt = (c) => {
+              const fixed = Number(c.amount_fixed) || 0
+              if (fixed > 0) return fixed
+              const prop = proposals.find(p => p.id === c.proposal_id)
+              return (prop?.total_value || 0) * (Number(c.commission_pct) || 0) / 100
+            }
+            const total = commissions.reduce((s, c) => s + effectiveAmt(c), 0)
             const external = commissions.filter(c => c.commission_type === 'sales_facilitator' || c.commission_type === 'hidden_facilitator')
             const internal = commissions.filter(c => c.commission_type === 'internal_seller')
             return (
@@ -1578,6 +1588,12 @@ export default function Reports() {
 
               // Agrupar por beneficiario
               const byBenef = {}
+              const effectiveAmt2 = (c) => {
+                const fixed = Number(c.amount_fixed) || 0
+                if (fixed > 0) return fixed
+                const prop = proposals.find(p => p.id === c.proposal_id)
+                return (prop?.total_value || 0) * (Number(c.commission_pct) || 0) / 100
+              }
               commissions.forEach(c => {
                 const key = c.beneficiary_contact_id ?? c.beneficiary_profile_id ?? '__hidden__'
                 if (!byBenef[key]) {
@@ -1596,7 +1612,7 @@ export default function Reports() {
                   }
                 }
                 byBenef[key].count++
-                byBenef[key].totalAmount += Number(c.amount_fixed) || 0
+                byBenef[key].totalAmount += effectiveAmt2(c)
                 byBenef[key].campaigns.add(c.proposal_id)
               })
 
@@ -1705,7 +1721,7 @@ export default function Reports() {
                                 </span>
                                 {c.commission_pct > 0 && <span className="text-slate-600">· {c.commission_pct}%</span>}
                               </div>
-                              <span className="font-semibold text-white">{fmtARS(c.amount_fixed)}</span>
+                              <span className="font-semibold text-white">{fmtARS(effectiveAmt(c))}</span>
                             </div>
                           )
                         })}
