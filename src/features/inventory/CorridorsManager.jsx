@@ -67,22 +67,22 @@ function CorridorMap({ corridors, items }) {
       const latlngs = corridorItems.map(i => [Number(i.latitude), Number(i.longitude)])
       allPoints.push(...latlngs)
 
-      // Línea del corredor
-      const polyline = L.polyline(latlngs, {
-        color,
-        weight: 3,
-        opacity: 0.85,
-        dashArray: '8, 4',
-      }).addTo(map)
-      layersRef.current.push(polyline)
+      // Radio de impacto sutil (300m, visible al hacer zoom)
+      corridorItems.forEach(item => {
+        const impactCircle = L.circle(
+          [Number(item.latitude), Number(item.longitude)],
+          { radius: 300, fillColor: color, fillOpacity: 0.08, color: color, weight: 0.5, opacity: 0.2 }
+        ).addTo(map)
+        layersRef.current.push(impactCircle)
+      })
 
       // Puntos de cada cartel
-      corridorItems.forEach((item, idx) => {
+      corridorItems.forEach(item => {
         const circleMarker = L.circleMarker(
           [Number(item.latitude), Number(item.longitude)],
           { radius: 7, fillColor: color, color: '#fff', weight: 2, opacity: 1, fillOpacity: 1 }
         )
-          .bindPopup(`<b>${item.name}</b><br/><span style="color:#94a3b8">${item.address ?? ''}</span><br/><span style="color:${color}">${corridor.name}</span>`)
+          .bindPopup(`<b style="color:#fff">${item.name}</b><br/><span style="color:#94a3b8;font-size:11px">${item.address ?? ''}</span><br/><span style="color:${color};font-size:11px">● ${corridor.name}</span>`)
           .addTo(map)
         layersRef.current.push(circleMarker)
       })
@@ -95,7 +95,7 @@ function CorridorMap({ corridors, items }) {
   }, [corridors, items])
 
   return (
-    <div className="rounded-xl overflow-hidden border border-surface-700" style={{ height: 380 }}>
+    <div className="rounded-xl overflow-hidden border border-surface-700" style={{ height: 380, position: 'relative', zIndex: 0 }}>
       <div ref={mapRef} style={{ height: '100%', width: '100%' }} />
     </div>
   )
