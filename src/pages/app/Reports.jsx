@@ -599,6 +599,21 @@ export default function Reports() {
       const siteItems = filteredItems.filter(pi => pi.site_id === inv.id)
       const revItems  = siteItems.filter(pi => REV_STATUSES.has(filteredStatusMap[pi.proposal_id]))
 
+      // Facturación acumulada anual: total_value de propuestas donde participó el cartel
+      // en el año en curso (independiente del filtro de período)
+      const currentYear = new Date().getFullYear()
+      const yearRevenue = propItems
+        .filter(pi => pi.site_id === inv.id)
+        .reduce((sum, pi) => {
+          const prop = propById[pi.proposal_id]
+          if (!prop || prop.status !== 'accepted') return sum
+          const acceptedYear = prop.accepted_at ? new Date(prop.accepted_at).getFullYear() : null
+          if (acceptedYear !== currentYear) return sum
+          // Prorratear total_value por la cantidad de carteles en la propuesta
+          const siteCount = propItems.filter(x => x.proposal_id === pi.proposal_id).length || 1
+          return sum + ((prop.total_value ?? 0) / siteCount)
+        }, 0)
+
       // Búsqueda de campaña activa HOY sobre el dataset completo (propItems),
       // independiente del filtro de período del usuario.
       const activeCampaign = propItems.find(pi => {
@@ -664,6 +679,7 @@ export default function Reports() {
         asociComm:  agg.ownerComm,                    // UI backwards-compat key
         totalComm,
         netProfit, roi, margin, isOccupied,
+        yearRevenue,      // facturación acumulada anual del cartel
         activeCampaign,   // para mostrar fechas en la columna Estado
       }
     }).sort((a, b) => b.revenue - a.revenue)
@@ -1138,7 +1154,7 @@ export default function Reports() {
                   <th className="w-6 pb-3" />
                   <th className="text-left pb-3 font-medium">Cartel</th>
                   <th className="text-left pb-3 font-medium hidden sm:table-cell">Formato</th>
-                  <th className="text-right pb-3 font-medium">Facturación período</th>
+                  <th className="text-right pb-3 font-medium">Facturación acumulada</th>
                   <th className="text-right pb-3 font-medium hidden md:table-cell">Costos/mes</th>
                   <th className="text-right pb-3 font-medium">Margen</th>
                   <th className="text-right pb-3 font-medium hidden lg:table-cell">Estado</th>
@@ -1246,11 +1262,11 @@ export default function Reports() {
                                   <div className="rounded-xl border border-surface-700 bg-surface-800 p-4 space-y-2">
                                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Ingresos</p>
                                     <div className="flex justify-between text-sm">
-                                      <span className="text-slate-400">Facturación período</span>
-                                      <span className="text-white font-medium">{fmtARS(site.revenue)}</span>
+                                      <span className="text-slate-400">Facturación acumulada {new Date().getFullYear()}</span>
+                                      <span className="text-white font-medium">{fmtARS(site.yearRevenue)}</span>
                                     </div>
                                     <div className="flex justify-between text-sm">
-                                      <span className="text-slate-400">Tarifa base mensual</span>
+                                      <span className="text-slate-400">Precio de Lista</span>
                                       <span className="text-slate-300">{fmtARS(site.base_rate)}</span>
                                     </div>
                                   </div>
