@@ -873,7 +873,7 @@ export default function Reports() {
                 {fmtPct(kpis.utilityPct)} margen
               </span>
               <span className="block mt-0.5 text-[10px] text-slate-600">
-                Sobre {fmtARS(kpis.utilityRevenue)} facturados
+                Sobre {fmtARS(kpis.revenue)} facturados
               </span>
             </>
           }
@@ -1404,13 +1404,13 @@ export default function Reports() {
           </div>
         )}
 
-        {kpis.utilityRevenue > 0 && (
+        {kpis.revenue > 0 && (
           <div className="mt-5 rounded-xl bg-slate-800/50 border border-surface-700 px-4 py-3 text-center">
             <p className="text-xs text-slate-400">
               Total consolidado del período:{' '}
               <span className="font-semibold text-white">{fmtARS(kpis.utilityMargin)}</span>
               {' '}de utilidad sobre{' '}
-              <span className="font-semibold text-white">{fmtARS(kpis.utilityRevenue)}</span>
+              <span className="font-semibold text-white">{fmtARS(kpis.revenue)}</span>
               {' '}facturados{' '}
               <span className={
                 (() => {
