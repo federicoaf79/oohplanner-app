@@ -1167,7 +1167,7 @@ export default function Campaigns() {
         // Owners get cost fields too (for the profitability chart).
         // Non-owners don't receive cost data in the payload at all.
         const baseSiteFields = 'id, name, code, format, address, print_width_cm, print_height_cm'
-        const costSiteFields = ', width_m, height_m, base_rate, cost_rent, cost_electricity, cost_taxes, cost_maintenance, cost_imponderables, cost_print_per_m2, cost_colocation, cost_design, cost_seller_commission_pct, cost_agency_commission_pct, cost_owner_commission_pct, cost_owner_commission'
+        const costSiteFields = ', width_m, height_m, base_rate, cost_rent, cost_electricity, cost_taxes, cost_maintenance, cost_imponderables, cost_colocation, cost_design, cost_seller_commission_pct, cost_agency_commission_pct'
         const siteFields = isOwner ? baseSiteFields + costSiteFields : baseSiteFields
 
         let query = supabase
