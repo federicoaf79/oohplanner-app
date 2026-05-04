@@ -612,9 +612,12 @@ export default function Reports() {
           if (!prop || prop.status !== 'accepted') return sum
           const acceptedYear = prop.accepted_at ? new Date(prop.accepted_at).getFullYear() : null
           if (acceptedYear !== currentYear) return sum
-          // Prorratear total_value por la cantidad de carteles en la propuesta
-          const siteCount = propItems.filter(x => x.proposal_id === pi.proposal_id).length || 1
-          return sum + ((prop.total_value ?? 0) / siteCount)
+          // Facturación real del cartel en esa propuesta:
+          // rate × meses × (1 - descuento%)
+          const months = Number(pi.duration) || 1
+          const discount = pi.discount_pct ?? prop.discount_pct ?? 0
+          const rate = pi.rate ?? inv.base_rate ?? 0
+          return sum + rate * months * (1 - discount / 100)
         }, 0)
 
       // ── Datos anuales coherentes con yearRevenue ────────────────────────
@@ -1359,7 +1362,9 @@ export default function Reports() {
                                     .filter(pi => pi.site_id === site.id)
                                     .map(pi => {
                                       const p = proposals.find(p => p.id === pi.proposal_id)
-                                      return p ? { ...pi, proposalTitle: p.title, clientName: p.client_name } : null
+                                      // Solo mostrar campañas de propuestas aceptadas
+                                      if (!p || p.status !== 'accepted') return null
+                                      return { ...pi, proposalTitle: p.title, clientName: p.client_name }
                                     })
                                     .filter(Boolean)
 
@@ -1371,7 +1376,7 @@ export default function Reports() {
                                     const isOccupied = propItems.some(pi => {
                                       if (pi.site_id !== site.id) return false
                                       const p = proposals.find(p => p.id === pi.proposal_id)
-                                      if (!p) return false
+                                      if (!p || p.status !== 'accepted') return false
                                       const s = new Date(pi.start_date || p.start_date)
                                       const e = new Date(pi.end_date || p.end_date)
                                       return s <= mE && e >= mS
