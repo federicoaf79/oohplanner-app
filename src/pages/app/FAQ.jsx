@@ -274,6 +274,11 @@ const FAQ_SECTIONS = [
     roles: ['owner'],
     items: [
       {
+        q: '¿Qué pasa con mis datos si termina el período de prueba?',
+        a: 'Tus datos se conservan íntegramente. Podés seguir accediendo en modo lectura. Para retomar el uso completo, contactá al equipo de OOH Planner a través del módulo Soporte → Nuevo ticket.',
+        roles: ['owner', 'manager', 'salesperson'],
+      },
+      {
         q: '¿Dónde configuro los datos de mi empresa?',
         a: 'En Configuración → Empresa. Podés actualizar el nombre, logo, dirección, teléfono, horarios de atención, sitio web y datos de facturación. El logo aparece en todos los PDFs generados para clientes.',
         roles: ['owner'],
