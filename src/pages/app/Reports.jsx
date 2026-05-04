@@ -617,6 +617,27 @@ export default function Reports() {
           return sum + ((prop.total_value ?? 0) / siteCount)
         }, 0)
 
+      // ── Datos anuales coherentes con yearRevenue ────────────────────────
+      // Mismos ítems del año que generaron yearRevenue
+      const yearItems = propItems.filter(pi => {
+        if (pi.site_id !== inv.id) return false
+        const prop = propById[pi.proposal_id]
+        if (!prop || prop.status !== 'accepted') return false
+        const acceptedYear = prop.accepted_at ? new Date(prop.accepted_at).getFullYear() : null
+        return acceptedYear === currentYear
+      })
+      const yearMonths = yearItems.reduce((s, pi) => s + (Number(pi.duration) || 1), 0)
+      const monthlyOpex = (inv.cost_rent || 0) + (inv.cost_electricity || 0) +
+        (inv.cost_taxes || 0) + (inv.cost_maintenance || 0) + (inv.cost_imponderables || 0)
+      const yearOpex = monthlyOpex * yearMonths
+      const _sellerPct = inv.cost_seller_commission_pct ?? 0
+      const _agencyPct = inv.cost_agency_commission_pct ?? 0
+      const yearSellerComm = yearRevenue * _sellerPct / 100
+      const yearAgencyComm = yearRevenue * _agencyPct / 100
+      const yearTotalComm  = yearSellerComm + yearAgencyComm
+      const yearNetProfit  = yearRevenue - yearOpex - yearTotalComm
+      const yearMargin     = yearRevenue > 0 ? (yearNetProfit / yearRevenue) * 100 : null
+
       // Búsqueda de campaña activa HOY sobre el dataset completo (propItems),
       // independiente del filtro de período del usuario.
       const activeCampaign = propItems.find(pi => {
@@ -682,10 +703,11 @@ export default function Reports() {
         asociComm:  agg.ownerComm,                    // UI backwards-compat key
         totalComm,
         netProfit, roi, margin, isOccupied,
-        yearRevenue,      // facturación acumulada anual del cartel
+        yearRevenue, yearOpex, yearMonths, yearSellerComm, yearAgencyComm,
+        yearTotalComm, yearNetProfit, yearMargin,
         activeCampaign,   // para mostrar fechas en la columna Estado
       }
-    }).sort((a, b) => b.revenue - a.revenue)
+    }).sort((a, b) => (b.yearRevenue || 0) - (a.yearRevenue || 0))
   }, [inventory, filteredItems, filteredStatusMap, propItems, proposals])
 
   // ── chart formatters ──────────────────────────────────────────────────────
@@ -1222,16 +1244,16 @@ export default function Reports() {
                               ) : site.revenue === 0 ? (
                                 <span className="text-slate-700 text-xs">$0</span>
                               ) : (
-                                fmtARS(site.revenue)
+                                fmtARS(site.yearRevenue || site.revenue)
                               )}
                             </td>
                             <td className="py-3 text-right text-slate-400 hidden md:table-cell">
                               {site.totalCosts > 0 ? fmtARS(Math.round(site.totalCosts / Math.max(1, Math.round(site.fixedCosts / Math.max(site.cost_rent + site.cost_electricity + site.cost_taxes + site.cost_maintenance + site.cost_imponderables, 1))))) : '—'}
                             </td>
                             <td className="py-3 text-right">
-                              {site.margin != null
-                                ? <span className={`font-semibold ${site.margin >= 40 ? 'text-brand' : site.margin >= 20 ? 'text-amber-400' : 'text-rose-400'}`}>
-                                    {fmtPct(site.margin)}
+                              {(site.yearMargin ?? site.margin) != null
+                                ? <span className={`font-semibold ${(site.yearMargin ?? site.margin) >= 40 ? 'text-brand' : (site.yearMargin ?? site.margin) >= 20 ? 'text-amber-400' : 'text-rose-400'}`}>
+                                    {fmtPct(site.yearMargin ?? site.margin)}
                                   </span>
                                 : <span className="text-slate-700">—</span>
                               }
@@ -1290,16 +1312,16 @@ export default function Reports() {
                                       <span className="text-white">{fmtARS((site.cost_rent ?? 0) + (site.cost_electricity ?? 0) + (site.cost_taxes ?? 0) + (site.cost_maintenance ?? 0) + (site.cost_imponderables ?? 0))}</span>
                                     </div>
                                     <div className="flex justify-between text-xs text-slate-500">
-                                      <span>Total período ({site.fixedCosts > 0 && site.cost_rent > 0 ? Math.round(site.fixedCosts / ((site.cost_rent ?? 0) + (site.cost_electricity ?? 0) + (site.cost_taxes ?? 0) + (site.cost_maintenance ?? 0) + (site.cost_imponderables ?? 0)) * 10) / 10 : '?'} meses)</span>
-                                      <span className="text-slate-400">{fmtARS(site.fixedCosts)}</span>
+                                      <span>Total anual ({site.yearMonths || '?'} meses facturados)</span>
+                                      <span className="text-slate-400">{fmtARS(site.yearOpex)}</span>
                                     </div>
                                   </div>
 
                                   {/* Comisiones */}
                                   <div className="rounded-xl border border-surface-700 bg-surface-800 p-4 space-y-2">
                                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Comisiones pagadas</p>
-                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Vendedor ({fmtPct(site.sellerPct)})</span><span className="text-slate-300">{fmtARS(site.sellerComm)}</span></div>
-                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Agencia ({fmtPct(site.agencyPct)})</span><span className="text-slate-300">{fmtARS(site.agencyComm)}</span></div>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Vendedor ({fmtPct(site.sellerPct)})</span><span className="text-slate-300">{fmtARS(site.yearSellerComm ?? site.sellerComm)}</span></div>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Agencia ({fmtPct(site.agencyPct)})</span><span className="text-slate-300">{fmtARS(site.yearAgencyComm ?? site.agencyComm)}</span></div>
                                     {site.asociPct > 0 && (
                                       <div className="flex justify-between text-sm">
                                         <span className="text-slate-400">{site.asociName ?? 'Asociado'} ({fmtPct(site.asociPct)})</span>
@@ -1308,7 +1330,7 @@ export default function Reports() {
                                     )}
                                     <div className="flex justify-between text-sm pt-2 border-t border-surface-700 font-medium">
                                       <span className="text-slate-300">Total comisiones</span>
-                                      <span className="text-white">{fmtARS(site.totalComm)}</span>
+                                      <span className="text-white">{fmtARS(site.yearTotalComm ?? site.totalComm)}</span>
                                     </div>
                                   </div>
 
@@ -1317,10 +1339,10 @@ export default function Reports() {
                                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Resultado</p>
                                     <p className="text-[9px] text-slate-600 mb-2">Basado en el período seleccionado</p>
                                     <div className="flex justify-between text-sm"><span className="text-slate-400">Facturación</span><span className="text-slate-300">{fmtARS(site.yearRevenue || site.revenue)}</span></div>
-                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Total costos</span><span className="text-slate-300">− {fmtARS(site.totalCosts)}</span></div>
-                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Total comisiones</span><span className="text-slate-300">− {fmtARS(site.totalComm)}</span></div>
-                                    <div className={`flex justify-between text-sm pt-2 border-t border-surface-700 font-bold ${site.netProfit >= 0 ? 'text-teal-400' : 'text-red-400'}`}>
-                                      <span>Utilidad neta</span><span>{fmtARS(site.netProfit)}</span>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Total costos</span><span className="text-slate-300">− {fmtARS(site.yearOpex)}</span></div>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Total comisiones</span><span className="text-slate-300">− {fmtARS(site.yearTotalComm)}</span></div>
+                                    <div className={`flex justify-between text-sm pt-2 border-t border-surface-700 font-bold ${(site.yearNetProfit ?? site.netProfit) >= 0 ? 'text-teal-400' : 'text-red-400'}`}>
+                                      <span>Utilidad neta</span><span>{fmtARS(site.yearNetProfit ?? site.netProfit)}</span>
                                     </div>
                                     {site.roi !== null && (
                                       <div className={`flex justify-between text-sm font-medium ${site.roi >= 0 ? 'text-teal-400/80' : 'text-red-400/80'}`}>
