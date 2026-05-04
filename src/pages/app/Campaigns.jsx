@@ -846,6 +846,7 @@ function CommissionsPanel({ campaign }) {
   const [loading,   setLoading]   = useState(true)
   const [contacts,  setContacts]  = useState([])
   const [profiles,  setProfiles]  = useState([])
+  const [propItems, setPropItems] = useState([])   // items con fechas reales
   const [saving,    setSaving]    = useState(false)
   const [error,     setError]     = useState('')
 
@@ -879,13 +880,17 @@ function CommissionsPanel({ campaign }) {
         .select('id, full_name, role, commission_pct')
         .eq('org_id', orgId)
         .eq('is_active', true),
+      // Re-fetch items con fechas reales (el prop puede no traerlas)
+      supabase.from('proposal_items')
+        .select('id, site_id, rate, duration, start_date, end_date, discount_pct, site:inventory(id, name)')
+        .eq('proposal_id', campaign.id),
       siteIds.length > 0
         ? supabase.from('site_commissions')
             .select('id, site_id, commission_type, commission_pct, contact_id, profile_id, notes')
             .eq('org_id', orgId)
             .in('site_id', siteIds)
         : Promise.resolve({ data: [] }),
-    ]).then(([{ data: comm }, { data: cont }, { data: prof }, { data: siteComm }]) => {
+    ]).then(([{ data: comm }, { data: cont }, { data: prof }, { data: pitems }, { data: siteComm }]) => {
       let initialRows = (comm ?? []).map(c => ({ ...c, _id: c.id, isNew: false }))
 
       // Si no hay comisiones registradas → pre-cargar todos los actores
@@ -933,6 +938,7 @@ function CommissionsPanel({ campaign }) {
       setRows(initialRows)
       setContacts(cont ?? [])
       setProfiles(prof ?? [])
+      setPropItems(pitems ?? [])
       setLoading(false)
     })
   }, [campaign?.id, orgId])
@@ -996,7 +1002,7 @@ function CommissionsPanel({ campaign }) {
   // Precio de venta por cartel = precio de lista - descuento aplicado
   // La comisión siempre se calcula sobre este valor, cartel por cartel.
   // pi.rate = tarifa mensual del cartel; duration no se guarda en DB → calculamos desde fechas
-  const items = campaign.proposal_items ?? []
+  const items = propItems.length > 0 ? propItems : (campaign.proposal_items ?? [])
   const discount = campaign.discount_pct ?? 0
 
   // Días totales de la campaña desde sus fechas reales
