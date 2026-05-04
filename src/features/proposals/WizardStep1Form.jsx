@@ -10,7 +10,92 @@ import Button from '../../components/ui/Button'
 import Input from '../../components/ui/Input'
 import ClientArtworkSlots from './ClientArtworkSlots'
 
-// ── Presupuesto con formato ARS ──────────────────────────────
+// ── Buscador de cliente con autocompletado desde DB ──────────
+
+function ClientSearchField({ value, email, onChange, error }) {
+  const { profile } = useAuth()
+  const [query,    setQuery]    = useState(value ?? '')
+  const [results,  setResults]  = useState([])
+  const [open,     setOpen]     = useState(false)
+  const [loading,  setLoading]  = useState(false)
+
+  // Sincronizar si value cambia desde afuera
+  useEffect(() => { setQuery(value ?? '') }, [value])
+
+  useEffect(() => {
+    if (!query || query.length < 2) { setResults([]); setOpen(false); return }
+    setLoading(true)
+    const timer = setTimeout(async () => {
+      const { data } = await supabase
+        .from('contacts')
+        .select('id, name, legal_name, email')
+        .eq('org_id', profile?.org_id)
+        .ilike('name', `%${query}%`)
+        .limit(6)
+      setResults(data ?? [])
+      setOpen((data ?? []).length > 0)
+      setLoading(false)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [query, profile?.org_id])
+
+  function select(contact) {
+    setQuery(contact.name)
+    setOpen(false)
+    onChange(contact.name, contact.email ?? '')
+  }
+
+  function handleChange(e) {
+    const v = e.target.value
+    setQuery(v)
+    onChange(v, undefined) // solo actualiza nombre, no pisa el email
+  }
+
+  return (
+    <div className="relative">
+      <label className="block text-sm font-medium text-slate-300 mb-1.5">
+        Nombre del cliente *
+      </label>
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 pointer-events-none" />
+        <input
+          type="text"
+          placeholder="Buscar contacto o escribir nombre…"
+          value={query}
+          onChange={handleChange}
+          onFocus={() => results.length > 0 && setOpen(true)}
+          onBlur={() => setTimeout(() => setOpen(false), 150)}
+          className={`input-field pl-9 w-full ${error ? 'border-red-500' : ''}`}
+        />
+        {loading && (
+          <div className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+        )}
+      </div>
+      {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
+
+      {open && results.length > 0 && (
+        <div className="absolute z-50 mt-1 w-full rounded-xl border border-surface-600 bg-surface-800 shadow-xl overflow-hidden">
+          {results.map(c => (
+            <button
+              key={c.id}
+              type="button"
+              onMouseDown={() => select(c)}
+              className="flex w-full items-start gap-3 px-4 py-2.5 text-left hover:bg-surface-700 transition-colors"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-slate-200 truncate">{c.name}</p>
+                {c.legal_name && <p className="text-xs text-slate-500 truncate">{c.legal_name}</p>}
+                {c.email && <p className="text-xs text-slate-600 truncate">{c.email}</p>}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Componente principal ──────────────────────────────────────
 // Muestra: $20.000.000   Almacena: "20000000" (solo dígitos)
 
 const arsFormatter = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 })
@@ -189,9 +274,16 @@ export default function WizardStep1Form({
         <SectionHeader number="1" title="Cliente"
           subtitle="Nombre y datos de contacto del anunciante" />
         <div className="grid gap-4 sm:grid-cols-2">
-          <Input label="Nombre del cliente *" placeholder="Ej: Banco Galicia"
-            value={formData.clientName} onChange={e => update('clientName', e.target.value)}
-            error={errors.clientName} />
+          {/* Campo con búsqueda en DB de contactos */}
+          <ClientSearchField
+            value={formData.clientName}
+            email={formData.clientEmail}
+            onChange={(name, email) => {
+              update('clientName', name)
+              if (email !== undefined) update('clientEmail', email)
+            }}
+            error={errors.clientName}
+          />
           <Input label="Email (opcional)" type="email" placeholder="contacto@cliente.com"
             value={formData.clientEmail} onChange={e => update('clientEmail', e.target.value)} />
         </div>
