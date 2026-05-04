@@ -1347,9 +1347,9 @@ export default function Reports() {
                                     <div className={`flex justify-between text-sm pt-2 border-t border-surface-700 font-bold ${(site.yearNetProfit ?? site.netProfit) >= 0 ? 'text-teal-400' : 'text-red-400'}`}>
                                       <span>Utilidad neta</span><span>{fmtARS(site.yearNetProfit ?? site.netProfit)}</span>
                                     </div>
-                                    {site.roi !== null && (
-                                      <div className={`flex justify-between text-sm font-medium ${site.roi >= 0 ? 'text-teal-400/80' : 'text-red-400/80'}`}>
-                                        <span>ROI</span><span>{fmtPct(site.roi)}</span>
+                                    {(site.yearMargin ?? site.margin) !== null && (
+                                      <div className={`flex justify-between text-sm font-medium ${(site.yearMargin ?? site.margin) >= 0 ? 'text-teal-400' : 'text-red-400'}`}>
+                                        <span>Margen de utilidad</span><span>{fmtPct(site.yearMargin ?? site.margin)}</span>
                                       </div>
                                     )}
                                   </div>
@@ -1362,11 +1362,15 @@ export default function Reports() {
                                     .filter(pi => pi.site_id === site.id)
                                     .map(pi => {
                                       const p = proposals.find(p => p.id === pi.proposal_id)
-                                      // Solo mostrar campañas de propuestas aceptadas
                                       if (!p || p.status !== 'accepted') return null
                                       return { ...pi, proposalTitle: p.title, clientName: p.client_name }
                                     })
                                     .filter(Boolean)
+                                    .sort((a, b) => {
+                                      const da = new Date(a.start_date || proposals.find(p=>p.id===a.proposal_id)?.start_date || 0)
+                                      const db = new Date(b.start_date || proposals.find(p=>p.id===b.proposal_id)?.start_date || 0)
+                                      return db - da // más reciente primero
+                                    })
 
                                   const months = []
                                   const cursor = new Date(mStart.getFullYear(), mStart.getMonth() - 11, 1)
@@ -1408,10 +1412,29 @@ export default function Reports() {
                                       </div>
                                       {campaigns.length > 0 ? (
                                         <div className="space-y-1.5 border-t border-surface-700 pt-3">
-                                          <p className="text-[10px] text-slate-500 font-medium mb-1">Campañas en el período:</p>
+                                          {(() => {
+                                            const today = new Date()
+                                            const hasActive = campaigns.some(c => new Date(c.start_date||0) <= today && new Date(c.end_date||'9999') >= today)
+                                            const hasFuture = campaigns.some(c => new Date(c.start_date||0) > today)
+                                            const pastCount = campaigns.filter(c => new Date(c.end_date||'9999') < today).length
+                                            return (
+                                              <div className="flex gap-3 mb-2 flex-wrap items-center">
+                                                {hasActive && <span className="text-[10px] font-semibold text-amber-400 uppercase tracking-widest">● Activa ahora</span>}
+                                                {hasFuture && <span className="text-[10px] font-semibold text-brand uppercase tracking-widest">● Próxima</span>}
+                                                {pastCount > 0 && <span className="text-[10px] text-slate-500 uppercase tracking-widest">{pastCount} en historial</span>}
+                                              </div>
+                                            )
+                                          })()}
                                           {campaigns.map((c, i) => (
                                             <div key={i} className="flex items-center justify-between text-[10px]">
-                                              <span className="text-slate-400 truncate max-w-[60%]">{c.proposalTitle}{c.clientName ? ` — ${c.clientName}` : ''}</span>
+                                              <div className="flex items-center gap-2 min-w-0 max-w-[65%]">
+                                                {c.start_date && (
+                                                  <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-surface-700 text-slate-300 uppercase">
+                                                    {new Date(c.start_date).toLocaleDateString('es-AR', {month:'short', year:'2-digit'}).replace('. ', "'")}
+                                                  </span>
+                                                )}
+                                                <span className="text-slate-200 truncate">{c.proposalTitle}{c.clientName ? ` — ${c.clientName}` : ''}</span>
+                                              </div>
                                               <span className="text-slate-500 shrink-0 ml-2">{fmtDate(c.start_date)} → {fmtDate(c.end_date)}</span>
                                             </div>
                                           ))}
