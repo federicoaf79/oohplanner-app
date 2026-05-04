@@ -1287,28 +1287,28 @@ export default function Reports() {
                                   <div className="rounded-xl border border-surface-700 bg-surface-800 p-4 space-y-2">
                                     <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Ingresos</p>
                                     <div className="flex justify-between text-sm">
-                                      <span className="text-slate-400">Facturación acumulada {new Date().getFullYear()}</span>
+                                      <span className="text-slate-200 font-medium">Facturación acumulada {new Date().getFullYear()}</span>
                                       <span className="text-white font-medium">{fmtARS(site.yearRevenue)}</span>
                                     </div>
                                     <div className="flex justify-between text-sm">
-                                      <span className="text-slate-400">Precio de Lista</span>
+                                      <span className="text-slate-200">Precio de Lista</span>
                                       <span className="text-slate-300">{fmtARS(site.base_rate)}</span>
                                     </div>
                                   </div>
 
                                   {/* Costos fijos */}
                                   <div className="rounded-xl border border-surface-700 bg-surface-800 p-4 space-y-2">
-                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Costos fijos / mes</p>
-                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Alquiler</span><span className="text-slate-300">{fmtARS(site.cost_rent)}</span></div>
-                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Luz</span><span className="text-slate-300">{fmtARS(site.cost_electricity)}</span></div>
-                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Impuestos</span><span className="text-slate-300">{fmtARS(site.cost_taxes)}</span></div>
-                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Mantenimiento</span><span className="text-slate-300">{fmtARS(site.cost_maintenance)}</span></div>
-                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Imponderables</span><span className="text-slate-300">{fmtARS(site.cost_imponderables)}</span></div>
+                                    <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest mb-3">Costos fijos / mes</p>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-200">Alquiler</span><span className="text-slate-300">{fmtARS(site.cost_rent)}</span></div>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-200">Luz</span><span className="text-slate-300">{fmtARS(site.cost_electricity)}</span></div>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-200">Impuestos</span><span className="text-slate-300">{fmtARS(site.cost_taxes)}</span></div>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-200">Mantenimiento</span><span className="text-slate-300">{fmtARS(site.cost_maintenance)}</span></div>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-200">Imponderables</span><span className="text-slate-300">{fmtARS(site.cost_imponderables)}</span></div>
                                     {site.printCost > 0 && (
                                       <div className="flex justify-between text-sm"><span className="text-slate-400">Impresión</span><span className="text-slate-300">{fmtARS(site.printCost)}</span></div>
                                     )}
                                     <div className="flex justify-between text-sm pt-2 border-t border-surface-700 font-medium">
-                                      <span className="text-slate-300">Total/mes</span>
+                                      <span className="text-slate-100 font-semibold">Total/mes</span>
                                       <span className="text-white">{fmtARS((site.cost_rent ?? 0) + (site.cost_electricity ?? 0) + (site.cost_taxes ?? 0) + (site.cost_maintenance ?? 0) + (site.cost_imponderables ?? 0))}</span>
                                     </div>
                                     <div className="flex justify-between text-xs text-slate-500">
@@ -1319,9 +1319,9 @@ export default function Reports() {
 
                                   {/* Comisiones */}
                                   <div className="rounded-xl border border-surface-700 bg-surface-800 p-4 space-y-2">
-                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Comisiones pagadas</p>
-                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Vendedor ({fmtPct(site.sellerPct)})</span><span className="text-slate-300">{fmtARS(site.yearSellerComm ?? site.sellerComm)}</span></div>
-                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Agencia ({fmtPct(site.agencyPct)})</span><span className="text-slate-300">{fmtARS(site.yearAgencyComm ?? site.agencyComm)}</span></div>
+                                    <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest mb-3">Comisiones pagadas</p>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-200">Vendedor ({fmtPct(site.sellerPct)})</span><span className="text-slate-300">{fmtARS(site.yearSellerComm ?? site.sellerComm)}</span></div>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-200">Agencia ({fmtPct(site.agencyPct)})</span><span className="text-slate-300">{fmtARS(site.yearAgencyComm ?? site.agencyComm)}</span></div>
                                     {site.asociPct > 0 && (
                                       <div className="flex justify-between text-sm">
                                         <span className="text-slate-400">{site.asociName ?? 'Asociado'} ({fmtPct(site.asociPct)})</span>
@@ -1329,18 +1329,18 @@ export default function Reports() {
                                       </div>
                                     )}
                                     <div className="flex justify-between text-sm pt-2 border-t border-surface-700 font-medium">
-                                      <span className="text-slate-300">Total comisiones</span>
-                                      <span className="text-white">{fmtARS(site.yearTotalComm ?? site.totalComm)}</span>
+                                      <span className="text-slate-200 font-medium">Total comisiones (anual)</span>
+                                      <span className="text-white font-semibold">{fmtARS(site.yearTotalComm ?? site.totalComm)}</span>
                                     </div>
                                   </div>
 
                                   {/* Resultado */}
                                   <div className="rounded-xl border border-surface-700 bg-surface-800 p-4 space-y-2">
-                                    <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Resultado</p>
+                                    <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest mb-1">Resultado</p>
                                     <p className="text-[9px] text-slate-600 mb-2">Basado en el período seleccionado</p>
-                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Facturación</span><span className="text-slate-300">{fmtARS(site.yearRevenue || site.revenue)}</span></div>
-                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Total costos</span><span className="text-slate-300">− {fmtARS(site.yearOpex)}</span></div>
-                                    <div className="flex justify-between text-sm"><span className="text-slate-400">Total comisiones</span><span className="text-slate-300">− {fmtARS(site.yearTotalComm)}</span></div>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-200 font-medium">Facturación</span><span className="text-slate-300">{fmtARS(site.yearRevenue || site.revenue)}</span></div>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-200">Total costos</span><span className="text-slate-300">− {fmtARS(site.yearOpex)}</span></div>
+                                    <div className="flex justify-between text-sm"><span className="text-slate-200">Total comisiones</span><span className="text-slate-100">− {fmtARS(site.yearTotalComm)}</span></div>
                                     <div className={`flex justify-between text-sm pt-2 border-t border-surface-700 font-bold ${(site.yearNetProfit ?? site.netProfit) >= 0 ? 'text-teal-400' : 'text-red-400'}`}>
                                       <span>Utilidad neta</span><span>{fmtARS(site.yearNetProfit ?? site.netProfit)}</span>
                                     </div>
@@ -1390,12 +1390,12 @@ export default function Reports() {
                                   return (
                                     <div className="rounded-xl border border-surface-700 bg-surface-800/50 p-4">
                                       <p className="text-xs font-semibold text-slate-300 mb-3">
-                                        Historial de ocupación — {occupiedMonths}/{months.length} meses ({occupancyPct}%)
+                                        Ocupación últimos 12 meses — {occupiedMonths} ocupados / {months.length - occupiedMonths} libres ({occupancyPct}%)
                                       </p>
                                       <div className="flex flex-wrap gap-1.5 mb-3">
                                         {months.map((m, i) => (
                                           <span key={i} className={`rounded-full px-2 py-0.5 text-[10px] font-medium border ${
-                                            m.occupied ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : 'bg-surface-700 text-slate-600 border-surface-600'
+                                            m.occupied ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' : 'bg-surface-800 text-slate-500 border-surface-600 opacity-50'
                                           }`}>
                                             {m.label}
                                           </span>
@@ -1412,7 +1412,7 @@ export default function Reports() {
                                           ))}
                                         </div>
                                       ) : (
-                                        <p className="text-xs text-slate-600">Sin campañas en este período</p>
+                                        <p className="text-xs text-slate-400 italic">Sin campañas registradas en los últimos 12 meses</p>
                                       )}
                                     </div>
                                   )
