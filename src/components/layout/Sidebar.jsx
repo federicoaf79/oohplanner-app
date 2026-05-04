@@ -4,7 +4,7 @@ import { supabase } from '../../lib/supabase'
 import {
   LayoutDashboard, Megaphone, MapPin, FileText,
   BarChart2, Users, Settings, X, Receipt, Crosshair,
-  BookUser, HelpCircle, ShieldCheck,
+  BookUser, HelpCircle, ShieldCheck, BookOpen,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { cn } from '../../lib/utils'
@@ -49,6 +49,8 @@ const NAV_SECTIONS = [
       { label: 'Contactos',       path: '/app/contacts',        icon: BookUser,      roles: ['owner', 'manager', 'salesperson'] },
       { label: 'Equipo',     path: '/app/team',      icon: Users,
         roles: ['owner'] },
+      { label: 'Centro de ayuda', path: '/app/faq',  icon: BookOpen,
+        roles: ['owner', 'manager', 'salesperson'] },
       { label: 'Soporte',    path: '/app/support',   icon: HelpCircle,
         roles: ['owner', 'manager', 'salesperson'] },
     ],

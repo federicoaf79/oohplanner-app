@@ -31,6 +31,7 @@ import InventorySettings from './pages/app/InventorySettings'
 import Support      from './pages/app/Support'
 import Billing      from './pages/app/Billing'
 import ZoneEditor   from './pages/app/ZoneEditor'
+import FAQ          from './pages/app/FAQ'
 
 // Pages — admin panel
 import AdminLayout          from './pages/admin/AdminLayout'
@@ -75,6 +76,7 @@ const router = createBrowserRouter([
           { path: '/app/settings',             element: <Settings /> },
           { path: '/app/support',              element: <Support /> },
           { path: '/app/billing',              element: <Billing /> },
+          { path: '/app/faq',                  element: <FAQ /> },
 
           // manager + owner only
           {
