@@ -830,385 +830,203 @@ function CertificationLink({ proposalId }) {
   )
 }
 
-// ── Commissions panel (owner only) ────────────────────────────
-
-const COMM_TYPES = [
-  { id: 'internal_seller',    label: 'Vendedor interno' },
-  { id: 'sales_facilitator',  label: 'Facilitador externo' },
-  { id: 'hidden_facilitator', label: 'Encubierta' },
-]
+// ── Commissions panel (owner only — read only) ─────────────────
 
 function CommissionsPanel({ campaign }) {
   const { profile } = useAuth()
   const orgId = profile?.org_id
 
-  const [rows,      setRows]      = useState([])
-  const [loading,   setLoading]   = useState(true)
-  const [contacts,  setContacts]  = useState([])
-  const [profiles,  setProfiles]  = useState([])
-  const [propItems, setPropItems] = useState([])   // items con fechas reales
-  const [saving,    setSaving]    = useState(false)
-  const [error,     setError]     = useState('')
-
-  // Fila vacía para nuevas entradas
-  const emptyRow = () => ({
-    _id:            crypto.randomUUID(),
-    isNew:          true,
-    commission_type:'internal_seller',
-    beneficiary_profile_id:  null,
-    beneficiary_contact_id:  null,
-    commission_pct:          '',
-    amount_fixed:            '',
-    notes:                   '',
-  })
+  const [loading,      setLoading]      = useState(true)
+  const [siteComms,    setSiteComms]    = useState([])   // site_commissions rows
+  const [contactMap,   setContactMap]   = useState({})
+  const [sellerProfile, setSellerProfile] = useState(null)
 
   useEffect(() => {
     if (!campaign?.id || !orgId) return
     setLoading(true)
-
     const siteIds = (campaign.proposal_items ?? []).map(pi => pi.site_id).filter(Boolean)
-
     Promise.all([
-      supabase.from('campaign_commissions')
-        .select('*')
-        .eq('proposal_id', campaign.id)
-        .eq('org_id', orgId),
-      supabase.from('contacts')
-        .select('id, name, legal_name, roles')
-        .eq('org_id', orgId),
-      supabase.from('profiles')
-        .select('id, full_name, role, commission_pct')
-        .eq('org_id', orgId)
-        .eq('is_active', true),
-      // Re-fetch items con fechas reales (el prop puede no traerlas)
-      supabase.from('proposal_items')
-        .select('id, site_id, rate, duration, start_date, end_date, discount_pct, site:inventory(id, name)')
-        .eq('proposal_id', campaign.id),
       siteIds.length > 0
         ? supabase.from('site_commissions')
-            .select('id, site_id, commission_type, commission_pct, contact_id, profile_id, notes')
+            .select('id, site_id, commission_type, commission_pct, contact_id, notes')
             .eq('org_id', orgId)
             .in('site_id', siteIds)
         : Promise.resolve({ data: [] }),
-    ]).then(([{ data: comm }, { data: cont }, { data: prof }, { data: pitems }, { data: siteComm }]) => {
-      let initialRows = (comm ?? []).map(c => ({ ...c, _id: c.id, isNew: false }))
-
-      // Si no hay comisiones registradas → pre-cargar todos los actores
-      if (initialRows.length === 0) {
-        const preRows = []
-
-        // 1. Vendedor de la campaña
-        if (campaign.created_by) {
-          const seller = (prof ?? []).find(p => p.id === campaign.created_by)
-          if (seller) {
-            preRows.push({
-              _id:                    crypto.randomUUID(),
-              isNew:                  true,
-              commission_type:        'internal_seller',
-              beneficiary_profile_id: seller.id,
-              beneficiary_contact_id: null,
-              commission_pct:         seller.commission_pct > 0 ? String(seller.commission_pct) : '',
-              amount_fixed:           '',
-              notes:                  '',
-            })
-          }
-        }
-
-        // 2. Facilitadores y agencias desde site_commissions (únicos por beneficiario)
-        const seenBenef = new Set()
-        ;(siteComm ?? []).forEach(sc => {
-          const key = sc.contact_id ?? sc.profile_id ?? sc.commission_type
-          if (seenBenef.has(key)) return
-          seenBenef.add(key)
-          preRows.push({
-            _id:                    crypto.randomUUID(),
-            isNew:                  true,
-            commission_type:        sc.commission_type ?? 'sales_facilitator',
-            beneficiary_profile_id: sc.profile_id ?? null,
-            beneficiary_contact_id: sc.contact_id ?? null,
-            commission_pct:         sc.commission_pct > 0 ? String(sc.commission_pct) : '',
-            amount_fixed:           '',
-            notes:                  sc.notes ?? '',
-          })
-        })
-
-        initialRows = preRows
-      }
-
-      setRows(initialRows)
-      setContacts(cont ?? [])
-      setProfiles(prof ?? [])
-      setPropItems(pitems ?? [])
+      supabase.from('contacts')
+        .select('id, name, legal_name')
+        .eq('org_id', orgId),
+      campaign.created_by
+        ? supabase.from('profiles')
+            .select('id, full_name, commission_pct')
+            .eq('id', campaign.created_by)
+            .single()
+        : Promise.resolve({ data: null }),
+    ]).then(([{ data: sc }, { data: ct }, { data: sp }]) => {
+      setSiteComms(sc ?? [])
+      const cm = {}
+      ;(ct ?? []).forEach(c => { cm[c.id] = c })
+      setContactMap(cm)
+      setSellerProfile(sp ?? null)
       setLoading(false)
     })
   }, [campaign?.id, orgId])
 
-  function addRow() {
-    setRows(r => [...r, emptyRow()])
-  }
+  if (loading) return (
+    <div className="flex justify-center py-10">
+      <div className="h-5 w-5 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
 
-  function updateRow(id, field, value) {
-    setRows(r => r.map(row => row._id === id ? { ...row, [field]: value } : row))
-  }
-
-  function removeRow(id) {
-    setRows(r => r.filter(row => row._id !== id))
-  }
-
-  async function handleSave() {
-    setSaving(true)
-    setError('')
-    try {
-      // Eliminar las que ya no están (solo las que tenían ID real)
-      const existingIds = rows.filter(r => !r.isNew).map(r => r.id)
-      // Borrar todas las reales y reinsertar (más simple que diff)
-      await supabase.from('campaign_commissions')
-        .delete()
-        .eq('proposal_id', campaign.id)
-        .eq('org_id', orgId)
-
-      const toInsert = rows
-        .filter(r => r.commission_type)
-        .map(r => ({
-          org_id:                  orgId,
-          proposal_id:             campaign.id,
-          commission_type:         r.commission_type,
-          beneficiary_profile_id:  r.commission_type === 'internal_seller' ? (r.beneficiary_profile_id || null) : null,
-          beneficiary_contact_id:  r.commission_type === 'sales_facilitator' ? (r.beneficiary_contact_id || null) : null,
-          commission_pct:          r.commission_pct !== '' ? Number(r.commission_pct) : null,
-          amount_fixed:            r.amount_fixed !== '' ? Number(r.amount_fixed) : null,
-          revenue_base:            saleBase,
-          notes:                   r.notes || null,
-          status:                  'paid',
-        }))
-
-      if (toInsert.length > 0) {
-        const { error: e } = await supabase.from('campaign_commissions').insert(toInsert)
-        if (e) throw e
-      }
-      // Refetch
-      const { data: fresh } = await supabase.from('campaign_commissions')
-        .select('*').eq('proposal_id', campaign.id).eq('org_id', orgId)
-      setRows((fresh ?? []).map(c => ({ ...c, _id: c.id, isNew: false })))
-    } catch (e) {
-      setError(e.message ?? 'Error al guardar')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  if (loading) return <div className="flex justify-center py-10"><div className="h-5 w-5 border-2 border-brand border-t-transparent rounded-full animate-spin" /></div>
-
-  // Precio de venta por cartel = precio de lista - descuento aplicado
-  // La comisión siempre se calcula sobre este valor, cartel por cartel.
-  // pi.rate = tarifa mensual del cartel; duration no se guarda en DB → calculamos desde fechas
-  const items = propItems.length > 0 ? propItems : (campaign.proposal_items ?? [])
+  const items    = campaign.proposal_items ?? []
   const discount = campaign.discount_pct ?? 0
 
-  // Días totales de la campaña desde sus fechas reales
-  const campaignDays = campaign.start_date && campaign.end_date
-    ? Math.max(1, Math.ceil((new Date(campaign.end_date) - new Date(campaign.start_date)) / 86400000) + 1)
-    : 30
+  // Calcular precio de venta por cartel: rate × meses_reales × (1 − descuento%)
+  // monthsByCalendar usa fechas reales respetando días de cada mes
+  function getSalePrice(pi) {
+    const months = (pi.duration > 0)
+      ? pi.duration
+      : (() => {
+          const start = pi.start_date || campaign.start_date
+          const end   = pi.end_date   || campaign.end_date
+          if (!start || !end) return 1
+          // Calcular meses respetando días reales del calendario
+          let total = 0, cursor = new Date(new Date(start).getFullYear(), new Date(start).getMonth(), 1)
+          const s = new Date(start), e = new Date(end)
+          while (cursor <= e) {
+            const y = cursor.getFullYear(), m = cursor.getMonth()
+            const daysInMonth = new Date(y, m + 1, 0).getDate()
+            const ms = new Date(y, m, 1), me = new Date(y, m, daysInMonth)
+            const ps = s > ms ? s : ms, pe = e < me ? e : me
+            total += (Math.round((pe - ps) / 86400000) + 1) / daysInMonth
+            cursor = new Date(y, m + 1, 1)
+          }
+          return total || 1
+        })()
+    return (pi.rate ?? 0) * months * (1 - discount / 100)
+  }
 
-  // Precio de venta por cartel = tarifa mensual × (días reales / 30) × (1 − descuento%)
-  const siteBreakdown = items.map(pi => {
-    const siteDays = pi.start_date && pi.end_date
-      ? Math.max(1, Math.ceil((new Date(pi.end_date) - new Date(pi.start_date)) / 86400000) + 1)
-      : campaignDays
-    const monthlyRate = pi.rate ?? 0
-    const listTotal   = Math.round(monthlyRate * siteDays / 30)
-    const salePrice   = Math.round(listTotal * (1 - discount / 100))
-    return {
-      name:      pi.site?.name ?? pi.site_name ?? 'Cartel',
-      listPrice: listTotal,
-      salePrice,
-      siteDays,
+  // Construir tabla de comisiones por actor
+  const actorMap = {}
+
+  // 1. Vendedor (% global de su perfil)
+  if (sellerProfile) {
+    const pct = sellerProfile.commission_pct ?? 0
+    if (pct > 0) {
+      const key = `seller-${sellerProfile.id}`
+      actorMap[key] = {
+        name: sellerProfile.full_name,
+        type: 'Vendedor interno',
+        color: 'text-brand',
+        bg: 'bg-brand/10',
+        pct,
+        total: 0,
+        sites: [],
+      }
+      items.forEach(pi => {
+        const sp = getSalePrice(pi)
+        actorMap[key].total += sp * pct / 100
+        actorMap[key].sites.push({ name: pi.site?.name ?? 'Cartel', salePrice: sp, comm: sp * pct / 100 })
+      })
+    }
+  }
+
+  // 2. Agencia (% del cartel)
+  items.forEach(pi => {
+    const pct = pi.site?.cost_agency_commission_pct ?? 0
+    if (pct > 0) {
+      const key = 'agency'
+      if (!actorMap[key]) {
+        actorMap[key] = { name: 'Agencia', type: 'Agencia', color: 'text-amber-400', bg: 'bg-amber-500/10', pct, total: 0, sites: [] }
+      }
+      const sp = getSalePrice(pi)
+      actorMap[key].total += sp * pct / 100
+      actorMap[key].sites.push({ name: pi.site?.name ?? 'Cartel', salePrice: sp, comm: sp * pct / 100 })
     }
   })
-  // Base real ≈ total_value (diferencia mínima por redondeo)
-  const saleBase = siteBreakdown.reduce((s, p) => s + p.salePrice, 0) || (campaign.total_value ?? 0)
 
-  const totalCalc = rows.reduce((s, r) => {
-    if (Number(r.amount_fixed) > 0) return s + Number(r.amount_fixed)
-    return s + saleBase * (Number(r.commission_pct) || 0) / 100
-  }, 0)
+  // 3. Facilitadores externos / ocultos desde site_commissions
+  siteComms.forEach(sc => {
+    const pi = items.find(i => i.site_id === sc.site_id)
+    if (!pi) return
+    const pct = sc.commission_pct ?? 0
+    if (pct <= 0) return
+    const key = `sc-${sc.id}`
+    const contact = sc.contact_id ? contactMap[sc.contact_id] : null
+    const isHidden = sc.commission_type === 'hidden_facilitator'
+    const sp = getSalePrice(pi)
+    actorMap[key] = {
+      name: isHidden ? '(encubierta)' : (contact?.name ?? sc.notes ?? 'Facilitador'),
+      type: isHidden ? 'Encubierta' : 'Facilitador ext.',
+      color: isHidden ? 'text-rose-400' : 'text-amber-300',
+      bg: isHidden ? 'bg-rose-500/10' : 'bg-amber-500/10',
+      pct,
+      total: sp * pct / 100,
+      sites: [{ name: pi.site?.name ?? 'Cartel', salePrice: sp, comm: sp * pct / 100 }],
+    }
+  })
+
+  const actors = Object.values(actorMap)
+  const totalComm = actors.reduce((s, a) => s + a.total, 0)
+  const totalVenta = items.reduce((s, pi) => s + getSalePrice(pi), 0)
 
   return (
     <div className="p-5 space-y-5">
 
-      {/* Base de cálculo: precio de venta por cartel */}
-      <div className="rounded-xl border border-surface-700 bg-surface-800/40 overflow-hidden">
-        <div className="px-4 py-3 border-b border-surface-700 flex items-center justify-between">
-          <div>
-            <p className="text-xs text-slate-500 uppercase tracking-wide">Base para comisiones — Precio de venta</p>
-            <p className="text-xs text-slate-600 mt-0.5">Precio de lista − descuento aplicado, por cartel</p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-slate-500">Total base</p>
-            <p className="text-base font-bold text-white">{formatCurrency(saleBase)}</p>
-          </div>
+      {/* Header: total venta y total comisiones */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="rounded-xl border border-surface-700 bg-surface-800/40 px-4 py-3">
+          <p className="text-xs text-slate-500 uppercase tracking-wide">Precio de venta total</p>
+          <p className="text-lg font-bold text-white mt-1">{formatCurrency(totalVenta)}</p>
+          {discount > 0 && <p className="text-xs text-slate-600 mt-0.5">Descuento {discount}% aplicado</p>}
         </div>
-        {siteBreakdown.length > 0 && (
-          <div className="divide-y divide-surface-700/50">
-            {siteBreakdown.map((s, i) => (
-              <div key={i} className="px-4 py-2 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2 truncate max-w-[60%]">
-                  <span className="text-slate-400 truncate">{s.name}</span>
-                  <span className="text-slate-600 shrink-0">{s.siteDays}d</span>
-                </div>
-                <div className="flex items-center gap-3 shrink-0">
-                  {discount > 0 && <span className="text-slate-600 line-through">{formatCurrency(s.listPrice)}</span>}
-                  <span className="text-slate-200 font-medium">{formatCurrency(s.salePrice)}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Resumen de comisiones */}
-      <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 flex items-center justify-between">
-        <p className="text-xs text-amber-400/70">Total comisiones sobre precio de venta</p>
-        <div className="text-right">
-          <p className="text-lg font-bold text-amber-400">{formatCurrency(totalCalc)}</p>
-          <p className="text-xs text-slate-600">{totalCalc > 0 && saleBase > 0 ? (totalCalc / saleBase * 100).toFixed(1) + '% sobre precio de venta' : '—'}</p>
+        <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
+          <p className="text-xs text-slate-500 uppercase tracking-wide">Total comisiones</p>
+          <p className="text-lg font-bold text-amber-400 mt-1">{formatCurrency(totalComm)}</p>
+          {totalVenta > 0 && <p className="text-xs text-slate-600 mt-0.5">{(totalComm / totalVenta * 100).toFixed(1)}% del precio de venta</p>}
         </div>
       </div>
 
-      {/* Filas de comisiones */}
-      <div className="space-y-3">
-        {rows.length === 0 && (
-          <p className="text-sm text-slate-500 text-center py-4">Sin comisiones registradas. Agregá una abajo.</p>
-        )}
-        {rows.map(row => (
-          <div key={row._id} className="rounded-xl border border-surface-700 bg-surface-800/30 p-4 space-y-3">
-            {/* Fila 1: tipo + beneficiario */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs text-slate-500 mb-1 block">Tipo de comisión</label>
-                <select
-                  value={row.commission_type}
-                  onChange={e => updateRow(row._id, 'commission_type', e.target.value)}
-                  className="w-full rounded-lg border border-surface-600 bg-surface-800 px-3 py-2 text-sm text-white focus:border-brand focus:outline-none"
-                >
-                  {COMM_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs text-slate-500 mb-1 block">
-                  {row.commission_type === 'internal_seller' ? 'Vendedor' :
-                   row.commission_type === 'sales_facilitator' ? 'Contacto facilitador' : 'Motivo / alias'}
-                </label>
-                {row.commission_type === 'internal_seller' ? (
-                  <select
-                    value={row.beneficiary_profile_id ?? ''}
-                    onChange={e => updateRow(row._id, 'beneficiary_profile_id', e.target.value || null)}
-                    className="w-full rounded-lg border border-surface-600 bg-surface-800 px-3 py-2 text-sm text-white focus:border-brand focus:outline-none"
-                  >
-                    <option value="">— Sin asignar —</option>
-                    {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name}</option>)}
-                  </select>
-                ) : row.commission_type === 'sales_facilitator' ? (
-                  <select
-                    value={row.beneficiary_contact_id ?? ''}
-                    onChange={e => updateRow(row._id, 'beneficiary_contact_id', e.target.value || null)}
-                    className="w-full rounded-lg border border-surface-600 bg-surface-800 px-3 py-2 text-sm text-white focus:border-brand focus:outline-none"
-                  >
-                    <option value="">— Sin asignar —</option>
-                    {contacts.map(c => <option key={c.id} value={c.id}>{c.name}{c.legal_name ? ` · ${c.legal_name}` : ''}</option>)}
-                  </select>
-                ) : (
-                  <input
-                    type="text"
-                    placeholder="Alias o descripción (opcional)"
-                    value={row.notes ?? ''}
-                    onChange={e => updateRow(row._id, 'notes', e.target.value)}
-                    className="w-full rounded-lg border border-surface-600 bg-surface-800 px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-brand focus:outline-none"
-                  />
-                )}
-              </div>
-            </div>
-
-            {/* Fila 2: monto/pct + notas + eliminar */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
-              <div>
-                <label className="text-xs text-slate-500 mb-1 block">% sobre facturación</label>
-                <div className="relative">
-                  <input
-                    type="number" min="0" max="100" step="0.1"
-                    placeholder="0.0"
-                    value={row.commission_pct}
-                    onChange={e => updateRow(row._id, 'commission_pct', e.target.value)}
-                    className="w-full rounded-lg border border-surface-600 bg-surface-800 px-3 py-2 pr-8 text-sm text-white placeholder-slate-600 focus:border-brand focus:outline-none"
-                  />
-                  <span className="absolute right-3 top-2 text-slate-500 text-sm">%</span>
+      {/* Tabla por actor */}
+      {actors.length === 0 ? (
+        <div className="rounded-xl border border-surface-700 bg-surface-800/30 px-4 py-8 text-center">
+          <p className="text-sm text-slate-500">Sin comisiones configuradas para esta campaña.</p>
+          <p className="text-xs text-slate-600 mt-1">Configurá tasas en Inventario → cada cartel o en los perfiles del equipo.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {actors.map((actor, i) => (
+            <details key={i} className="rounded-xl border border-surface-700 bg-surface-800/30 overflow-hidden">
+              <summary className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-surface-800/60 transition-colors list-none">
+                <div className="flex items-center gap-3">
+                  <span className={`text-xs rounded-full px-2 py-0.5 font-medium ${actor.bg} ${actor.color}`}>
+                    {actor.type}
+                  </span>
+                  <span className={`text-sm font-medium ${actor.color === 'text-rose-400' ? 'text-rose-400 italic' : 'text-slate-200'}`}>
+                    {actor.name}
+                  </span>
+                  <span className="text-xs text-slate-600">{actor.pct}%</span>
                 </div>
-                {row.commission_pct > 0 && (
-                  <p className="text-xs text-amber-400 mt-0.5">= {formatCurrency(saleBase * Number(row.commission_pct) / 100)}</p>
-                )}
-              </div>
-              <div>
-                <label className="text-xs text-slate-500 mb-1 block">Monto fijo (sobrescribe %)</label>
-                <div className="relative">
-                  <span className="absolute left-3 top-2 text-slate-500 text-sm">$</span>
-                  <input
-                    type="number" min="0"
-                    placeholder="0"
-                    value={row.amount_fixed}
-                    onChange={e => updateRow(row._id, 'amount_fixed', e.target.value)}
-                    className="w-full rounded-lg border border-surface-600 bg-surface-800 px-3 py-2 pl-7 text-sm text-white placeholder-slate-600 focus:border-brand focus:outline-none"
-                  />
-                </div>
-              </div>
-              <div className="flex items-end gap-2">
-                {row.commission_type !== 'hidden_facilitator' && (
-                  <div className="flex-1">
-                    <label className="text-xs text-slate-500 mb-1 block">Nota</label>
-                    <input
-                      type="text"
-                      placeholder="Opcional"
-                      value={row.notes ?? ''}
-                      onChange={e => updateRow(row._id, 'notes', e.target.value)}
-                      className="w-full rounded-lg border border-surface-600 bg-surface-800 px-3 py-2 text-sm text-white placeholder-slate-600 focus:border-brand focus:outline-none"
-                    />
+                <span className="text-sm font-bold text-white">{formatCurrency(actor.total)}</span>
+              </summary>
+              <div className="border-t border-surface-700 divide-y divide-surface-700/50">
+                {actor.sites.map((s, j) => (
+                  <div key={j} className="flex items-center justify-between px-4 py-2 text-xs">
+                    <span className="text-slate-400 truncate max-w-[55%]">{s.name}</span>
+                    <div className="flex items-center gap-4 shrink-0">
+                      <span className="text-slate-600">venta {formatCurrency(s.salePrice)}</span>
+                      <span className="text-white font-medium">{formatCurrency(s.comm)}</span>
+                    </div>
                   </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => removeRow(row._id)}
-                  className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-400 hover:bg-rose-500/20 transition-colors shrink-0"
-                >
-                  Eliminar
-                </button>
+                ))}
               </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Acciones */}
-      <div className="flex items-center justify-between pt-1">
-        <button
-          type="button"
-          onClick={addRow}
-          className="rounded-lg border border-surface-600 px-4 py-2 text-sm text-slate-300 hover:bg-surface-700 transition-colors"
-        >
-          + Agregar comisión
-        </button>
-        <div className="flex items-center gap-3">
-          {error && <p className="text-xs text-rose-400">{error}</p>}
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="rounded-lg bg-brand px-5 py-2 text-sm font-semibold text-white hover:bg-brand/90 disabled:opacity-50 transition-colors"
-          >
-            {saving ? 'Guardando…' : 'Guardar comisiones'}
-          </button>
+            </details>
+          ))}
         </div>
-      </div>
+      )}
 
+      <p className="text-xs text-slate-600 text-center">
+        Calculado automáticamente según configuración de Inventario y perfiles del equipo. Solo visible para el dueño.
+      </p>
     </div>
   )
 }
