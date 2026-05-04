@@ -1504,7 +1504,10 @@ export default function Reports() {
       {mainTab === 'rentabilidad' && canSeeRentabilidad && (
         <div className="space-y-6">
 
-          <Section title="Top 5 — Carteles más rentables">
+          <Section
+            title="Top 5 — Carteles más rentables"
+            description={`Período: ${DATE_OPTS.find(d => d.id === dateRange)?.label ?? 'Seleccionado'}`}
+          >
             <div className="overflow-x-auto rounded-xl border border-surface-700">
               <table className="w-full text-sm">
                 <thead>
@@ -1537,7 +1540,10 @@ export default function Reports() {
             </div>
           </Section>
 
-          <Section title="Rentabilidad por cliente — Top 10">
+          <Section
+            title="Rentabilidad por cliente — Top 10"
+            description={`Período: ${DATE_OPTS.find(d => d.id === dateRange)?.label ?? 'Seleccionado'}`}
+          >
             <div className="overflow-x-auto rounded-xl border border-surface-700">
               <table className="w-full text-sm">
                 <thead>
@@ -1551,7 +1557,7 @@ export default function Reports() {
                 <tbody className="divide-y divide-surface-700">
                   {(() => {
                     const clientMap = {}
-                    acceptedProposals.forEach(p => {
+                    filteredProposals.forEach(p => {
                       const key = p.client_name ?? 'Sin nombre'
                       if (!clientMap[key]) clientMap[key] = { count: 0, revenue: 0, lastDate: '' }
                       clientMap[key].count++
@@ -1559,19 +1565,22 @@ export default function Reports() {
                       const d = p.accepted_at ?? p.created_at ?? ''
                       if (d > clientMap[key].lastDate) clientMap[key].lastDate = d
                     })
-                    return Object.entries(clientMap)
+                    const entries = Object.entries(clientMap)
                       .sort((a, b) => b[1].revenue - a[1].revenue)
                       .slice(0, 10)
-                      .map(([name, c]) => (
-                        <tr key={name} className="hover:bg-surface-800/40">
-                          <td className="px-4 py-3 text-slate-200 font-medium">{name}</td>
-                          <td className="px-4 py-3 text-right text-slate-400">{c.count}</td>
-                          <td className="px-4 py-3 text-right text-slate-300 font-semibold">{fmtARS(c.revenue)}</td>
-                          <td className="px-4 py-3 text-right text-slate-500 text-xs">
-                            {c.lastDate ? new Date(c.lastDate).toLocaleDateString('es-AR') : '—'}
-                          </td>
-                        </tr>
-                      ))
+                    if (entries.length === 0) return (
+                      <tr><td colSpan={4} className="px-4 py-8 text-center text-sm text-slate-500">Sin clientes en el período seleccionado</td></tr>
+                    )
+                    return entries.map(([name, c]) => (
+                      <tr key={name} className="hover:bg-surface-800/40">
+                        <td className="px-4 py-3 text-slate-200 font-medium">{name}</td>
+                        <td className="px-4 py-3 text-right text-slate-400">{c.count}</td>
+                        <td className="px-4 py-3 text-right text-slate-300 font-semibold">{fmtARS(c.revenue)}</td>
+                        <td className="px-4 py-3 text-right text-slate-500 text-xs">
+                          {c.lastDate ? new Date(c.lastDate).toLocaleDateString('es-AR') : '—'}
+                        </td>
+                      </tr>
+                    ))
                   })()}
                 </tbody>
               </table>
@@ -1587,201 +1596,338 @@ export default function Reports() {
 
           {/* KPIs facilitadores */}
           {(() => {
+            const periodLabel = DATE_OPTS.find(d => d.id === dateRange)?.label ?? 'Período'
+
+            // ── 1. Comisiones registradas (campaign_commissions) filtradas por período ──
+            const periodComm = commissions.filter(c => filteredProposalIds.has(c.proposal_id))
+            const hasRegistered = periodComm.length > 0
+
             const effectiveAmt = (c) => {
               const fixed = Number(c.amount_fixed) || 0
               if (fixed > 0) return fixed
               const prop = proposals.find(p => p.id === c.proposal_id)
               return (prop?.total_value || 0) * (Number(c.commission_pct) || 0) / 100
             }
-            const total = commissions.reduce((s, c) => s + effectiveAmt(c), 0)
-            const external = commissions.filter(c => c.commission_type === 'sales_facilitator' || c.commission_type === 'hidden_facilitator')
-            const internal = commissions.filter(c => c.commission_type === 'internal_seller')
+
+            // ── 2. Estimación desde tasas del inventario (cuando campaign_commissions vacía) ──
+            // Agrupa por beneficiario para mostrar en la tabla
+            const estimatedByKey = {}
+            if (!hasRegistered) {
+              filteredItems.forEach(pi => {
+                const prop = filteredProposals.find(p => p.id === pi.proposal_id)
+                if (!prop) return
+                const months = Number(pi.duration) || 1
+                const discount = pi.discount_pct ?? 0
+                const rate = pi.rate ?? 0
+                const revenue = rate * months * (1 - discount / 100)
+
+                // Comisión vendedor interno
+                const sellerPct = pi.cost_seller_commission_pct ?? 0
+                if (sellerPct > 0 && prop.seller_id) {
+                  const key = `seller-${prop.seller_id}`
+                  if (!estimatedByKey[key]) {
+                    const prof = profiles.find(p => p.id === prop.seller_id)
+                    estimatedByKey[key] = {
+                      key, type: 'internal_seller', isHidden: false,
+                      name: prof?.full_name ?? prop.seller_name ?? 'Vendedor',
+                      company: '', commPct: sellerPct,
+                      total: 0, campaigns: new Set(), count: 0,
+                    }
+                  }
+                  estimatedByKey[key].total += revenue * sellerPct / 100
+                  estimatedByKey[key].campaigns.add(prop.id)
+                  estimatedByKey[key].count++
+                }
+
+                // Comisión agencia
+                const agencyPct = pi.cost_agency_commission_pct ?? 0
+                if (agencyPct > 0) {
+                  const key = 'agency'
+                  if (!estimatedByKey[key]) {
+                    estimatedByKey[key] = {
+                      key, type: 'sales_facilitator', isHidden: false,
+                      name: 'Agencia', company: '', commPct: agencyPct,
+                      total: 0, campaigns: new Set(), count: 0,
+                    }
+                  }
+                  estimatedByKey[key].total += revenue * agencyPct / 100
+                  estimatedByKey[key].campaigns.add(prop.id)
+                  estimatedByKey[key].count++
+                }
+              })
+            }
+
+            const estRows = Object.values(estimatedByKey).sort((a, b) => b.total - a.total)
+            const estTotal = estRows.reduce((s, r) => s + r.total, 0)
+
+            // Fuente de datos activa
+            const activeComm  = hasRegistered ? periodComm : []
+            const total       = hasRegistered
+              ? activeComm.reduce((s, c) => s + effectiveAmt(c), 0)
+              : estTotal
+            const external    = hasRegistered
+              ? activeComm.filter(c => c.commission_type === 'sales_facilitator' || c.commission_type === 'hidden_facilitator')
+              : estRows.filter(r => r.type === 'sales_facilitator')
+            const internal    = hasRegistered
+              ? activeComm.filter(c => c.commission_type === 'internal_seller')
+              : estRows.filter(r => r.type === 'internal_seller')
+
             return (
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <div className="card p-4">
-                  <p className="text-xs text-slate-500">Total comisiones</p>
-                  <p className="text-2xl font-bold text-white mt-1">{fmtARS(total)}</p>
-                  <p className="text-xs text-slate-600 mt-0.5">Todas las campañas</p>
+              <>
+                {/* Banner aviso si son estimadas */}
+                {!hasRegistered && estTotal > 0 && (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 flex items-start gap-3">
+                    <span className="text-amber-400 text-lg leading-none mt-0.5">⚠</span>
+                    <div>
+                      <p className="text-sm font-semibold text-amber-300">Comisiones estimadas — {periodLabel}</p>
+                      <p className="text-xs text-amber-400/70 mt-0.5">
+                        Calculadas desde las tasas configuradas por cartel. Para registrar comisiones reales, ingresalas desde el módulo Campañas.
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {!hasRegistered && estTotal === 0 && (
+                  <div className="rounded-xl border border-surface-700 bg-surface-800/30 px-4 py-3 flex items-start gap-3">
+                    <span className="text-slate-500 text-lg leading-none mt-0.5">ℹ</span>
+                    <div>
+                      <p className="text-sm font-semibold text-slate-400">Sin comisiones en el período</p>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        No hay tasas de comisión configuradas en los carteles del período, ni comisiones registradas en Campañas.
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="card p-4">
+                    <p className="text-xs text-slate-500">Total comisiones</p>
+                    <p className="text-2xl font-bold text-white mt-1">{fmtARS(total)}</p>
+                    <p className="text-xs text-slate-600 mt-0.5">{periodLabel}</p>
+                  </div>
+                  <div className="card p-4">
+                    <p className="text-xs text-slate-500">Facilitadores externos</p>
+                    <p className="text-2xl font-bold text-amber-400 mt-1">
+                      {hasRegistered
+                        ? new Set(external.map(c => c.beneficiary_contact_id).filter(Boolean)).size
+                        : external.length}
+                    </p>
+                    <p className="text-xs text-slate-600 mt-0.5">
+                      {hasRegistered ? `${external.length} registros` : `${external.length} tipo agencia`}
+                    </p>
+                  </div>
+                  <div className="card p-4">
+                    <p className="text-xs text-slate-500">Comisiones internas</p>
+                    <p className="text-2xl font-bold text-brand mt-1">{internal.length}</p>
+                    <p className="text-xs text-slate-600 mt-0.5">Vendedores del equipo</p>
+                  </div>
+                  <div className="card p-4">
+                    <p className="text-xs text-slate-500">Encubiertas</p>
+                    <p className="text-2xl font-bold text-rose-400 mt-1">
+                      {hasRegistered
+                        ? activeComm.filter(c => c.commission_type === 'hidden_facilitator').length
+                        : 0}
+                    </p>
+                    <p className="text-xs text-slate-600 mt-0.5">Sin beneficiario visible</p>
+                  </div>
                 </div>
-                <div className="card p-4">
-                  <p className="text-xs text-slate-500">Facilitadores externos</p>
-                  <p className="text-2xl font-bold text-amber-400 mt-1">
-                    {new Set(external.map(c => c.beneficiary_contact_id).filter(Boolean)).size}
-                  </p>
-                  <p className="text-xs text-slate-600 mt-0.5">{external.length} registros</p>
-                </div>
-                <div className="card p-4">
-                  <p className="text-xs text-slate-500">Comisiones internas</p>
-                  <p className="text-2xl font-bold text-brand mt-1">{internal.length}</p>
-                  <p className="text-xs text-slate-600 mt-0.5">Vendedores del equipo</p>
-                </div>
-                <div className="card p-4">
-                  <p className="text-xs text-slate-500">Encubiertas</p>
-                  <p className="text-2xl font-bold text-rose-400 mt-1">
-                    {commissions.filter(c => c.commission_type === 'hidden_facilitator').length}
-                  </p>
-                  <p className="text-xs text-slate-600 mt-0.5">Sin beneficiario visible</p>
-                </div>
-              </div>
+
+                {/* Tabla por beneficiario */}
+                <Section
+                  title="Comisiones por beneficiario"
+                  description={`Confidencial — solo visible para el dueño · ${hasRegistered ? 'Datos registrados' : 'Estimación por tasas'} · ${periodLabel}`}
+                >
+                  {(() => {
+                    if (hasRegistered) {
+                      // ── Tabla desde campaign_commissions ──
+                      const contactMap = {}
+                      contacts.forEach(c => { contactMap[c.id] = c })
+                      const profMap = {}
+                      profiles.forEach(p => { profMap[p.id] = p })
+                      const propMap = {}
+                      proposals.forEach(p => { propMap[p.id] = p })
+
+                      const byBenef = {}
+                      activeComm.forEach(c => {
+                        const key = c.beneficiary_contact_id ?? c.beneficiary_profile_id ?? '__hidden__'
+                        if (!byBenef[key]) {
+                          const contact = c.beneficiary_contact_id ? contactMap[c.beneficiary_contact_id] : null
+                          const profile = c.beneficiary_profile_id ? profMap[c.beneficiary_profile_id] : null
+                          const isHidden = c.commission_type === 'hidden_facilitator'
+                          byBenef[key] = {
+                            key,
+                            name: isHidden ? '(encubierta)' : (contact?.name ?? profile?.full_name ?? '—'),
+                            company: contact?.legal_name ?? '',
+                            type: c.commission_type,
+                            isHidden,
+                            count: 0,
+                            totalAmount: 0,
+                            campaigns: new Set(),
+                          }
+                        }
+                        byBenef[key].count++
+                        byBenef[key].totalAmount += effectiveAmt(c)
+                        if (c.proposal_id) byBenef[key].campaigns.add(c.proposal_id)
+                      })
+
+                      const rows = Object.values(byBenef).sort((a, b) => b.totalAmount - a.totalAmount)
+                      if (rows.length === 0) return <EmptyState message="Sin comisiones registradas" hint="Cargalas desde el módulo Campañas." />
+
+                      return (
+                        <div className="overflow-x-auto rounded-xl border border-surface-700">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b border-surface-700 bg-surface-800/50">
+                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-400">Beneficiario</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-400">Tipo</th>
+                                <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Campañas</th>
+                                <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Registros</th>
+                                <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Total</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-surface-700">
+                              {rows.map(row => (
+                                <tr key={row.key} className={`hover:bg-surface-800/40 ${row.isHidden ? 'bg-rose-900/10' : ''}`}>
+                                  <td className="px-4 py-3">
+                                    <p className={`font-medium ${row.isHidden ? 'text-rose-400 italic' : 'text-slate-200'}`}>{row.name}</p>
+                                    {row.company && <p className="text-xs text-slate-500">{row.company}</p>}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <span className={`text-xs rounded-full px-2 py-0.5 ${
+                                      row.type === 'internal_seller'    ? 'bg-brand/10 text-brand' :
+                                      row.type === 'hidden_facilitator' ? 'bg-rose-500/10 text-rose-400' :
+                                      'bg-amber-500/10 text-amber-400'
+                                    }`}>
+                                      {row.type === 'internal_seller'    ? 'Vendedor interno' :
+                                       row.type === 'hidden_facilitator' ? 'Encubierto' :
+                                       'Facilitador ext.'}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-right text-slate-400">{row.campaigns.size}</td>
+                                  <td className="px-4 py-3 text-right text-slate-400">{row.count}</td>
+                                  <td className="px-4 py-3 text-right font-semibold text-white">{fmtARS(row.totalAmount)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )
+                    } else {
+                      // ── Tabla desde estimación de tasas de inventario ──
+                      if (estRows.length === 0) return <EmptyState message="Sin comisiones estimadas" hint="Configurá tasas de comisión en los carteles del inventario." />
+
+                      return (
+                        <div className="overflow-x-auto rounded-xl border border-surface-700">
+                          <table className="w-full text-sm">
+                            <thead>
+                              <tr className="border-b border-surface-700 bg-surface-800/50">
+                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-400">Beneficiario</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-slate-400">Tipo</th>
+                                <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Tasa %</th>
+                                <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Campañas</th>
+                                <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Estimado</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-surface-700">
+                              {estRows.map(row => (
+                                <tr key={row.key} className="hover:bg-surface-800/40">
+                                  <td className="px-4 py-3 text-slate-200 font-medium">{row.name}</td>
+                                  <td className="px-4 py-3">
+                                    <span className={`text-xs rounded-full px-2 py-0.5 ${
+                                      row.type === 'internal_seller' ? 'bg-brand/10 text-brand' : 'bg-amber-500/10 text-amber-400'
+                                    }`}>
+                                      {row.type === 'internal_seller' ? 'Vendedor interno' : 'Agencia'}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-3 text-right text-slate-400">{fmtPct(row.commPct)}</td>
+                                  <td className="px-4 py-3 text-right text-slate-400">{row.campaigns.size}</td>
+                                  <td className="px-4 py-3 text-right font-semibold text-amber-300">{fmtARS(row.total)}</td>
+                                </tr>
+                              ))}
+                              <tr className="border-t-2 border-surface-600 bg-surface-800/50">
+                                <td colSpan={4} className="px-4 py-3 text-sm font-semibold text-slate-300">Total estimado período</td>
+                                <td className="px-4 py-3 text-right font-bold text-white">{fmtARS(estTotal)}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      )
+                    }
+                  })()}
+                </Section>
+
+                {/* Detalle por campaña (solo si hay registradas) */}
+                {hasRegistered && (
+                  <Section title="Detalle de comisiones por campaña" description={`Campañas con comisiones registradas · ${periodLabel}`}>
+                    {(() => {
+                      const propMap = {}
+                      proposals.forEach(p => { propMap[p.id] = p })
+                      const contactMap = {}
+                      contacts.forEach(c => { contactMap[c.id] = c })
+                      const profMap = {}
+                      profiles.forEach(p => { profMap[p.id] = p })
+
+                      const byProp = {}
+                      activeComm.forEach(c => {
+                        if (!byProp[c.proposal_id]) byProp[c.proposal_id] = { proposal: propMap[c.proposal_id], items: [] }
+                        byProp[c.proposal_id].items.push(c)
+                      })
+
+                      const propEntries = Object.values(byProp)
+                        .filter(e => e.proposal)
+                        .sort((a, b) => (b.proposal.accepted_at ?? '') > (a.proposal.accepted_at ?? '') ? 1 : -1)
+                        .slice(0, 20)
+
+                      if (propEntries.length === 0) return <EmptyState message="Sin datos" />
+
+                      return (
+                        <div className="space-y-3">
+                          {propEntries.map(({ proposal: p, items }) => (
+                            <div key={p.id} className="rounded-xl border border-surface-700 bg-surface-800/30 p-4">
+                              <div className="flex items-start justify-between gap-3 mb-3">
+                                <div>
+                                  <p className="text-sm font-semibold text-white">{p.client_name}</p>
+                                  <p className="text-xs text-slate-500">{p.title}</p>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <p className="text-xs text-slate-500">Aceptada</p>
+                                  <p className="text-xs text-slate-400">{p.accepted_at ? new Date(p.accepted_at).toLocaleDateString('es-AR') : '—'}</p>
+                                </div>
+                              </div>
+                              <div className="space-y-1.5">
+                                {items.map(c => {
+                                  const contact = c.beneficiary_contact_id ? contactMap[c.beneficiary_contact_id] : null
+                                  const prof    = c.beneficiary_profile_id ? profMap[c.beneficiary_profile_id] : null
+                                  const name    = c.commission_type === 'hidden_facilitator' ? '(encubierta)' : (contact?.name ?? prof?.full_name ?? '—')
+                                  return (
+                                    <div key={c.id} className="flex items-center justify-between text-xs">
+                                      <div className="flex items-center gap-2">
+                                        <span className={`rounded-full px-1.5 py-0.5 ${
+                                          c.commission_type === 'internal_seller' ? 'bg-brand/10 text-brand' :
+                                          c.commission_type === 'hidden_facilitator' ? 'bg-rose-500/10 text-rose-400' :
+                                          'bg-amber-500/10 text-amber-400'
+                                        }`}>
+                                          {c.commission_type === 'internal_seller' ? 'Int.' : c.commission_type === 'hidden_facilitator' ? 'Enc.' : 'Ext.'}
+                                        </span>
+                                        <span className={c.commission_type === 'hidden_facilitator' ? 'text-rose-400 italic' : 'text-slate-300'}>
+                                          {name}
+                                        </span>
+                                        {c.commission_pct > 0 && <span className="text-slate-600">· {c.commission_pct}%</span>}
+                                      </div>
+                                      <span className="font-semibold text-white">{fmtARS(effectiveAmt(c))}</span>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    })()}
+                  </Section>
+                )}
+              </>
             )
           })()}
-
-          {/* Tabla por facilitador externo */}
-          <Section title="Comisiones por facilitador externo" description="Confidencial — solo visible para el dueño">
-            {(() => {
-              const contactMap = {}
-              contacts.forEach(c => { contactMap[c.id] = c })
-              const profMap = {}
-              profiles.forEach(p => { profMap[p.id] = p })
-              const propMap = {}
-              proposals.forEach(p => { propMap[p.id] = p })
-
-              // Agrupar por beneficiario
-              const byBenef = {}
-              const effectiveAmt2 = (c) => {
-                const fixed = Number(c.amount_fixed) || 0
-                if (fixed > 0) return fixed
-                const prop = proposals.find(p => p.id === c.proposal_id)
-                return (prop?.total_value || 0) * (Number(c.commission_pct) || 0) / 100
-              }
-              commissions.forEach(c => {
-                const key = c.beneficiary_contact_id ?? c.beneficiary_profile_id ?? '__hidden__'
-                if (!byBenef[key]) {
-                  const contact = c.beneficiary_contact_id ? contactMap[c.beneficiary_contact_id] : null
-                  const profile = c.beneficiary_profile_id ? profMap[c.beneficiary_profile_id] : null
-                  const isHidden = c.commission_type === 'hidden_facilitator'
-                  byBenef[key] = {
-                    key,
-                    name: isHidden ? '(encubierta)' : (contact?.name ?? profile?.full_name ?? '—'),
-                    company: contact?.legal_name ?? '',
-                    type: c.commission_type,
-                    isHidden,
-                    count: 0,
-                    totalAmount: 0,
-                    campaigns: new Set(),
-                  }
-                }
-                byBenef[key].count++
-                byBenef[key].totalAmount += effectiveAmt2(c)
-                byBenef[key].campaigns.add(c.proposal_id)
-              })
-
-              const rows = Object.values(byBenef).sort((a, b) => b.totalAmount - a.totalAmount)
-              if (rows.length === 0) return <EmptyState message="Sin comisiones registradas" hint="Las comisiones se crean automáticamente al aceptar una propuesta." />
-
-              return (
-                <div className="overflow-x-auto rounded-xl border border-surface-700">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-surface-700 bg-surface-800/50">
-                        <th className="px-4 py-3 text-left text-xs font-medium text-slate-400">Beneficiario</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-slate-400">Tipo</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Campañas</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Registros</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-slate-400">Total comisiones</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-surface-700">
-                      {rows.map(row => (
-                        <tr key={row.key} className="hover:bg-surface-800/40">
-                          <td className="px-4 py-3">
-                            <p className={`font-medium ${row.isHidden ? 'text-rose-400 italic' : 'text-slate-200'}`}>
-                              {row.name}
-                            </p>
-                            {row.company && <p className="text-xs text-slate-500">{row.company}</p>}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className={`text-xs rounded-full px-2 py-0.5 ${
-                              row.type === 'internal_seller'    ? 'bg-brand/10 text-brand' :
-                              row.type === 'hidden_facilitator' ? 'bg-rose-500/10 text-rose-400' :
-                              'bg-amber-500/10 text-amber-400'
-                            }`}>
-                              {row.type === 'internal_seller'    ? 'Vendedor interno' :
-                               row.type === 'hidden_facilitator' ? 'Encubierto' :
-                               'Facilitador ext.'}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-right text-slate-400">{row.campaigns.size}</td>
-                          <td className="px-4 py-3 text-right text-slate-400">{row.count}</td>
-                          <td className="px-4 py-3 text-right font-semibold text-white">{fmtARS(row.totalAmount)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )
-            })()}
-          </Section>
-
-          {/* Detalle por campaña */}
-          <Section title="Detalle de comisiones por campaña" description="Todas las campañas con comisiones registradas">
-            {(() => {
-              const propMap = {}
-              proposals.forEach(p => { propMap[p.id] = p })
-              const contactMap = {}
-              contacts.forEach(c => { contactMap[c.id] = c })
-              const profMap = {}
-              profiles.forEach(p => { profMap[p.id] = p })
-
-              // Agrupar por propuesta
-              const byProp = {}
-              commissions.forEach(c => {
-                if (!byProp[c.proposal_id]) byProp[c.proposal_id] = { proposal: propMap[c.proposal_id], items: [] }
-                byProp[c.proposal_id].items.push(c)
-              })
-
-              const propEntries = Object.values(byProp)
-                .filter(e => e.proposal)
-                .sort((a, b) => (b.proposal.accepted_at ?? '') > (a.proposal.accepted_at ?? '') ? 1 : -1)
-                .slice(0, 20)
-
-              if (propEntries.length === 0) return <EmptyState message="Sin datos" />
-
-              return (
-                <div className="space-y-3">
-                  {propEntries.map(({ proposal: p, items }) => (
-                    <div key={p.id} className="rounded-xl border border-surface-700 bg-surface-800/30 p-4">
-                      <div className="flex items-start justify-between gap-3 mb-3">
-                        <div>
-                          <p className="text-sm font-semibold text-white">{p.client_name}</p>
-                          <p className="text-xs text-slate-500">{p.title}</p>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="text-xs text-slate-500">Aceptada</p>
-                          <p className="text-xs text-slate-400">{p.accepted_at ? new Date(p.accepted_at).toLocaleDateString('es-AR') : '—'}</p>
-                        </div>
-                      </div>
-                      <div className="space-y-1.5">
-                        {items.map(c => {
-                          const contact = c.beneficiary_contact_id ? contactMap[c.beneficiary_contact_id] : null
-                          const prof    = c.beneficiary_profile_id ? profMap[c.beneficiary_profile_id] : null
-                          const name    = c.commission_type === 'hidden_facilitator' ? '(encubierta)' : (contact?.name ?? prof?.full_name ?? '—')
-                          return (
-                            <div key={c.id} className="flex items-center justify-between text-xs">
-                              <div className="flex items-center gap-2">
-                                <span className={`rounded-full px-1.5 py-0.5 ${
-                                  c.commission_type === 'internal_seller' ? 'bg-brand/10 text-brand' :
-                                  c.commission_type === 'hidden_facilitator' ? 'bg-rose-500/10 text-rose-400' :
-                                  'bg-amber-500/10 text-amber-400'
-                                }`}>
-                                  {c.commission_type === 'internal_seller' ? 'Int.' : c.commission_type === 'hidden_facilitator' ? 'Enc.' : 'Ext.'}
-                                </span>
-                                <span className={c.commission_type === 'hidden_facilitator' ? 'text-rose-400 italic' : 'text-slate-300'}>
-                                  {name}
-                                </span>
-                                {c.commission_pct > 0 && <span className="text-slate-600">· {c.commission_pct}%</span>}
-                              </div>
-                              <span className="font-semibold text-white">{fmtARS(effectiveAmt(c))}</span>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )
-            })()}
-          </Section>
 
         </div>
       )}
