@@ -995,21 +995,31 @@ function CommissionsPanel({ campaign }) {
 
   // Precio de venta por cartel = precio de lista - descuento aplicado
   // La comisión siempre se calcula sobre este valor, cartel por cartel.
-  // La suma de precios de venta = campaign.total_value
+  // pi.rate = tarifa mensual del cartel; duration no se guarda en DB → calculamos desde fechas
   const items = campaign.proposal_items ?? []
   const discount = campaign.discount_pct ?? 0
 
-  // Desglose por cartel: precio lista × (1 - descuento%)
+  // Días totales de la campaña desde sus fechas reales
+  const campaignDays = campaign.start_date && campaign.end_date
+    ? Math.max(1, Math.ceil((new Date(campaign.end_date) - new Date(campaign.start_date)) / 86400000) + 1)
+    : 30
+
+  // Precio de venta por cartel = tarifa mensual × (días reales / 30) × (1 − descuento%)
   const siteBreakdown = items.map(pi => {
-    const listPrice  = pi.rate ?? 0
-    const salePrice  = Math.round(listPrice * (1 - discount / 100))
+    const siteDays = pi.start_date && pi.end_date
+      ? Math.max(1, Math.ceil((new Date(pi.end_date) - new Date(pi.start_date)) / 86400000) + 1)
+      : campaignDays
+    const monthlyRate = pi.rate ?? 0
+    const listTotal   = Math.round(monthlyRate * siteDays / 30)
+    const salePrice   = Math.round(listTotal * (1 - discount / 100))
     return {
       name:      pi.site?.name ?? pi.site_name ?? 'Cartel',
-      listPrice,
+      listPrice: listTotal,
       salePrice,
+      siteDays,
     }
   })
-  // Base real = suma de precios de venta individuales = total_value
+  // Base real ≈ total_value (diferencia mínima por redondeo)
   const saleBase = siteBreakdown.reduce((s, p) => s + p.salePrice, 0) || (campaign.total_value ?? 0)
 
   const totalCalc = rows.reduce((s, r) => {
@@ -1036,7 +1046,10 @@ function CommissionsPanel({ campaign }) {
           <div className="divide-y divide-surface-700/50">
             {siteBreakdown.map((s, i) => (
               <div key={i} className="px-4 py-2 flex items-center justify-between text-xs">
-                <span className="text-slate-400 truncate max-w-[60%]">{s.name}</span>
+                <div className="flex items-center gap-2 truncate max-w-[60%]">
+                  <span className="text-slate-400 truncate">{s.name}</span>
+                  <span className="text-slate-600 shrink-0">{s.siteDays}d</span>
+                </div>
                 <div className="flex items-center gap-3 shrink-0">
                   {discount > 0 && <span className="text-slate-600 line-through">{formatCurrency(s.listPrice)}</span>}
                   <span className="text-slate-200 font-medium">{formatCurrency(s.salePrice)}</span>
