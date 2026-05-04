@@ -864,6 +864,9 @@ function CommissionsPanel({ campaign }) {
   useEffect(() => {
     if (!campaign?.id || !orgId) return
     setLoading(true)
+
+    const siteIds = (campaign.proposal_items ?? []).map(pi => pi.site_id).filter(Boolean)
+
     Promise.all([
       supabase.from('campaign_commissions')
         .select('*')
@@ -873,11 +876,61 @@ function CommissionsPanel({ campaign }) {
         .select('id, name, legal_name, roles')
         .eq('org_id', orgId),
       supabase.from('profiles')
-        .select('id, full_name, role')
+        .select('id, full_name, role, commission_pct')
         .eq('org_id', orgId)
         .eq('is_active', true),
-    ]).then(([{ data: comm }, { data: cont }, { data: prof }]) => {
-      setRows((comm ?? []).map(c => ({ ...c, _id: c.id, isNew: false })))
+      siteIds.length > 0
+        ? supabase.from('site_commissions')
+            .select('id, site_id, commission_type, commission_pct, contact_id, profile_id, notes')
+            .eq('org_id', orgId)
+            .in('site_id', siteIds)
+        : Promise.resolve({ data: [] }),
+    ]).then(([{ data: comm }, { data: cont }, { data: prof }, { data: siteComm }]) => {
+      let initialRows = (comm ?? []).map(c => ({ ...c, _id: c.id, isNew: false }))
+
+      // Si no hay comisiones registradas → pre-cargar todos los actores
+      if (initialRows.length === 0) {
+        const preRows = []
+
+        // 1. Vendedor de la campaña
+        if (campaign.created_by) {
+          const seller = (prof ?? []).find(p => p.id === campaign.created_by)
+          if (seller) {
+            preRows.push({
+              _id:                    crypto.randomUUID(),
+              isNew:                  true,
+              commission_type:        'internal_seller',
+              beneficiary_profile_id: seller.id,
+              beneficiary_contact_id: null,
+              commission_pct:         seller.commission_pct > 0 ? String(seller.commission_pct) : '',
+              amount_fixed:           '',
+              notes:                  '',
+            })
+          }
+        }
+
+        // 2. Facilitadores y agencias desde site_commissions (únicos por beneficiario)
+        const seenBenef = new Set()
+        ;(siteComm ?? []).forEach(sc => {
+          const key = sc.contact_id ?? sc.profile_id ?? sc.commission_type
+          if (seenBenef.has(key)) return
+          seenBenef.add(key)
+          preRows.push({
+            _id:                    crypto.randomUUID(),
+            isNew:                  true,
+            commission_type:        sc.commission_type ?? 'sales_facilitator',
+            beneficiary_profile_id: sc.profile_id ?? null,
+            beneficiary_contact_id: sc.contact_id ?? null,
+            commission_pct:         sc.commission_pct > 0 ? String(sc.commission_pct) : '',
+            amount_fixed:           '',
+            notes:                  sc.notes ?? '',
+          })
+        })
+
+        initialRows = preRows
+      }
+
+      setRows(initialRows)
       setContacts(cont ?? [])
       setProfiles(prof ?? [])
       setLoading(false)
