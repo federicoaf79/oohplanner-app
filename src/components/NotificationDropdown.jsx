@@ -2,19 +2,20 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   AlertTriangle, MessageCircle, UserPlus, Calendar,
-  ChevronRight, Inbox,
+  ChevronRight, Inbox, DollarSign,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 
 const TABS = [
-  { key: 'tickets',   label: 'Tickets',   icon: MessageCircle, route: '/app/support'   },
-  { key: 'invites',   label: 'Invites',   icon: UserPlus,      route: '/app/team'      },
-  { key: 'expiring',  label: 'Permisos',  icon: AlertTriangle, route: '/app/inventory' },
-  { key: 'campaigns', label: 'Campañas',  icon: Calendar,      route: '/app/campaigns' },
+  { key: 'tickets',     label: 'Tickets',    icon: MessageCircle, route: '/app/support'   },
+  { key: 'invites',     label: 'Invites',    icon: UserPlus,      route: '/app/team'      },
+  { key: 'expiring',   label: 'Permisos',   icon: AlertTriangle, route: '/app/inventory' },
+  { key: 'campaigns',  label: 'Campañas',   icon: Calendar,      route: '/app/campaigns' },
+  { key: 'commissions',label: 'Comisiones', icon: DollarSign,    route: '/app/campaigns', ownerOnly: true },
 ]
 
-const EMPTY = { tickets: [], invites: [], expiring: [], campaigns: [] }
+const EMPTY = { tickets: [], invites: [], expiring: [], campaigns: [], commissions: [] }
 
 function timeAgo(iso) {
   if (!iso) return ''
@@ -36,7 +37,7 @@ function fmtDate(iso) {
 }
 
 export default function NotificationDropdown({ open, onClose, onCountChange }) {
-  const { profile } = useAuth()
+  const { profile, org, isOwner } = useAuth()
   const navigate = useNavigate()
   const orgId = profile?.org_id ?? null
 
@@ -55,7 +56,7 @@ export default function NotificationDropdown({ open, onClose, onCountChange }) {
     // kill the whole dropdown. permit_expiry in particular is not declared
     // in any repo SQL — if the column doesn't exist in the live DB, the
     // query errors and we just show an empty Permisos tab.
-    const [tickets, invites, expiring, campaigns] = await Promise.all([
+    const [tickets, invites, expiring, campaigns, commissions] = await Promise.all([
       supabase
         .from('support_tickets')
         .select('id, subject, status, priority, created_at')
@@ -106,9 +107,38 @@ export default function NotificationDropdown({ open, onClose, onCountChange }) {
           if (error) { console.warn('[notif] campaigns-to-close query failed:', error.message); return [] }
           return data ?? []
         }),
+
+      // Comisiones fuera de rango — solo owner
+      isOwner
+        ? supabase
+            .from('campaign_commissions')
+            .select(`
+              id, commission_type, commission_pct,
+              proposal:proposals(id, title, client_name),
+              seller:profiles!beneficiary_profile_id(id, full_name, commission_pct),
+              contact:contacts!beneficiary_contact_id(id, name)
+            `)
+            .eq('org_id', orgId)
+            .not('commission_pct', 'is', null)
+            .order('created_at', { ascending: false })
+            .limit(100)
+            .then(({ data, error }) => {
+              if (error) { console.warn('[notif] commissions query failed:', error.message); return [] }
+              return (data ?? []).filter(c => {
+                const registeredPct = Number(c.commission_pct) || 0
+                if (c.commission_type === 'internal_seller' && c.seller) {
+                  // Alerta si supera el % acordado en el perfil del vendedor
+                  const profilePct = Number(c.seller.commission_pct) || 0
+                  return profilePct > 0 && registeredPct > profilePct
+                }
+                // Facilitadores externos/ocultos: alerta si supera 20%
+                return registeredPct > 20
+              })
+            })
+        : Promise.resolve([]),
     ])
 
-    setData({ tickets, invites, expiring, campaigns })
+    setData({ tickets, invites, expiring, campaigns, commissions })
     setLoading(false)
   }, [orgId])
 
@@ -120,18 +150,21 @@ export default function NotificationDropdown({ open, onClose, onCountChange }) {
 
   // Surface total count to parent for the bell badge.
   useEffect(() => {
-    const total = data.tickets.length + data.invites.length + data.expiring.length + data.campaigns.length
+    const total = data.tickets.length + data.invites.length + data.expiring.length + data.campaigns.length + data.commissions.length
     onCountChange?.(total)
   }, [data, onCountChange])
 
   if (!open) return null
 
   const counts = {
-    tickets:   data.tickets.length,
-    invites:   data.invites.length,
-    expiring:  data.expiring.length,
-    campaigns: data.campaigns.length,
+    tickets:     data.tickets.length,
+    invites:     data.invites.length,
+    expiring:    data.expiring.length,
+    campaigns:   data.campaigns.length,
+    commissions: data.commissions.length,
   }
+
+  const visibleTabs = TABS.filter(t => !t.ownerOnly || isOwner)
 
   function handleItemClick(route) {
     onClose?.()
@@ -155,7 +188,7 @@ export default function NotificationDropdown({ open, onClose, onCountChange }) {
 
       {/* Tabs */}
       <div className="flex border-b border-surface-700 bg-surface-900/50">
-        {TABS.map(({ key, label, icon: Icon }) => {
+        {visibleTabs.map(({ key, label, icon: Icon }) => {
           const count  = counts[key]
           const isActive = activeTab === key
           return (
@@ -240,6 +273,26 @@ export default function NotificationDropdown({ open, onClose, onCountChange }) {
                   />
                 ))
             )}
+
+            {activeTab === 'commissions' && isOwner && (
+              counts.commissions === 0
+                ? <EmptyState label="Sin comisiones fuera de rango" />
+                : data.commissions.map(c => {
+                    const name = c.seller?.full_name ?? c.contact?.name ?? '(encubierta)'
+                    const type = c.commission_type === 'internal_seller' ? 'Vendedor' : 'Facilitador'
+                    const prop = c.proposal?.title ?? c.proposal?.client_name ?? '—'
+                    return (
+                      <ListItem
+                        key={c.id}
+                        title={`⚠ ${name} — ${c.commission_pct}%`}
+                        subtitle={`${type} · ${prop}`}
+                        meta="Fuera de rango"
+                        metaColor="text-rose-400"
+                        onClick={() => handleItemClick('/app/campaigns')}
+                      />
+                    )
+                  })
+            )}
           </>
         )}
       </div>
@@ -247,7 +300,7 @@ export default function NotificationDropdown({ open, onClose, onCountChange }) {
   )
 }
 
-function ListItem({ title, subtitle, meta, onClick }) {
+function ListItem({ title, subtitle, meta, metaColor, onClick }) {
   return (
     <button
       onClick={onClick}
@@ -258,7 +311,7 @@ function ListItem({ title, subtitle, meta, onClick }) {
         {subtitle && <p className="text-xs text-slate-500 mt-0.5 truncate">{subtitle}</p>}
       </div>
       {meta && (
-        <span className="shrink-0 text-[10px] font-medium text-slate-500 uppercase tracking-wide mt-0.5">
+        <span className={`shrink-0 text-[10px] font-medium uppercase tracking-wide mt-0.5 ${metaColor ?? 'text-slate-500'}`}>
           {meta}
         </span>
       )}
